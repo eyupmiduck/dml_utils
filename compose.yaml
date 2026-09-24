@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-dml-utils-postgres:17-alpine}
+    environment:
+      POSTGRES_DB: dml_utils
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    # Host port 5433 so the dml_utils and ddl_utils dev databases can run at the
+    # same time (ddl_utils binds 5432).
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - dml_utils_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d dml_utils" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  liquibase:
+    image: liquibase/liquibase:5.0.4
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Retry once if the driver download or the migration hits a transient
+    # failure; the update itself is idempotent.
+    restart: on-failure
+    volumes:
+      - ./dml_utils/src/main/resources/db/changelog:/liquibase/changelog
+    # `lpm add postgresql` downloads the JDBC driver on each run; the dev-only
+    # credentials match the postgres service above. The tracking tables live in
+    # the dedicated `liquibase` schema (created by the image's init script).
+    command: sh -c "lpm add postgresql --global && liquibase --url=jdbc:postgresql://postgres:5432/dml_utils --username=dml_utils_owner --password=dml_utils_owner --changelog-file=changelog/db.changelog-master.xml --liquibase-schema-name=liquibase --database-changelog-table-name=dml_utils_databasechangelog --database-changelog-lock-table-name=dml_utils_databasechangeloglock update"
+
+volumes:
+  dml_utils_pgdata:

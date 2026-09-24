@@ -1,0 +1,35 @@
+name: Changelog linter
+
+# Runs the Liquibase changelog linter with the SARIF reporter and uploads the
+# result to GitHub code scanning, so changelog findings show inline on the pull
+# request next to CodeQL. The failing gate itself is `./mvnw verify` in the
+# Maven Build workflow; this job exists to surface the findings in the code
+# scanning UI. The linter runner lives in workflow_library.
+on:
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: changelog-linter-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: read
+  security-events: write
+
+jobs:
+  lint:
+    # Pinned to the workflow_library commit; bump the SHA deliberately when
+    # upgrading the library.
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+    uses: eyupmiduck/workflow_library/.github/workflows/liquibase-changelog-linter.yml@83d3de534b94b63f7876709f2e969621136caaf8
+    with:
+      maven-module: dml_utils
+      changelog-root: dml_utils/src/main/resources/db/changelog
+      config-path: dml_utils/.liquibase-linter.yml
+      whitelist-path: dml_utils/.liquibase-linter-whitelist.yml

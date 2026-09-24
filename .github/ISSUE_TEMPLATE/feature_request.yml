@@ -1,0 +1,42 @@
+name: Feature request
+description: Suggest a new capability or improvement for dml_utils.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement. Please describe the problem before the
+        solution so it can be evaluated on its merits.
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight
+      options:
+        - label: I searched existing issues and could not find a duplicate request.
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to solve? Safety on large tables, locking, ergonomics, or something else?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like dml_utils to do?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches or workarounds you considered.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Links, PostgreSQL documentation, or examples.

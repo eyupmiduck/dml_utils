@@ -1,0 +1,10 @@
+# Accepted plpgsql_check findings.
+#
+# PlpgsqlCheckTest runs plpgsql_check_function_tb(..., all_warnings => true)
+# over every routine in dml_utils / dml_utils_lib and matches each finding
+# against one of these entries (field by field; omit a field to match any
+# value). A finding with no match fails the test, and an entry that matches no
+# finding is reported as stale and also fails.
+#
+# There are no routines yet, so the list is empty.
+[]

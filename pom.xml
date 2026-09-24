@@ -1,0 +1,250 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>io.github.eyupmiduck</groupId>
+    <artifactId>dml-utils-parent</artifactId>
+    <version>${revision}</version>
+    <packaging>pom</packaging>
+
+    <modules>
+        <module>docker_java_config</module>
+        <module>dml_utils</module>
+    </modules>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.release>25</maven.compiler.release>
+
+        <!-- CI-friendly version. This is the single line a release changes:
+             the parent's own version and every module's <parent> version
+             reference ${revision}, and flatten-maven-plugin resolves it in the
+             installed/deployed POM. Override per build with
+             -Drevision=1.2.3 (used by the release workflow). -->
+        <revision>0.1.0-SNAPSHOT</revision>
+
+        <junit.version>6.1.3</junit.version>
+        <testcontainers.version>1.21.4</testcontainers.version>
+        <slf4j.version>2.0.19</slf4j.version>
+        <postgresql.version>42.7.13</postgresql.version>
+        <commons-compress.version>1.28.0</commons-compress.version>
+        <liquibase.version>5.0.4</liquibase.version>
+        <jooq.version>3.21.8</jooq.version>
+        <jakarta-xml-bind.version>4.0.5</jakarta-xml-bind.version>
+        <testcontainers-jooq-codegen.version>0.0.4</testcontainers-jooq-codegen.version>
+        <liquibase-validation.version>1.1.1</liquibase-validation.version>
+        <flatten.version>1.8.0</flatten.version>
+        <skip.sqlfluff>false</skip.sqlfluff>
+        <sqlfluff.executable>sqlfluff</sqlfluff.executable>
+        <skip.liquibase-linter>false</skip.liquibase-linter>
+
+        <!-- The PostgreSQL version the build runs against. It is the single
+             knob for choosing that version: the jOOQ codegen container and the
+             integration tests both use the custom image built on top of it.
+             Override with -Dpostgres.version=16-alpine (or 18-alpine). -->
+        <postgres.version>17-alpine</postgres.version>
+        <!-- The image jOOQ codegen and the integration tests run against. It
+             must be the custom image built by scripts/build-postgres-image.sh
+             (the stock postgres image has neither the application roles nor
+             plpgsql_check), so it is derived from postgres.version instead of
+             being set directly. CI may still override it with
+             -Dpostgres.image=dml-utils-postgres:<version>. -->
+        <postgres.image>dml-utils-postgres:${postgres.version}</postgres.image>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.junit</groupId>
+                <artifactId>junit-bom</artifactId>
+                <version>${junit.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>${testcontainers.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.postgresql</groupId>
+                <artifactId>postgresql</artifactId>
+                <version>${postgresql.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.liquibase</groupId>
+                <artifactId>liquibase-core</artifactId>
+                <version>${liquibase.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.jooq</groupId>
+                <artifactId>jooq</artifactId>
+                <version>${jooq.version}</version>
+            </dependency>
+            <!-- jOOQ declares this as optional (opt-in), so it is not pulled
+                 transitively. Compiling against jOOQ without it makes javac
+                 emit -Xlint:classfile warnings for the unresolved JAXB
+                 annotations. -->
+            <dependency>
+                <groupId>jakarta.xml.bind</groupId>
+                <artifactId>jakarta.xml.bind-api</artifactId>
+                <version>${jakarta-xml-bind.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <!-- Transitive via Testcontainers; override to a patched version. -->
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-compress</artifactId>
+                <version>${commons-compress.version}</version>
+            </dependency>
+            <!-- Testcontainers depends on slf4j-api but no binding is on the
+                 test classpath, so SLF4J warns and falls back to NOP. Bridge it
+                 to java.util.logging, which Liquibase already logs through, so
+                 there is one backend. Must match the slf4j-api version
+                 Testcontainers pulls (a 2.x binding cannot load under 1.7). -->
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-jdk14</artifactId>
+                <version>${slf4j.version}</version>
+                <scope>test</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <!-- liquibase-validation is published to GitHub Packages. Credentials for
+         the `github` server id must be supplied in ~/.m2/settings.xml (a
+         classic PAT with read:packages), or via actions/setup-java in CI. -->
+    <repositories>
+        <repository>
+            <id>github</id>
+            <url>https://maven.pkg.github.com/eyupmiduck/liquibase_validation</url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+        </repository>
+    </repositories>
+
+    <!-- Releases are published to GitHub Packages by the Release workflow on a
+         v* tag. The tag drives the version via -Drevision; the `github` server
+         id supplies the write:packages credential (GITHUB_TOKEN in CI). -->
+    <distributionManagement>
+        <repository>
+            <id>github</id>
+            <name>GitHub Packages</name>
+            <url>https://maven.pkg.github.com/eyupmiduck/dml_utils</url>
+        </repository>
+    </distributionManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.16.0</version>
+                    <configuration>
+                        <!-- Fail the build on any javac lint warning. The
+                             JAXB/JOOQ classfile warnings are resolved by the
+                             provided jakarta.xml.bind-api dependency. -->
+                        <compilerArgs>
+                            <arg>-Xlint:all</arg>
+                            <arg>-Werror</arg>
+                        </compilerArgs>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-enforcer-plugin</artifactId>
+                    <version>3.6.3</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>3.6.0</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.testcontainers</groupId>
+                    <artifactId>testcontainers-jooq-codegen-maven-plugin</artifactId>
+                    <version>${testcontainers-jooq-codegen.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>flatten-maven-plugin</artifactId>
+                    <version>${flatten.version}</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>enforce-build-requirements</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireMavenVersion>
+                                    <version>[3.9.0,)</version>
+                                </requireMavenVersion>
+                                <requireJavaVersion>
+                                    <version>[25,)</version>
+                                </requireJavaVersion>
+                                <!-- Fail fast when the build is pointed at
+                                     anything but the custom image. A stock
+                                     postgres image lacks the application roles
+                                     and plpgsql_check, and the failure surfaces
+                                     much later as a confusing Liquibase error. -->
+                                <requireProperty>
+                                    <property>postgres.image</property>
+                                    <regex>dml-utils-postgres:.+</regex>
+                                    <message>postgres.image is not set</message>
+                                    <regexMessage>postgres.image must be the custom image built by
+                                        scripts/build-postgres-image.sh (a dml-utils-postgres: tag); the stock postgres
+                                        image lacks the application roles and plpgsql_check. Set -Dpostgres.version
+                                        instead of pointing the build at another image.
+                                    </regexMessage>
+                                </requireProperty>
+                                <dependencyConvergence/>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <!-- Resolve ${revision} in the POM that is installed/deployed, so
+                 consumers never see a CI-friendly placeholder. Also removes
+                 the flattened POM on clean. -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>flatten-maven-plugin</artifactId>
+                <configuration>
+                    <updatePomFile>true</updatePomFile>
+                    <flattenMode>resolveCiFriendliesOnly</flattenMode>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>flatten</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>flatten</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>flatten.clean</id>
+                        <phase>clean</phase>
+                        <goals>
+                            <goal>clean</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

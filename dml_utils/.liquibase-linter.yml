@@ -1,0 +1,24 @@
+# Configuration for the Liquibase changelog linter.
+#
+# The linter runs during `verify` via the `liquibase-linter` execution in
+# pom.xml; this file is passed with --config.
+
+# PostgreSQL major version used by version-gated rules (for example
+# ALTER TYPE ... ADD VALUE). Keep in step with the postgres.version property in
+# the parent POM.
+pgVersion: '17'
+
+# Opt-in rules this module runs. They are off unless listed here.
+# changeset-rollback-parity is deliberately not enabled: its statement-count
+# heuristic warns on legitimate many-to-few inversions, so it would be noise
+# here.
+include:
+  - changeset-prefer-single-statement
+  - require-concurrent-index-creation
+  - require-concurrent-index-deletion
+  - changeset-rollback-required
+
+# A finding is accepted by listing its rule under `exclude`, or by downgrading
+# it under `rules`. The verify gate fails on `error` findings (see the
+# --fail-on argument in pom.xml), so an included warning rule is reported but
+# does not by itself fail the build.

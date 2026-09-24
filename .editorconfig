@@ -1,0 +1,11 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Keep editors in step with SQLFluff's max_line_length (see .sqlfluff).
+[*.sql]
+max_line_length = 100

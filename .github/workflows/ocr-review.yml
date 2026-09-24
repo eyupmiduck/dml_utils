@@ -1,0 +1,75 @@
+name: OpenCodeReview PR Review
+
+# Use pull_request_target instead of pull_request so Secrets are available
+# for PRs from forks. This is safe because OCR only reads the diff and does
+# not execute any code from the PR.
+on:
+  pull_request_target:
+    types:
+      - opened
+  issue_comment:
+    types:
+      - created
+
+# Matching events share a per-PR group so a new review cancels any stale one.
+# Non-matching comments land in a unique noop group so they are skipped
+# instantly without cancelling a running review.
+# Keep the predicate below in sync with the job's `if:` (and vice versa).
+concurrency:
+  group: >-
+    ${{
+      (
+        github.event_name == 'pull_request_target'
+        || (
+          github.event_name == 'issue_comment'
+          && github.event.issue.pull_request
+          && github.event.comment.user.type != 'Bot'
+          && (
+            github.event.comment.author_association == 'MEMBER'
+            || github.event.comment.author_association == 'OWNER'
+            || github.event.comment.author_association == 'COLLABORATOR'
+          )
+          && startsWith(github.event.comment.body, '/open-code-review')
+        )
+      )
+      && format('ocr-{0}', github.event.pull_request.number || github.event.issue.number)
+      || format('noop-{0}', github.run_id)
+    }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  code-review:
+    # Only run for opened PRs and authorized /open-code-review comments; a
+    # matching concurrency group alone does not stop non-matching events.
+    # Keep this in sync with concurrency.group above (and vice versa).
+    if: >-
+      github.event_name == 'pull_request_target'
+      || (
+        github.event_name == 'issue_comment'
+        && github.event.issue.pull_request
+        && github.event.comment.user.type != 'Bot'
+        && (
+          github.event.comment.author_association == 'MEMBER'
+          || github.event.comment.author_association == 'OWNER'
+          || github.event.comment.author_association == 'COLLABORATOR'
+        )
+        && startsWith(github.event.comment.body, '/open-code-review')
+      )
+    # Pinned to the workflow_library commit so a change to its default branch
+    # cannot alter what runs here with pull-requests: write and the LLM secret.
+    # Bump the SHA deliberately when upgrading the library.
+    uses: eyupmiduck/workflow_library/.github/workflows/ocr-review.yml@83d3de534b94b63f7876709f2e969621136caaf8
+    permissions:
+      contents: read
+      pull-requests: write
+    with:
+      ocr-version: "1.12.1"
+      llm-url: https://api.together.xyz/v1
+      llm-model: deepseek-ai/DeepSeek-V4.1-Flash
+      llm-use-anthropic: "false"
+    secrets:
+      llm_auth_token: ${{ secrets.TOGETHER_API_KEY }}

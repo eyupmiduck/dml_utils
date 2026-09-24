@@ -1,0 +1,30 @@
+name: Release
+
+# Publishes a tagged commit to GitHub Packages and opens the matching GitHub
+# Release. The reusable workflow derives -Drevision from the tag, so the tag is
+# the single source of truth for the version: bump <revision> in the POM only
+# for local/snapshot builds, a release never edits it.
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    # Pinned to the workflow_library commit; bump the SHA deliberately when
+    # upgrading the library.
+    permissions:
+      contents: write
+      packages: write
+    uses: eyupmiduck/workflow_library/.github/workflows/maven-release.yml@83d3de534b94b63f7876709f2e969621136caaf8
+    with:
+      java-version: "25"
+      postgres-version: postgres:17-alpine
