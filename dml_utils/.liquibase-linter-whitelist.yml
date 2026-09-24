@@ -1,0 +1,17 @@
+# Accepted Liquibase linter findings for this module.
+#
+# Passed to the linter with --whitelist. Each entry is a mapping with any of the
+# `rule`, `file`, `changeset` and `statement` selectors (an omitted selector
+# matches anything) plus a non-empty `reason`. Matching is fail-closed: a finding
+# no entry accepts fails the run, and an entry that matches no finding is stale
+# and also fails it.
+#
+# Example:
+#
+#   - rule: changeset-single-statement
+#     changeset: 007-some-index
+#     statement: CREATE INDEX CONCURRENTLY
+#     reason: intentional, the statement list is single after splitting
+#
+# There are no accepted findings yet.
+[ ]

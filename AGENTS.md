@@ -1,0 +1,247 @@
+# AGENTS.md
+
+## Project
+
+This is a Java project for PostgreSQL DML tooling.
+
+Primary technologies:
+
+- Java 25
+- Maven
+- PostgreSQL
+- jOOQ
+- Liquibase
+- JUnit 5
+- Testcontainers
+
+## Repo state
+
+Maven multi-module project: `dml_utils` carries the Liquibase-managed schemas,
+jOOQ codegen and tests; `docker_java_config` is a build shim. CI: GitHub Actions
+(`.github/workflows/maven.yml`) runs `./mvnw clean verify` on pull requests to
+`main`.
+
+- Root `pom.xml`: parent POM (`dml-utils-parent`); all dependency and plugin
+  versions are pinned here in `dependencyManagement` / `pluginManagement`.
+- `dml_utils/`: the main module; base package
+  `io.github.eyupmiduck.dmlutils`.
+    - Liquibase changelogs: `src/main/resources/db/changelog/`
+      (`db.changelog-master.xml` includes `changes/changes.xml`, which holds the
+      schema/table changesets; forward SQL lives in `changes/sql_changes/`,
+      rollback SQL in `changes/rollback/`). `changes/functions.xml` holds one
+      changeset per routine (one `createProcedure` plus its rollback), with one
+      file per routine under `changes/functions/<schema>/` and rollback bodies
+      under `changes/functions-rollback/<schema>/`. The `dml_utils` schema holds
+      the application surface; `dml_utils_lib` holds the generic helpers that
+      take their parameters explicitly.
+    - jOOQ classes are generated at build time into
+      `target/generated-sources/jooq` by
+      `testcontainers-jooq-codegen-maven-plugin`, which starts a real
+      PostgreSQL container and applies the Liquibase changelog. **Docker must be
+      running for `./mvnw verify`.** Plugin 0.0.4 is old: the module POM
+      overrides its bundled Testcontainers and jOOQ — keep those overrides.
+- `docker_java_config/`: jar containing only `docker-java.properties`
+  (`api.version=1.44`). Testcontainers <= 1.21.3 shades docker-java pinned to
+  Docker API 1.32, but Docker 29 requires >= 1.40. This module puts the pin on
+  the codegen plugin realm and the test classpath. Remove once Testcontainers
+  supports Docker 29+ natively.
+
+## Useful commands
+
+- Everything: `./mvnw verify`
+- One module: `./mvnw -pl dml_utils -am verify` (`-am` is required — reactor
+  deps are not installed)
+- One test: `./mvnw -pl dml_utils -am test -Dtest=ExampleTableTest`
+- Lint SQL only: `.venv/bin/sqlfluff lint dml_utils/src/main/resources/db/changelog`
+- Auto-fix SQL style: `scripts/sqlfluff-fix.sh` (uses the repo's `.venv`)
+- Lint the changelog semantics only (skip SQLFluff): `./mvnw -pl dml_utils -am verify -Dskip.sqlfluff`
+- Skip the changelog linter only: `./mvnw verify -Dskip.liquibase-linter`
+- Simulate a release deploy locally (file repo, no credentials):
+  `./mvnw -Drevision=1.2.3 -DaltDeploymentRepository=local::file:/tmp/m2 deploy`
+
+## Releases
+
+- Versioning is CI-friendly: the root POM declares `<revision>` and uses
+  `flatten-maven-plugin` (`resolveCiFriendliesOnly`), and each module's
+  `<parent>` version is `${revision}`. `flatten` resolves it in the installed/
+  deployed POM. A release does not edit the POM; a snapshot bump changes the
+  single `<revision>` line.
+- A release is a `v<version>` tag pushed to `main`. The `Release` workflow
+  (`.github/workflows/release.yml`) derives the version from the tag
+  (`-Drevision=${tag#v}`), runs the full `verify` gate, deploys to GitHub
+  Packages, then creates the GitHub Release. Do not tag a commit that CI has
+  not built green. Cut one with `scripts/cut-release.sh <version>`, which
+  refuses anything but a clean, up-to-date `main` and a version newer than the
+  greatest existing tag.
+- The parent POM and `dml_utils` are published. `docker_java_config` is a build
+  shim, so it sets `maven.deploy.skip` and is never deployed.
+
+## Development principles
+
+- Prefer simple, explicit Java over unnecessary abstractions.
+- Use modern Java 25 features where they improve readability.
+- Keep methods small and focused.
+- Avoid adding dependencies unless there is a clear benefit.
+- Do not introduce frameworks unless specifically requested.
+- Follow the existing project structure and conventions.
+
+## Maven
+
+- Always use the Maven Wrapper:
+  `./mvnw`
+- Do not assume a globally installed Maven version.
+- Changes should pass:
+  `./mvnw verify`
+
+## PostgreSQL
+
+- Target PostgreSQL unless explicitly told otherwise.
+- Prefer PostgreSQL-native solutions over database-portable abstractions.
+- SQL must be safe for production-sized databases.
+- Consider locking, transaction boundaries, concurrency, and failure recovery.
+- Do not assume small tables.
+- **Every table has `created_at` and `updated_at`.** Both are
+  `timestamptz NOT NULL DEFAULT now()`; never `timestamp without time zone` and
+  never a different column name. Attach the shared
+  `dml_utils.set_updated_at()` trigger (`BEFORE UPDATE ... FOR EACH ROW`) to the
+  table so `updated_at` is refreshed on every `UPDATE` regardless of the caller;
+  a caller must not have to set it, and must not be able to bypass it. Create a
+  table together with its trigger in the same changeset (the shared function
+  already exists).
+- **Every object has a comment.** Add a `COMMENT ON` for each schema, table,
+  column, domain, function and procedure, describing what it is for. Comment a
+  function or procedure at the end of the `.sql` file that creates it; comment
+  every other object right after the statement that creates it, in the same
+  changeset. Routine comments use the short form (`schema.name`); include the
+  argument types only when the routine name is overloaded.
+
+## PL/pgSQL
+
+- **Prefer stored functions over stored procedures.** Functions cannot
+  `COMMIT`/`ROLLBACK` or manage transactions, so transaction control can never
+  leak into code that must run inside the caller's transaction. Use a procedure
+  only when an operation genuinely needs several statements with a `COMMIT`
+  between them.
+- Prefix input arguments with `i_`, output arguments with `o_`, and local
+  variables with `l_`. Use `snake_case` for object names, arguments, and
+  variables.
+- When one routine calls another, pass arguments **by name**
+  (`dml_utils_lib.some_helper(i_x => ..., ...)`) rather than positionally, so
+  reordering or inserting a parameter cannot silently rebind values.
+- One routine per `.sql` file, grouped by the schema that owns it: functions in
+  `dml_utils/src/main/resources/db/changelog/changes/functions/<schema>/<name>.sql`,
+  rollback bodies in `.../changes/functions-rollback/<schema>/<name>-rollback.sql`,
+  named `snake_case` without an `NNN-` prefix. `changes/functions.xml` contains
+  one changeset per routine, with the id `function-<schema>.<name>` (one
+  `createProcedure` plus its rollback). Overloads of one routine (same schema
+  and name, different signature) share a single changeset.
+- Load a routine with the `createProcedure` change type and an external body:
+  `<createProcedure path="functions/<schema>/<name>.sql" relativeToChangelogFile="true"/>`.
+  Liquibase has no `createFunction` change type, so functions use
+  `createProcedure` too; the `path` attribute keeps SQL out of the XML.
+- `CREATE OR REPLACE` only replaces a routine with an identical signature.
+  Changing `RETURNS` or a parameter name aborts the deploy, and changing a
+  parameter type leaves the old overload behind. When a signature changes, add
+  an explicit `DROP FUNCTION IF EXISTS <old signature>;` so the deprecated
+  signature is removed.
+- Type routine arguments with domains (for example `non_null_text`,
+  `non_negative_integer`) so null or invalid inputs fail fast with a
+  check-constraint violation. Add the domains to the `dml_utils` schema when the
+  first routine needs them.
+- Use `SECURITY INVOKER` (the default). A routine must never require callers to
+  hold privileges beyond what they would need to run its SQL directly. Use
+  `SECURITY DEFINER` only when a caller genuinely must perform an operation it
+  lacks privileges for, and then pin a safe `search_path` and grant `EXECUTE`
+  explicitly (revoking it from `PUBLIC`).
+- Never build dynamic SQL by concatenating values. Quote identifiers with
+  `format('... %I ...', ...)` and literals with `%L`, and reject input that
+  cannot be safely parameterized.
+- Schema-qualify objects or set `search_path` explicitly so a routine behaves
+  the same regardless of the caller's `search_path`.
+- Routines run inside the caller's transaction: use `SET LOCAL` for
+  transaction-scoped settings and never assume state survives a rollback.
+
+## Liquibase
+
+- Database schema changes must be implemented through Liquibase.
+- Changesets should be small and focused.
+- **Do not embed SQL in XML.** Put SQL in a `.sql` file and reference it with
+  `<sqlFile path="..." relativeToChangelogFile="true"/>` (also for
+  `<rollback>`). Add each changeset as a `<changeSet id="NNN-description">`
+  entry in `dml_utils/src/main/resources/db/changelog/changes/changes.xml`,
+  with forward SQL in `changes/sql_changes/NNN-description.sql` and rollback
+  SQL in `changes/rollback/NNN-description-rollback.sql`. Stored routines are
+  the exception: they use the `createProcedure` change type with a `path` to a
+  per-routine `.sql` file (see the PL/pgSQL section).
+- Prefer changes that are safe to deploy against a live database.
+- Consider rollback and idempotency where appropriate.
+- Do not modify an already-deployed changeset unless explicitly instructed.
+- Liquibase's tracking tables are kept out of the application schemas: they live
+  in a dedicated `liquibase` schema as `dml_utils_databasechangelog` and
+  `dml_utils_databasechangeloglock`. Every entry point sets this — the jOOQ
+  codegen plugin (`dml_utils/pom.xml`), `PostgresTestBase`, and the CLI flags in
+  `compose.yaml` — and the custom image's init script (`docker/postgres/roles.sql`)
+  creates the schema, because Liquibase does not.
+- SQLFluff (`.sqlfluff`, dialect `postgres`) lints the changelog `.sql` files
+  during `verify` via `exec-maven-plugin`. Requires `sqlfluff` on PATH (use
+  the repo's `.venv`); skip with `-Dskip.sqlfluff`.
+- The Liquibase changelog linter (`liquibase-validation`) also runs during
+  `verify` over the changelog directory. It applies rules that need both the SQL
+  and the changeset attributes (for example a statement PostgreSQL forbids in a
+  transaction must be in a `runInTransaction="false"` changeset and be that
+  changeset's only statement), which SQLFluff and plpgsql_check cannot see.
+  Configure it in `dml_utils/.liquibase-linter.yml`; accept known findings in
+  `dml_utils/.liquibase-linter-whitelist.yml` (fail-closed: an unaccepted
+  finding and a stale whitelist entry both fail the build); skip with
+  `-Dskip.liquibase-linter`. A separate `Changelog linter` workflow uploads the
+  same run as SARIF to GitHub code scanning; `verify` remains the gate.
+
+## jOOQ
+
+- Prefer jOOQ's type-safe DSL over constructing SQL strings manually.
+- Use generated jOOQ classes where available.
+- Do not duplicate database schema definitions in Java.
+- Use plain SQL when PostgreSQL-specific functionality cannot be expressed
+  clearly with the jOOQ DSL.
+
+## Testing
+
+- Use JUnit 5.
+- Integration tests must use Testcontainers where a real PostgreSQL database
+  is required.
+- Do not replace PostgreSQL integration tests with H2 or another database.
+  This also applies to tooling: no H2 anywhere, including jOOQ code
+  generation (do not use jOOQ's offline `LiquibaseDatabase`/H2 simulation).
+- Tests should be deterministic and independent.
+- Database tests must extend `PostgresTestBase` (in `dml_utils` test
+  sources). It shares one PostgreSQL container, applies the Liquibase
+  changelog once to a template database, and gives each test class a private
+  database cloned with `CREATE DATABASE ... TEMPLATE ...` (fast, isolated
+  data). Use the inherited `dsl` (jOOQ); do not run Liquibase or start
+  containers in individual tests.
+- Every test class and test method must have Javadoc describing the behavior
+  it verifies.
+- Prefer testing observable behavior rather than implementation details.
+- Add regression tests when fixing bugs.
+- The routines are statically analysed with the `plpgsql_check` extension
+  (`PlpgsqlCheckTest`). It is compiled into the custom image, created in the
+  template database, and available in dev databases via
+  `docker/postgres/roles.sql`; keep the routines free of its warnings.
+
+## Before completing a change
+
+1. Review the diff.
+2. Remove unnecessary code and imports.
+3. Check for accidental API or schema changes.
+4. Run relevant tests.
+5. Run `./mvnw verify`.
+6. Report any tests that could not be run.
+
+## Git
+
+- Never commit directly to `main`.
+- Work on a feature branch.
+- Keep commits focused.
+- Do not commit generated build output, secrets, credentials, or local IDE files.
+- Never merge a pull request without explicit approval. Open the PR, wait for
+  CI and review, then ask; do not merge it yourself.

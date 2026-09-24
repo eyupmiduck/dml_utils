@@ -1,0 +1,28 @@
+name: Maven Build
+
+on:
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: maven-${{ github.ref }}
+  cancel-in-progress: true
+
+# `packages: read` lets the reusable Maven workflow's GITHUB_TOKEN fetch the
+# liquibase-validation artifact from GitHub Packages.
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  build:
+    # Pinned to the workflow_library commit; bump the SHA deliberately when
+    # upgrading the library.
+    uses: eyupmiduck/workflow_library/.github/workflows/maven.yml@83d3de534b94b63f7876709f2e969621136caaf8
+    with:
+      java-version: "25"
+      postgres-versions: '["postgres:16-alpine","postgres:17-alpine","postgres:18-alpine"]'
+      postgres-image-script: scripts/build-postgres-image.sh
+      postgres-image-prefix: dml-utils-
+      maven-command: ./mvnw --batch-mode clean verify

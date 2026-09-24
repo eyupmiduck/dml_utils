@@ -1,0 +1,45 @@
+name: CodeQL
+
+# Static analysis for Java. Runs on every change to main and on a weekly
+# schedule so newly added CodeQL queries are applied to unchanged code.
+# The analysis itself lives in workflow_library.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: "27 3 * * 1"
+
+# Superseded pull-request runs on the same ref are useless once a newer run
+# starts; push and scheduled runs are left to finish so main always gets a
+# complete analysis.
+concurrency:
+  group: codeql-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+  actions: read
+  security-events: write
+
+jobs:
+  analyze:
+    # Pinned to the workflow_library commit; bump the SHA deliberately when
+    # upgrading the library.
+    #
+    # build-mode: none extracts the database from source without compiling.
+    # A full build would need Docker (Testcontainers-driven jOOQ codegen) and
+    # a GitHub Packages token; the generated jOOQ classes are not
+    # security-relevant, so skipping the build is the pragmatic trade-off.
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    uses: eyupmiduck/workflow_library/.github/workflows/codeql.yml@83d3de534b94b63f7876709f2e969621136caaf8
+    with:
+      languages: java-kotlin
+      build-mode: none
+      category: /language:java-kotlin

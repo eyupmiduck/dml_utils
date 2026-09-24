@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>io.github.eyupmiduck</groupId>
+        <artifactId>dml-utils-parent</artifactId>
+        <version>${revision}</version>
+    </parent>
+
+    <artifactId>dml_utils</artifactId>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.jooq</groupId>
+            <artifactId>jooq</artifactId>
+        </dependency>
+        <!-- jOOQ references JAXB annotations but declares the API as optional.
+             Provided scope puts it on the compile classpath (so javac can
+             resolve the annotations) without adding a runtime requirement. -->
+        <dependency>
+            <groupId>jakarta.xml.bind</groupId>
+            <artifactId>jakarta.xml.bind-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.liquibase</groupId>
+            <artifactId>liquibase-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- SLF4J binding for the Testcontainers logging (see the parent POM). -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-jdk14</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Puts docker-java.properties (Docker API pin) on the test classpath -->
+        <dependency>
+            <groupId>io.github.eyupmiduck</groupId>
+            <artifactId>docker_java_config</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.github.eyupmiduck</groupId>
+            <artifactId>liquibase-validation</artifactId>
+            <version>${liquibase-validation.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- jOOQ codegen against a real PostgreSQL container built from the
+                 custom image (roles baked in), migrated with Liquibase as the
+                 dml_utils_owner role (like a real deployment). Requires a
+                 running Docker daemon and the custom image built first. -->
+            <plugin>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-jooq-codegen-maven-plugin</artifactId>
+                <dependencies>
+                    <!-- Override the plugin's bundled Testcontainers 1.19.1: its
+                         docker-java is too old for Docker 29 (needs API >= 1.40). -->
+                    <dependency>
+                        <groupId>org.testcontainers</groupId>
+                        <artifactId>testcontainers</artifactId>
+                        <version>${testcontainers.version}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.testcontainers</groupId>
+                        <artifactId>postgresql</artifactId>
+                        <version>${testcontainers.version}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.postgresql</groupId>
+                        <artifactId>postgresql</artifactId>
+                        <version>${postgresql.version}</version>
+                    </dependency>
+                    <!-- Override the plugin's bundled jOOQ 3.18.3: it cannot read
+                         PostgreSQL 17 catalogs (key_seq error during codegen). -->
+                    <dependency>
+                        <groupId>org.jooq</groupId>
+                        <artifactId>jooq</artifactId>
+                        <version>${jooq.version}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.jooq</groupId>
+                        <artifactId>jooq-codegen</artifactId>
+                        <version>${jooq.version}</version>
+                    </dependency>
+                    <!-- Puts docker-java.properties (Docker API pin) on the plugin
+                         classpath -->
+                    <dependency>
+                        <groupId>io.github.eyupmiduck</groupId>
+                        <artifactId>docker_java_config</artifactId>
+                        <version>${project.version}</version>
+                    </dependency>
+                </dependencies>
+                <executions>
+                    <execution>
+                        <id>generate-jooq-sources</id>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
+                        <phase>generate-sources</phase>
+                        <configuration>
+                            <database>
+                                <type>POSTGRES</type>
+                                <containerImage>${postgres.image}</containerImage>
+                                <username>dml_utils_owner</username>
+                                <password>dml_utils_owner</password>
+                                <databaseName>dml_utils</databaseName>
+                            </database>
+                            <liquibase>
+                                <changeLogPath>src/main/resources/db/changelog/db.changelog-master.xml</changeLogPath>
+                                <!-- Keep Liquibase's tracking tables out of the
+                                     application schemas: a dedicated `liquibase`
+                                     schema with dml_utils-prefixed tables. The
+                                     schema is created by the custom image's init
+                                     script (Liquibase does not create it). -->
+                                <liquibaseSchemaName>liquibase</liquibaseSchemaName>
+                                <databaseChangeLogTableName>dml_utils_databasechangelog</databaseChangeLogTableName>
+                                <databaseChangeLogLockTableName>dml_utils_databasechangeloglock</databaseChangeLogLockTableName>
+                            </liquibase>
+                            <jooq>
+                                <generator>
+                                    <database>
+                                        <includes>.*</includes>
+                                        <!-- jOOQ cannot combine several
+                                             schemata in one <inputSchema>;
+                                             each schema maps to its own
+                                             subpackage (dml_utils,
+                                             dml_utils_lib). -->
+                                        <schemata>
+                                            <schema>
+                                                <inputSchema>dml_utils</inputSchema>
+                                            </schema>
+                                            <schema>
+                                                <inputSchema>dml_utils_lib</inputSchema>
+                                            </schema>
+                                        </schemata>
+                                    </database>
+                                    <target>
+                                        <packageName>io.github.eyupmiduck.dmlutils.jooq</packageName>
+                                        <directory>target/generated-sources/jooq</directory>
+                                    </target>
+                                </generator>
+                            </jooq>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- SQLFluff lints the Liquibase .sql files. Defaults to sqlfluff on
+                 PATH; point it at the repo's .venv with
+                 -Dsqlfluff.executable=$PWD/.venv/bin/sqlfluff. Skip with
+                 -Dskip.sqlfluff. -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.6.4</version>
+                <executions>
+                    <execution>
+                        <id>sqlfluff-lint</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>${sqlfluff.executable}</executable>
+                            <arguments>
+                                <argument>lint</argument>
+                                <argument>src/main/resources/db/changelog</argument>
+                            </arguments>
+                            <skip>${skip.sqlfluff}</skip>
+                        </configuration>
+                    </execution>
+                    <!-- Runs the Liquibase changelog linter (rules that need both
+                         the SQL and the changeset attributes, which SQLFluff cannot
+                         see). It reads the changelog directory, the per-module
+                         .liquibase-linter.yml and the accepted findings in
+                         .liquibase-linter-whitelist.yml. Runs on the test
+                         classpath because liquibase-validation is a test-scope
+                         dependency; the plugin blocks the CLI's System.exit so a
+                         finding fails the build instead of killing Maven. Skip
+                         with -Dskip.liquibase-linter. -->
+                    <execution>
+                        <id>liquibase-linter</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>java</goal>
+                        </goals>
+                        <configuration>
+                            <mainClass>io.github.eyupmiduck.changelogvalidator.linter.cli.LinterCli</mainClass>
+                            <classpathScope>test</classpathScope>
+                            <blockSystemExit>true</blockSystemExit>
+                            <arguments>
+                                <argument>--changelog-root</argument>
+                                <argument>${project.basedir}/src/main/resources/db/changelog</argument>
+                                <argument>--config</argument>
+                                <argument>${project.basedir}/.liquibase-linter.yml</argument>
+                                <argument>--whitelist</argument>
+                                <argument>${project.basedir}/.liquibase-linter-whitelist.yml</argument>
+                                <argument>--fail-on</argument>
+                                <argument>error</argument>
+                            </arguments>
+                            <skip>${skip.liquibase-linter}</skip>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Pass the PostgreSQL image to tests so they use the same
+                 version as jOOQ codegen. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <postgres.image>${postgres.image}</postgres.image>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
