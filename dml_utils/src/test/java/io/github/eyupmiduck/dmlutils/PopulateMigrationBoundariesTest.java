@@ -149,6 +149,23 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
         assertBoundaries(secondRun, new long[][]{{0, 1}, {1, 4}, {2, 4}});
     }
 
+    /**
+     * The primary-key column is resolved from the catalog, not assumed to be
+     * named {@code id}.
+     */
+    @Test
+    void resolvesThePrimaryKeyColumnNameFromTheCatalog() {
+        dropTestTable(SOURCE_QUALIFIED);
+        createTestTable(SOURCE_QUALIFIED, "key bigint PRIMARY KEY, payload text");
+        dsl.execute("INSERT INTO " + SOURCE_QUALIFIED + " (key) VALUES (1)");
+        dsl.execute("INSERT INTO " + SOURCE_QUALIFIED + " (key) VALUES (2)");
+        dsl.execute("INSERT INTO " + SOURCE_QUALIFIED + " (key) VALUES (3)");
+
+        long runId = populate(2);
+
+        assertBoundaries(runId, new long[][]{{0, 1}, {1, 3}, {2, 3}});
+    }
+
     private void createSource(long... ids) {
         dropTestTable(SOURCE_QUALIFIED);
         createTestTable(SOURCE_QUALIFIED, "id bigint PRIMARY KEY, payload text");

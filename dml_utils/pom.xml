@@ -143,8 +143,7 @@
                                      script (Liquibase does not create it). -->
                                 <liquibaseSchemaName>liquibase</liquibaseSchemaName>
                                 <databaseChangeLogTableName>dml_utils_databasechangelog</databaseChangeLogTableName>
-                                <databaseChangeLogLockTableName>dml_utils_databasechangeloglock
-                                </databaseChangeLogLockTableName>
+                                <databaseChangeLogLockTableName>dml_utils_databasechangeloglock</databaseChangeLogLockTableName>
                             </liquibase>
                             <jooq>
                                 <generator>

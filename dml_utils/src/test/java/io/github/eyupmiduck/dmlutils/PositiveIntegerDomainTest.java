@@ -1,6 +1,5 @@
 package io.github.eyupmiduck.dmlutils;
 
-import org.jooq.Record;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -45,8 +44,4 @@ class PositiveIntegerDomainTest extends PostgresTestBase {
         assertDomainViolation(() -> evaluate("NULL::dml_utils.positive_integer", Integer.class));
     }
 
-    private <T> T evaluate(String expression, Class<T> type) {
-        Record record = dsl.fetchOne("SELECT " + expression);
-        return record.get(0, type);
-    }
 }

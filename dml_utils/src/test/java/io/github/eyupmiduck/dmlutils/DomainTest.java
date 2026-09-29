@@ -1,6 +1,5 @@
 package io.github.eyupmiduck.dmlutils;
 
-import org.jooq.Record;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -188,8 +187,4 @@ class DomainTest extends PostgresTestBase {
                 "NULL::dml_utils.non_empty_non_null_boolean_array", Object.class));
     }
 
-    private <T> T evaluate(String expression, Class<T> type) {
-        Record record = dsl.fetchOne("SELECT " + expression);
-        return record.get(0, type);
-    }
 }

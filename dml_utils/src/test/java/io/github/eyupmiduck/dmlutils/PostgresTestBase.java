@@ -192,6 +192,20 @@ abstract class PostgresTestBase {
     }
 
     /**
+     * Evaluates a SQL expression and returns its single value as the given
+     * Java type.
+     *
+     * @param expression the SQL expression to evaluate
+     * @param type       the Java type to read the value as
+     * @param <T>        the value type
+     * @return the expression's value
+     */
+    protected <T> T evaluate(String expression, Class<T> type) {
+        Record record = dsl.fetchOne("SELECT " + expression);
+        return record.get(0, type);
+    }
+
+    /**
      * Creates this test class's private database from the migrated template
      * and opens a jOOQ context to it as the {@code dml_utils_test} role.
      */
