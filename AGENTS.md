@@ -109,7 +109,7 @@ jOOQ codegen and tests; `docker_java_config` is a build shim. CI: GitHub Actions
   a caller must not have to set it, and must not be able to bypass it. Create a
   table together with its trigger in the same changeset (the shared function
   already exists). The migration tables are the reference implementation for the
-  columns and the trigger (`changes/sql_changes/006-create-migration-tables.sql`).
+  columns and the trigger (`changes/sql_changes/004-create-migration-tables.sql`).
 - **Every object has a comment.** Add a `COMMENT ON` for each schema, table,
   column, domain, function and procedure, describing what it is for. Comment a
   function or procedure at the end of the `.sql` file that creates it; comment

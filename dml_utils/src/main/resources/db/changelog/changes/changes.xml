@@ -20,10 +20,10 @@
 
     <!-- Domains must exist before any routine that types its arguments with
          them, so create them before the functions include. -->
-    <changeSet id="004-create-domains" author="dml_utils" dbms="postgresql">
-        <sqlFile path="sql_changes/004-create-domains.sql" relativeToChangelogFile="true"/>
+    <changeSet id="003-create-domains" author="dml_utils" dbms="postgresql">
+        <sqlFile path="sql_changes/003-create-domains.sql" relativeToChangelogFile="true"/>
         <rollback>
-            <sqlFile path="rollback/004-create-domains-rollback.sql" relativeToChangelogFile="true"/>
+            <sqlFile path="rollback/003-create-domains-rollback.sql" relativeToChangelogFile="true"/>
         </rollback>
     </changeSet>
 
@@ -32,10 +32,10 @@
 
     <!-- The migration tables and their updated_at triggers. It runs after
          functions.xml because the triggers call dml_utils.set_updated_at(). -->
-    <changeSet id="006-create-migration-tables" author="dml_utils" dbms="postgresql">
-        <sqlFile path="sql_changes/006-create-migration-tables.sql" relativeToChangelogFile="true"/>
+    <changeSet id="004-create-migration-tables" author="dml_utils" dbms="postgresql">
+        <sqlFile path="sql_changes/004-create-migration-tables.sql" relativeToChangelogFile="true"/>
         <rollback>
-            <sqlFile path="rollback/006-create-migration-tables-rollback.sql" relativeToChangelogFile="true"/>
+            <sqlFile path="rollback/004-create-migration-tables-rollback.sql" relativeToChangelogFile="true"/>
         </rollback>
     </changeSet>
 
