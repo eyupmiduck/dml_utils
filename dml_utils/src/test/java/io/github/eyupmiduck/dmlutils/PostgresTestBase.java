@@ -8,10 +8,12 @@ import liquibase.resource.ClassLoaderResourceAccessor;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.SQLDialect;
+import org.jooq.exception.DataAccessException;
 import org.jooq.impl.DSL;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.function.Executable;
 
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
@@ -19,7 +21,9 @@ import org.testcontainers.utility.DockerImageName;
 import java.sql.*;
 import java.util.Objects;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -347,5 +351,43 @@ abstract class PostgresTestBase {
      */
     protected boolean databaseReady() {
         return Objects.nonNull(connection);
+    }
+
+    /**
+     * Returns the SQLSTATE of the first {@link SQLException} in a throwable's
+     * cause chain, or {@code null} when there is none.
+     *
+     * @param throwable the throwable to inspect
+     * @return the SQLSTATE, or {@code null}
+     */
+    protected static String sqlState(Throwable throwable) {
+        for (Throwable cause = throwable; cause != null; cause = cause.getCause()) {
+            if (cause instanceof SQLException sqlException) {
+                return sqlException.getSQLState();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Asserts that a call fails with the given SQLSTATE.
+     *
+     * @param expectedSqlState the expected SQLSTATE
+     * @param call             the call under test
+     */
+    protected static void assertSqlState(String expectedSqlState, Executable call) {
+        DataAccessException exception = assertThrows(DataAccessException.class, call);
+        assertEquals(expectedSqlState, sqlState(exception),
+                () -> "expected SQLSTATE " + expectedSqlState + " but was: " + exception.getMessage());
+    }
+
+    /**
+     * Asserts that a call fails with SQLSTATE {@code 23514}
+     * ({@code check_violation}), as a domain constraint violation does.
+     *
+     * @param call the call under test
+     */
+    protected static void assertDomainViolation(Executable call) {
+        assertSqlState("23514", call);
     }
 }
