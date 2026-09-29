@@ -1,8 +1,12 @@
 CREATE TABLE dml_utils.migration_run
 (
-    run_id     bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    created_at timestamptz NOT NULL DEFAULT pg_catalog.now(),
-    updated_at timestamptz NOT NULL DEFAULT pg_catalog.now()
+    run_id       bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    label        text        NOT NULL,
+    sql_text     text        NOT NULL,
+    created_at   timestamptz NOT NULL DEFAULT pg_catalog.now(),
+    updated_at   timestamptz NOT NULL DEFAULT pg_catalog.now(),
+    completed_at timestamptz,
+    archived_at  timestamptz
 );
 
 COMMENT ON TABLE dml_utils.migration_run IS
@@ -25,11 +29,12 @@ EXECUTE FUNCTION dml_utils.set_updated_at();
 
 CREATE TABLE dml_utils.migration_boundary
 (
-    run_id      bigint      NOT NULL REFERENCES dml_utils.migration_run (run_id) ON DELETE CASCADE,
-    boundary_no bigint      NOT NULL,
-    boundary_id bigint      NOT NULL,
-    created_at  timestamptz NOT NULL DEFAULT pg_catalog.now(),
-    updated_at  timestamptz NOT NULL DEFAULT pg_catalog.now(),
+    run_id       bigint      NOT NULL REFERENCES dml_utils.migration_run (run_id) ON DELETE CASCADE,
+    boundary_no  bigint      NOT NULL,
+    boundary_id  bigint      NOT NULL,
+    created_at   timestamptz NOT NULL DEFAULT pg_catalog.now(),
+    updated_at   timestamptz NOT NULL DEFAULT pg_catalog.now(),
+    completed_at timestamptz,
     PRIMARY KEY (run_id, boundary_no)
 );
 
