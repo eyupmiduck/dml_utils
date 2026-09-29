@@ -31,9 +31,10 @@ jOOQ codegen and tests; `docker_java_config` is a build shim. CI: GitHub Actions
       rollback SQL in `changes/rollback/`). `changes/functions.xml` holds one
       changeset per routine (one `createProcedure` plus its rollback), with one
       file per routine under `changes/functions/<schema>/` and rollback bodies
-      under `changes/functions-rollback/<schema>/`. The `dml_utils` schema holds
-      the application surface; `dml_utils_lib` holds the generic helpers that
-      take their parameters explicitly.
+      under `changes/functions-rollback/<schema>/`. `changes/functions/README.md`
+      lists each routine's signature and purpose. The `dml_utils` schema holds
+      the application surface and the shared domains; `dml_utils_lib` holds the
+      generic helpers that take their parameters explicitly.
     - jOOQ classes are generated at build time into
       `target/generated-sources/jooq` by
       `testcontainers-jooq-codegen-maven-plugin`, which starts a real
@@ -99,6 +100,7 @@ jOOQ codegen and tests; `docker_java_config` is a build shim. CI: GitHub Actions
 - Prefer PostgreSQL-native solutions over database-portable abstractions.
 - SQL must be safe for production-sized databases.
 - Consider locking, transaction boundaries, concurrency, and failure recovery.
+- Avoid operations that unnecessarily require long ACCESS EXCLUSIVE locks.
 - Do not assume small tables.
 - **Every table has `created_at` and `updated_at`.** Both are
   `timestamptz NOT NULL DEFAULT now()`; never `timestamp without time zone` and
@@ -107,7 +109,8 @@ jOOQ codegen and tests; `docker_java_config` is a build shim. CI: GitHub Actions
   table so `updated_at` is refreshed on every `UPDATE` regardless of the caller;
   a caller must not have to set it, and must not be able to bypass it. Create a
   table together with its trigger in the same changeset (the shared function
-  already exists).
+  already exists). The example table is the reference implementation for the
+  columns and the trigger (`changes/sql_changes/003-create-example-table.sql`).
 - **Every object has a comment.** Add a `COMMENT ON` for each schema, table,
   column, domain, function and procedure, describing what it is for. Comment a
   function or procedure at the end of the `.sql` file that creates it; comment
@@ -133,8 +136,10 @@ jOOQ codegen and tests; `docker_java_config` is a build shim. CI: GitHub Actions
   rollback bodies in `.../changes/functions-rollback/<schema>/<name>-rollback.sql`,
   named `snake_case` without an `NNN-` prefix. `changes/functions.xml` contains
   one changeset per routine, with the id `function-<schema>.<name>` (one
-  `createProcedure` plus its rollback). Overloads of one routine (same schema
-  and name, different signature) share a single changeset.
+  `createProcedure` plus its rollback). The schema is part of the id because the
+  same routine name can exist in both `dml_utils` and `dml_utils_lib`.
+  Overloads of one routine (same schema and name, different signature) share a
+  single changeset.
 - Load a routine with the `createProcedure` change type and an external body:
   `<createProcedure path="functions/<schema>/<name>.sql" relativeToChangelogFile="true"/>`.
   Liquibase has no `createFunction` change type, so functions use
@@ -142,20 +147,21 @@ jOOQ codegen and tests; `docker_java_config` is a build shim. CI: GitHub Actions
 - `CREATE OR REPLACE` only replaces a routine with an identical signature.
   Changing `RETURNS` or a parameter name aborts the deploy, and changing a
   parameter type leaves the old overload behind. When a signature changes, add
-  an explicit `DROP FUNCTION IF EXISTS <old signature>;` so the deprecated
-  signature is removed.
-- Type routine arguments with domains (for example `non_null_text`,
-  `non_negative_integer`) so null or invalid inputs fail fast with a
-  check-constraint violation. Add the domains to the `dml_utils` schema when the
-  first routine needs them.
+  an explicit `DROP FUNCTION IF EXISTS <old signature>;` (for example another
+  `sqlFile` in the same changeset) so the deprecated signature is removed.
+- Type routine arguments with the `dml_utils` domains (for example
+  `non_null_text`, `non_negative_integer`) so null or invalid inputs fail
+  fast with a check-constraint violation.
 - Use `SECURITY INVOKER` (the default). A routine must never require callers to
-  hold privileges beyond what they would need to run its SQL directly. Use
-  `SECURITY DEFINER` only when a caller genuinely must perform an operation it
-  lacks privileges for, and then pin a safe `search_path` and grant `EXECUTE`
+  hold privileges beyond what they would need to run its SQL directly: if a
+  caller could run the statement itself, calling the routine must just work.
+  Use `SECURITY DEFINER` only when a caller genuinely must perform an operation
+  it lacks privileges for, and then pin a safe `search_path` and grant `EXECUTE`
   explicitly (revoking it from `PUBLIC`).
 - Never build dynamic SQL by concatenating values. Quote identifiers with
   `format('... %I ...', ...)` and literals with `%L`, and reject input that
-  cannot be safely parameterized.
+  cannot be safely parameterized (for example a fragment with multiple
+  statements or a comment).
 - Schema-qualify objects or set `search_path` explicitly so a routine behaves
   the same regardless of the caller's `search_path`.
 - Routines run inside the caller's transaction: use `SET LOCAL` for

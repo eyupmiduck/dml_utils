@@ -10,3 +10,7 @@ GRANT USAGE ON DOMAIN dml_utils.non_empty_non_null_boolean_array TO dml_utils_ca
 
 REVOKE ALL ON dml_utils.example FROM public;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dml_utils.example TO dml_utils_caller;
+
+-- Trigger functions are invoked by the trigger machinery, not by callers, so
+-- revoke PUBLIC EXECUTE and grant it to no one.
+REVOKE EXECUTE ON FUNCTION dml_utils.set_updated_at() FROM public;
