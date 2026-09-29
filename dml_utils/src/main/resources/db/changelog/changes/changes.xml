@@ -27,6 +27,13 @@
         </rollback>
     </changeSet>
 
+    <changeSet id="005-create-positive-integer-domain" author="dml_utils" dbms="postgresql">
+        <sqlFile path="sql_changes/005-create-positive-integer-domain.sql" relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="rollback/005-create-positive-integer-domain-rollback.sql" relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
     <!-- Stored routines: one changeset each, one file per routine. -->
     <include file="functions.xml" relativeToChangelogFile="true"/>
 
@@ -43,6 +50,15 @@
     <!-- A single, re-runnable changeset for all caller grants. runOnChange
          makes Liquibase re-apply it whenever this SQL changes, so new grants
          reach existing databases. Keep the statements idempotent. -->
+    <!-- The migration tables and their updated_at triggers. It runs after
+         functions.xml because the triggers call dml_utils.set_updated_at(). -->
+    <changeSet id="006-create-migration-tables" author="dml_utils" dbms="postgresql">
+        <sqlFile path="sql_changes/006-create-migration-tables.sql" relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="rollback/006-create-migration-tables-rollback.sql" relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
     <changeSet id="999-grant-privileges" author="dml_utils" dbms="postgresql" runOnChange="true">
         <sqlFile path="sql_changes/999-grant-privileges.sql" relativeToChangelogFile="true"/>
         <rollback>
