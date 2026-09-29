@@ -1,6 +1,6 @@
 CREATE OR REPLACE FUNCTION dml_utils_lib.single_column_primary_key(
     i_schema_name dml_utils.non_null_text,
-    i_table_name  dml_utils.non_null_text
+    i_table_name dml_utils.non_null_text
 )
     RETURNS name
     LANGUAGE plpgsql
@@ -14,8 +14,8 @@ DECLARE
 BEGIN
     PERFORM dml_utils_lib.assert_schema_exists(i_schema_name => i_schema_name);
     PERFORM dml_utils_lib.assert_table_exists(
-        i_schema_name => i_schema_name,
-        i_table_name => i_table_name);
+            i_schema_name => i_schema_name,
+            i_table_name => i_table_name);
 
     SELECT i.indnkeyatts
     INTO l_key_column_count
