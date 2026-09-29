@@ -18,6 +18,15 @@
         </rollback>
     </changeSet>
 
+    <!-- Domains must exist before any routine that types its arguments with
+         them, so create them before the functions include. -->
+    <changeSet id="004-create-domains" author="dml_utils" dbms="postgresql">
+        <sqlFile path="sql_changes/004-create-domains.sql" relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="rollback/004-create-domains-rollback.sql" relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
     <!-- Stored routines: one changeset each, one file per routine. -->
     <include file="functions.xml" relativeToChangelogFile="true"/>
 
