@@ -1,4 +1,6 @@
--- Rollback of the caller grants.
+-- Rollback of the caller grants: revoke what the forward changeset granted and
+-- restore PostgreSQL's defaults.
+GRANT EXECUTE ON FUNCTION dml_utils.set_updated_at() TO public;
 REVOKE SELECT, INSERT, UPDATE, DELETE ON dml_utils.example FROM dml_utils_caller;
 REVOKE USAGE ON DOMAIN dml_utils.non_empty_non_null_boolean_array FROM dml_utils_caller;
 REVOKE USAGE ON DOMAIN dml_utils.non_empty_non_null_text_array FROM dml_utils_caller;
