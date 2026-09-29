@@ -27,7 +27,7 @@ RETURNS trigger
 `SECURITY INVOKER`. The shared `BEFORE UPDATE ... FOR EACH ROW` trigger function
 that stamps `NEW.updated_at := now()` on every table, so no caller can bypass
 it. Attach it to each table with a trigger named `<table>_set_updated_at`; see
-`changes/sql_changes/003-create-example-table.sql`.
+`changes/sql_changes/004-create-migration-tables.sql`.
 
 ### `dml_utils.populate_migration_boundaries(i_schema_name, i_table_name, i_chunk_size)`
 

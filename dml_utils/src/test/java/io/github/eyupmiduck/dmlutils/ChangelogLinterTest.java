@@ -38,7 +38,8 @@ class ChangelogLinterTest {
         SqlSource forward = new SqlSource(
                 SqlSource.Kind.INLINE_SQL,
                 null,
-                "CREATE INDEX CONCURRENTLY example_name_idx ON dml_utils.example (name);",
+                "CREATE INDEX CONCURRENTLY migration_run_created_at_idx"
+                        + " ON dml_utils.migration_run (created_at);",
                 true,
                 ";",
                 false,

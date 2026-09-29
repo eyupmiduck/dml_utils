@@ -41,9 +41,8 @@ REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_schema_exists(
 GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_schema_exists(
     dml_utils.non_null_text
     ) TO public;
-REVOKE SELECT, INSERT, DELETE ON dml_utils.migration_boundary FROM dml_utils_caller;
-REVOKE SELECT, INSERT, DELETE ON dml_utils.migration_run FROM dml_utils_caller;
-REVOKE SELECT, INSERT, UPDATE, DELETE ON dml_utils.example FROM dml_utils_caller;
+REVOKE SELECT, INSERT, UPDATE, DELETE ON dml_utils.migration_boundary FROM dml_utils_caller;
+REVOKE SELECT, INSERT, UPDATE, DELETE ON dml_utils.migration_run FROM dml_utils_caller;
 REVOKE USAGE ON DOMAIN dml_utils.positive_integer FROM dml_utils_caller;
 REVOKE USAGE ON DOMAIN dml_utils.non_empty_non_null_boolean_array FROM dml_utils_caller;
 REVOKE USAGE ON DOMAIN dml_utils.non_empty_non_null_text_array FROM dml_utils_caller;
