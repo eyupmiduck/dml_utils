@@ -10,13 +10,10 @@ GRANT USAGE ON DOMAIN dml_utils.non_empty_non_null_text_array TO dml_utils_calle
 GRANT USAGE ON DOMAIN dml_utils.non_empty_non_null_boolean_array TO dml_utils_caller;
 GRANT USAGE ON DOMAIN dml_utils.positive_integer TO dml_utils_caller;
 
-REVOKE ALL ON dml_utils.example FROM public;
-GRANT SELECT, INSERT, UPDATE, DELETE ON dml_utils.example TO dml_utils_caller;
-
 REVOKE ALL ON dml_utils.migration_run FROM public;
-GRANT SELECT, INSERT, DELETE ON dml_utils.migration_run TO dml_utils_caller;
+GRANT SELECT, INSERT, UPDATE, DELETE ON dml_utils.migration_run TO dml_utils_caller;
 REVOKE ALL ON dml_utils.migration_boundary FROM public;
-GRANT SELECT, INSERT, DELETE ON dml_utils.migration_boundary TO dml_utils_caller;
+GRANT SELECT, INSERT, UPDATE, DELETE ON dml_utils.migration_boundary TO dml_utils_caller;
 
 -- Trigger functions are invoked by the trigger machinery, not by callers, so
 -- revoke PUBLIC EXECUTE and grant it to no one.

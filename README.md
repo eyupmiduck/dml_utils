@@ -10,7 +10,7 @@ Liquibase loads two application schemas:
 
 - **`dml_utils`** — the application surface. It holds the shared domains (`non_null_text`, `non_negative_integer`,
   `positive_integer`, and the array
-  domains), the `example` table, and the fixed-row chunk migration tables
+  domains) and the fixed-row chunk migration tables
   `migration_run` / `migration_boundary` populated by
   `dml_utils.populate_migration_boundaries`.
 - **`dml_utils_lib`** — generic helpers that take their parameters explicitly,
@@ -41,7 +41,7 @@ scripts/build-postgres-image.sh postgres:17-alpine   # once, or after docker/ ch
 over the changelog `.sql` files, and the Liquibase changelog linter. Docker must
 be running.
 
-- One test: `./mvnw -pl dml_utils -am test -Dtest=ExampleTableTest`
+- One test: `./mvnw -pl dml_utils -am test -Dtest=DomainTest`
 - Skip SQLFluff: `./mvnw verify -Dskip.sqlfluff`
 - Skip the changelog linter: `./mvnw verify -Dskip.liquibase-linter`
 
