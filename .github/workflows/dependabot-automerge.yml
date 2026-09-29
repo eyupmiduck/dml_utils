@@ -1,0 +1,22 @@
+name: Dependabot auto-merge
+
+# Dependabot PRs are queued for auto-merge once the required checks on main
+# pass, so a green PR lands without a manual merge and a failing one stays
+# open. The shared workflow only queues minor and patch updates and, with
+# grouped-only, only the grouped bulk PR; updates for the deliberately pinned
+# artifacts kept out of that group (see dependabot.yml) stay for a human.
+#
+# `pull_request_target` gives the run a read/write GITHUB_TOKEN, which
+# Dependabot's `pull_request` runs lack. The shared workflow never checks out
+# or executes the pull request's code.
+on: pull_request_target
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    uses: eyupmiduck/workflow_library/.github/workflows/dependabot-automerge.yml@2499e14a4533396c8318abecaa35dd2477be1f41 # main
+    with:
+      grouped-only: true
