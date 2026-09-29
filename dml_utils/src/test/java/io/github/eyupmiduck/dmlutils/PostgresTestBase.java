@@ -14,17 +14,16 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.function.Executable;
-
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.Objects;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Base class for tests that need a migrated PostgreSQL database.
@@ -46,12 +45,6 @@ abstract class PostgresTestBase {
      * it.
      */
     protected static final String PUBLIC_SCHEMA = "public";
-
-    private static final String TEMPLATE_DATABASE = "dml_utils_template";
-    private static final String OWNER_USER = "dml_utils_owner";
-    private static final String OWNER_PASSWORD = "dml_utils_owner";
-    private static final String TEST_USER = "dml_utils_test";
-    private static final String TEST_PASSWORD = "dml_utils_test";
     /**
      * The schema Liquibase keeps its tracking tables in, so they stay out of the
      * application schemas. The custom image's init script creates it for real
@@ -60,6 +53,11 @@ abstract class PostgresTestBase {
     static final String LIQUIBASE_SCHEMA = "liquibase";
     static final String DATABASE_CHANGELOG_TABLE = "dml_utils_databasechangelog";
     static final String DATABASE_CHANGELOG_LOCK_TABLE = "dml_utils_databasechangeloglock";
+    private static final String TEMPLATE_DATABASE = "dml_utils_template";
+    private static final String OWNER_USER = "dml_utils_owner";
+    private static final String OWNER_PASSWORD = "dml_utils_owner";
+    private static final String TEST_USER = "dml_utils_test";
+    private static final String TEST_PASSWORD = "dml_utils_test";
     /**
      * The PostgreSQL image to run, matching the one used for jOOQ codegen.
      * Set by surefire from the {@code postgres.image} Maven property. The
@@ -153,6 +151,44 @@ abstract class PostgresTestBase {
                 "jdbc:postgresql://" + POSTGRES.getHost() + ":"
                         + POSTGRES.getMappedPort(5432) + "/" + database,
                 user, password);
+    }
+
+    /**
+     * Returns the SQLSTATE of the first {@link SQLException} in a throwable's
+     * cause chain, or {@code null} when there is none.
+     *
+     * @param throwable the throwable to inspect
+     * @return the SQLSTATE, or {@code null}
+     */
+    protected static String sqlState(Throwable throwable) {
+        for (Throwable cause = throwable; cause != null; cause = cause.getCause()) {
+            if (cause instanceof SQLException sqlException) {
+                return sqlException.getSQLState();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Asserts that a call fails with the given SQLSTATE.
+     *
+     * @param expectedSqlState the expected SQLSTATE
+     * @param call             the call under test
+     */
+    protected static void assertSqlState(String expectedSqlState, Executable call) {
+        DataAccessException exception = assertThrows(DataAccessException.class, call);
+        assertEquals(expectedSqlState, sqlState(exception),
+                () -> "expected SQLSTATE " + expectedSqlState + " but was: " + exception.getMessage());
+    }
+
+    /**
+     * Asserts that a call fails with SQLSTATE {@code 23514}
+     * ({@code check_violation}), as a domain constraint violation does.
+     *
+     * @param call the call under test
+     */
+    protected static void assertDomainViolation(Executable call) {
+        assertSqlState("23514", call);
     }
 
     /**
@@ -351,43 +387,5 @@ abstract class PostgresTestBase {
      */
     protected boolean databaseReady() {
         return Objects.nonNull(connection);
-    }
-
-    /**
-     * Returns the SQLSTATE of the first {@link SQLException} in a throwable's
-     * cause chain, or {@code null} when there is none.
-     *
-     * @param throwable the throwable to inspect
-     * @return the SQLSTATE, or {@code null}
-     */
-    protected static String sqlState(Throwable throwable) {
-        for (Throwable cause = throwable; cause != null; cause = cause.getCause()) {
-            if (cause instanceof SQLException sqlException) {
-                return sqlException.getSQLState();
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Asserts that a call fails with the given SQLSTATE.
-     *
-     * @param expectedSqlState the expected SQLSTATE
-     * @param call             the call under test
-     */
-    protected static void assertSqlState(String expectedSqlState, Executable call) {
-        DataAccessException exception = assertThrows(DataAccessException.class, call);
-        assertEquals(expectedSqlState, sqlState(exception),
-                () -> "expected SQLSTATE " + expectedSqlState + " but was: " + exception.getMessage());
-    }
-
-    /**
-     * Asserts that a call fails with SQLSTATE {@code 23514}
-     * ({@code check_violation}), as a domain constraint violation does.
-     *
-     * @param call the call under test
-     */
-    protected static void assertDomainViolation(Executable call) {
-        assertSqlState("23514", call);
     }
 }

@@ -8,8 +8,8 @@ the Liquibase CLI, without building anything or running Docker (see
 
 Liquibase loads two application schemas:
 
-- **`dml_utils`** — the application surface. It holds the shared domains
-  (`non_null_text`, `non_negative_integer`, `positive_integer`, and the array
+- **`dml_utils`** — the application surface. It holds the shared domains (`non_null_text`, `non_negative_integer`,
+  `positive_integer`, and the array
   domains), the `example` table, and the fixed-row chunk migration tables
   `migration_run` / `migration_boundary` populated by
   `dml_utils.populate_migration_boundaries`.
@@ -115,8 +115,8 @@ liquibase \
   update
 ```
 
-`liquibase status` reports pending changesets; re-running `update` is safe
-(Liquibase skips changesets it has already applied).
+`liquibase status` reports pending changesets; re-running `update` is safe (Liquibase skips changesets it has already
+applied).
 
 ### Rolling back
 
@@ -137,8 +137,8 @@ liquibase \
 
 ## Custom PostgreSQL image
 
-The build and local dev database use a custom image
-(`dml-utils-postgres:<ver>-alpine`) built from the official `postgres:<ver>-alpine`
+The build and local dev database use a custom image (`dml-utils-postgres:<ver>-alpine`) built from the official
+`postgres:<ver>-alpine`
 image. It bakes in a roles init script (`docker/postgres/roles.sql`) that
 creates the application roles and the `liquibase` schema before Liquibase runs:
 
@@ -152,8 +152,8 @@ extension from source (pinned and checksum-verified), so it is available in dev
 databases for static analysis of the routines.
 
 The init script only runs on first initialization, so an existing data volume
-keeps its roles and installed extensions as-is; recreate the volume
-(`scripts/refresh-local-db.sh`) to pick up a new image.
+keeps its roles and installed extensions as-is; recreate the volume (`scripts/refresh-local-db.sh`) to pick up a new
+image.
 
 ## Repository layout
 

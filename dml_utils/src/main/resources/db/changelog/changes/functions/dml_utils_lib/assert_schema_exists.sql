@@ -8,11 +8,9 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.assert_schema_exists(
 AS
 $$
 BEGIN
-    IF NOT EXISTS (
-        SELECT 1
-        FROM pg_catalog.pg_namespace
-        WHERE nspname = i_schema_name
-    )
+    IF NOT EXISTS (SELECT 1
+                   FROM pg_catalog.pg_namespace
+                   WHERE nspname = i_schema_name)
     THEN
         RAISE EXCEPTION 'schema % does not exist', i_schema_name
             USING ERRCODE = '3F000';
