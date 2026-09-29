@@ -1,0 +1,21 @@
+CREATE OR REPLACE FUNCTION dml_utils_lib.assert_table_exists(
+    i_schema_name dml_utils.non_null_text,
+    i_table_name  dml_utils.non_null_text
+)
+    RETURNS void
+    LANGUAGE plpgsql
+    STABLE
+    SECURITY INVOKER
+AS
+$$
+BEGIN
+    IF pg_catalog.to_regclass(pg_catalog.format('%I.%I', i_schema_name, i_table_name)) IS NULL
+    THEN
+        RAISE EXCEPTION 'table %.% does not exist', i_schema_name, i_table_name
+            USING ERRCODE = '42P01';
+    END IF;
+END;
+$$;
+
+COMMENT ON FUNCTION dml_utils_lib.assert_table_exists IS
+    'Raises undefined_table (42P01) when the table does not exist.';

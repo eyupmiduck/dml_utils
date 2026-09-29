@@ -8,10 +8,13 @@ the Liquibase CLI, without building anything or running Docker (see
 
 Liquibase loads two application schemas:
 
-- **`dml_utils`** — the application surface. It currently holds the `example`
-  table loaded by the changelog, used as the starting point for the helpers.
-- **`dml_utils_lib`** — generic helpers that take their parameters explicitly.
-  Empty for now; it is the home for the shared helpers as they are added.
+- **`dml_utils`** — the application surface. It holds the shared domains
+  (`non_null_text`, `non_negative_integer`, `positive_integer`, and the array
+  domains), the `example` table, and the fixed-row chunk migration tables
+  `migration_run` / `migration_boundary` populated by
+  `dml_utils.populate_migration_boundaries`.
+- **`dml_utils_lib`** — generic helpers that take their parameters explicitly,
+  such as the catalog validation routines used before a migration run.
 
 Liquibase's own tracking tables are kept out of both schemas: they live in a
 dedicated `liquibase` schema as `liquibase.dml_utils_databasechangelog` and
