@@ -39,10 +39,19 @@ CREATE SCHEMA IF NOT EXISTS liquibase AUTHORIZATION dml_utils_owner;
 -- plpgsql_check is compiled into this image and used for static analysis of
 -- the dml_utils / dml_utils_lib routines (for example
 -- SELECT plpgsql_check_function('dml_utils.set_updated_at()'::regprocedure)).
--- This only creates it in the dml_utils database, and init scripts only run on
--- first cluster initialization: an existing dev volume needs a manual
--- `CREATE EXTENSION plpgsql_check;` (or scripts/refresh-local-db.sh).
+-- pg_background is compiled into this image and runs SQL in background
+-- workers (autonomous transactions); the chunking routines will use it.
+-- These only create the extensions in the dml_utils database, and init scripts
+-- only run on first cluster initialization: an existing dev volume needs a
+-- manual `CREATE EXTENSION pg_background;` (or scripts/refresh-local-db.sh).
 CREATE EXTENSION IF NOT EXISTS plpgsql_check;
+CREATE EXTENSION IF NOT EXISTS pg_background;
 
 -- The test role exercises the same privileges as a real application caller.
 GRANT dml_utils_caller TO dml_utils_test;
+
+-- pg_background grants no access to PUBLIC; callers need membership in the
+-- role the extension created. Grant it to the caller and test roles so the
+-- chunking routines can launch background workers.
+GRANT pgbackground_role TO dml_utils_caller;
+GRANT pgbackground_role TO dml_utils_test;
