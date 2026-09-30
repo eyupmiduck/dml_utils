@@ -128,11 +128,17 @@ abstract class PostgresTestBase {
                         database);
                 liquibase.update();
             }
-            // Install the static-analysis extension (compiled into the custom
-            // image) so every cloned test database has it.
+            // Install the extensions compiled into the custom image so every
+            // cloned test database has them: plpgsql_check for static analysis
+            // and pg_background for the chunking routines.
             try (Connection admin = openConnection(TEMPLATE_DATABASE, POSTGRES.getUsername(), POSTGRES.getPassword());
                  Statement statement = admin.createStatement()) {
                 statement.execute("CREATE EXTENSION IF NOT EXISTS plpgsql_check");
+                statement.execute("CREATE EXTENSION IF NOT EXISTS pg_background");
+                // pg_background grants no access to PUBLIC; grant its role to
+                // the caller and test roles (membership is cluster-wide).
+                statement.execute("GRANT pgbackground_role TO " + OWNER_USER);
+                statement.execute("GRANT pgbackground_role TO " + TEST_USER);
             }
             // Mark as a real template so nothing can connect to it, which
             // keeps CREATE DATABASE ... TEMPLATE always safe.

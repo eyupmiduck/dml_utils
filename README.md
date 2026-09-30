@@ -147,9 +147,17 @@ creates the application roles and the `liquibase` schema before Liquibase runs:
 - `dml_utils_caller` — the role privileges are granted to.
 - `dml_utils_test` — granted `dml_utils_caller`; used by the integration tests.
 
-The image also compiles the [`plpgsql_check`](https://github.com/okbob/plpgsql_check)
-extension from source (pinned and checksum-verified), so it is available in dev
-databases for static analysis of the routines.
+The image also compiles two extensions from source (pinned and
+checksum-verified), so they are available in dev databases:
+
+- [`plpgsql_check`](https://github.com/okbob/plpgsql_check) — static analysis
+  of the routines.
+- [`pg_background`](https://github.com/vibhorkum/pg_background) — runs SQL in
+  background workers with autonomous transactions, used by the chunking
+  routines.
+
+Both are created by the init script and in every test database (via the
+migrated template).
 
 The init script only runs on first initialization, so an existing data volume
 keeps its roles and installed extensions as-is; recreate the volume (`scripts/refresh-local-db.sh`) to pick up a new
@@ -160,7 +168,7 @@ image.
 ```
 dml_utils/src/main/resources/db/changelog/   Liquibase changelog (master + changes)
 dml_utils/src/test/java/io/github/eyupmiduck/dmlutils/   JUnit tests
-docker/postgres/                             Custom image (roles + plpgsql_check)
+docker/postgres/                             Custom image (roles + extensions)
 scripts/                                     Local DB and release helpers
 compose.yaml                                 Local development database
 ```
