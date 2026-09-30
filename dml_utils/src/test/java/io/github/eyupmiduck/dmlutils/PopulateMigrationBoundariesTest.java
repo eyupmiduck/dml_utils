@@ -208,12 +208,52 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
         assertBoundaries(runId, new long[][]{{0, 1}, {1, 3}, {2, 3}});
     }
 
+    /**
+     * A label can be reused by archiving its active run: populate, archive,
+     * then populate with the same label again. The first run keeps its
+     * boundaries and gets an {@code archived_at}; the second is a new row.
+     */
+    @Test
+    void labelCanBeReusedAfterArchiving() {
+        createSource(1, 2, 3, 4);
+
+        String label = LABEL + "-" + ++labelCounter;
+        long firstRun = populate(label, 2);
+
+        Long archivedId = Routines.archiveMigrationRun(dsl.configuration(), label);
+
+        long secondRun = populate(label, 2);
+
+        assertEquals(firstRun, archivedId, "archive should return the archived run id");
+        assertNotEquals(firstRun, secondRun, "a new run should be created");
+        assertTrue(archived(firstRun), "the first run should be archived");
+        assertFalse(archived(secondRun), "the second run should be active");
+        assertBoundaries(firstRun, new long[][]{{0, 1}, {1, 3}, {2, 4}});
+        assertBoundaries(secondRun, new long[][]{{0, 1}, {1, 3}, {2, 4}});
+    }
+
+    /**
+     * Archiving a label with no active run returns null.
+     */
+    @Test
+    void archivingAnUnknownLabelReturnsNull() {
+        createSource(1, 2);
+
+        assertNull(Routines.archiveMigrationRun(dsl.configuration(), "no-such-label"));
+    }
+
     private void createSource(long... ids) {
         dropTestTable(SOURCE_QUALIFIED);
         createTestTable(SOURCE_QUALIFIED, "id bigint PRIMARY KEY, payload text");
         for (long id : ids) {
             dsl.execute("INSERT INTO " + SOURCE_QUALIFIED + " (id) VALUES (?)", id);
         }
+    }
+
+    private boolean archived(long runId) {
+        return Boolean.TRUE.equals(dsl.fetchValue(
+                "SELECT archived_at IS NOT NULL FROM dml_utils.migration_run WHERE run_id = ?",
+                runId));
     }
 
     private long populate(int chunkSize) {

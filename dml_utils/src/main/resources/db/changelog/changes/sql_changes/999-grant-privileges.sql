@@ -71,3 +71,9 @@ GRANT EXECUTE ON FUNCTION dml_utils.populate_migration_boundaries(
     dml_utils.non_null_text,
     dml_utils.positive_integer
     ) TO dml_utils_caller;
+REVOKE EXECUTE ON FUNCTION dml_utils.archive_migration_run(
+    dml_utils.non_null_text
+    ) FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils.archive_migration_run(
+    dml_utils.non_null_text
+    ) TO dml_utils_caller;

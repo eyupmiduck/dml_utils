@@ -15,6 +15,12 @@ GRANT EXECUTE ON FUNCTION dml_utils.populate_migration_boundaries(
     dml_utils.non_null_text,
     dml_utils.positive_integer
     ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils.archive_migration_run(
+    dml_utils.non_null_text
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils.archive_migration_run(
+    dml_utils.non_null_text
+    ) TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_no_active_run_for_label(
     dml_utils.non_null_text
     ) FROM dml_utils_caller;

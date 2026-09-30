@@ -50,6 +50,19 @@ exists for the label. Boundaries are inserted with `completed_at` null. An empty
 source produces a run with no boundaries. Later inserts above the captured
 maximum fall outside the terminal boundary and are not processed.
 
+### `dml_utils.archive_migration_run(i_label)`
+
+```sql
+i_label dml_utils.non_null_text
+RETURNS bigint
+```
+
+`SECURITY INVOKER`. Sets `archived_at` on the active (not archived) run for the
+label, if any, so the label can be reused; returns the archived `run_id`, or
+NULL when the label had no active run. Pair it with
+`populate_migration_boundaries` to rerun a label: populate, archive, populate
+again.
+
 ## `dml_utils_lib`
 
 ### `dml_utils_lib.assert_schema_exists(i_schema_name)`
