@@ -29,22 +29,26 @@ that stamps `NEW.updated_at := now()` on every table, so no caller can bypass
 it. Attach it to each table with a trigger named `<table>_set_updated_at`; see
 `changes/sql_changes/004-create-migration-tables.sql`.
 
-### `dml_utils.populate_migration_boundaries(i_schema_name, i_table_name, i_chunk_size)`
+### `dml_utils.populate_migration_boundaries(i_schema_name, i_table_name, i_label, i_sql_text, i_chunk_size)`
 
 ```sql
 i_schema_name dml_utils.non_null_text
 i_table_name  dml_utils.non_null_text
+i_label       dml_utils.non_null_text
+i_sql_text    dml_utils.non_null_text
 i_chunk_size  dml_utils.positive_integer
 RETURNS bigint
 ```
 
-`SECURITY INVOKER`. Creates a `dml_utils.migration_run` row and inserts one
-fixed-row chunk boundary per chunk plus a terminal high-water boundary at the
-captured maximum primary key; returns the new `run_id`. The source table must
-exist and have a single `bigint` primary key; the primary key is identified from
-the catalog, not assumed to be `id`. An empty source produces a run with no
-boundaries. Later inserts above the captured maximum fall outside the terminal
-boundary and are not processed.
+`SECURITY INVOKER`. Creates a `dml_utils.migration_run` row for the label, with
+the recorded SQL text and chunk size, then inserts one fixed-row chunk boundary
+per chunk plus a terminal high-water boundary at the captured maximum primary
+key; returns the new `run_id`. The source table must exist and have a single
+`bigint` primary key; the primary key is identified from the catalog, not
+assumed to be `id`. Raises `23505` when an active (not archived) run already
+exists for the label. Boundaries are inserted with `completed_at` null. An empty
+source produces a run with no boundaries. Later inserts above the captured
+maximum fall outside the terminal boundary and are not processed.
 
 ## `dml_utils_lib`
 
@@ -91,3 +95,13 @@ RETURNS void
 
 `SECURITY INVOKER`. Raises `invalid_parameter_value` (`22023`) when the single
 primary-key column is not `bigint`.
+
+### `dml_utils_lib.assert_no_active_run_for_label(i_label)`
+
+```sql
+i_label dml_utils.non_null_text
+RETURNS void
+```
+
+`SECURITY INVOKER`. Raises `unique_violation` (`23505`) when a not-archived
+migration run already exists for the label.

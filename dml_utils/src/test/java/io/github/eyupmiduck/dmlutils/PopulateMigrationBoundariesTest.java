@@ -18,6 +18,14 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
 
     private static final String SOURCE = "migration_boundary_source";
     private static final String SOURCE_QUALIFIED = PUBLIC_SCHEMA + "." + SOURCE;
+    private static final String LABEL = "boundary-test-run";
+    private static final String SQL_TEXT = "SELECT 1";
+
+    /**
+     * Each test gets a distinct label so the one-active-run-per-label rule does
+     * not couple tests that populate in the same database.
+     */
+    private int labelCounter;
 
     @AfterEach
     void dropSource() {
@@ -142,11 +150,45 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
         createSource(1, 2, 3, 4);
 
         long firstRun = populate(2);
-        long secondRun = populate(3);
+        long secondRun = populate(LABEL + "-" + ++labelCounter, 3);
 
         assertNotEquals(firstRun, secondRun, "each call creates a new run");
         assertBoundaries(firstRun, new long[][]{{0, 1}, {1, 3}, {2, 4}});
         assertBoundaries(secondRun, new long[][]{{0, 1}, {1, 4}, {2, 4}});
+    }
+
+    /**
+     * The run records the supplied label, SQL text and chunk size.
+     */
+    @Test
+    void recordsLabelSqlTextAndChunkSize() {
+        createSource(1, 2, 3, 4, 5);
+
+        String label = "records-columns-run";
+        long runId = populate(label, 5);
+
+        Record run = dsl.fetchOne(
+                "SELECT label, sql_text, chunk_size"
+                        + " FROM dml_utils.migration_run WHERE run_id = ?", runId);
+        assertEquals(label, run.get("label", String.class));
+        assertEquals(SQL_TEXT, run.get("sql_text", String.class));
+        assertEquals(5, run.get("chunk_size", Integer.class));
+    }
+
+    /**
+     * Boundaries are inserted with {@code completed_at} left null.
+     */
+    @Test
+    void boundariesHaveNullCompletedAt() {
+        createSource(1, 2, 3, 4);
+
+        long runId = populate(2);
+
+        Integer completed = dsl.fetchOne(
+                        "SELECT count(*)::int FROM dml_utils.migration_boundary"
+                                + " WHERE run_id = ? AND completed_at IS NOT NULL", runId)
+                .get(0, Integer.class);
+        assertEquals(0, completed, "completed_at should be null for a fresh run");
     }
 
     /**
@@ -175,8 +217,12 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
     }
 
     private long populate(int chunkSize) {
+        return populate(LABEL + "-" + ++labelCounter, chunkSize);
+    }
+
+    private long populate(String label, int chunkSize) {
         return Routines.populateMigrationBoundaries(
-                dsl.configuration(), PUBLIC_SCHEMA, SOURCE, chunkSize);
+                dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label, SQL_TEXT, chunkSize);
     }
 
     private List<Record> boundaries(long runId) {

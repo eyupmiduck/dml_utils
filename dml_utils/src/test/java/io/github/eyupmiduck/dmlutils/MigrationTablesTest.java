@@ -40,8 +40,10 @@ class MigrationTablesTest extends PostgresTestBase {
         assertTrue(triggerExists("dml_utils", "migration_run", "migration_run_set_updated_at"),
                 "migration_run_set_updated_at should be attached to dml_utils.migration_run");
 
-        dsl.execute("INSERT INTO dml_utils.migration_run DEFAULT VALUES RETURNING run_id");
-        Long runId = dsl.fetchOne("SELECT max(run_id) FROM dml_utils.migration_run")
+        Long runId = dsl.fetchOne(
+                        "INSERT INTO dml_utils.migration_run (label, sql_text, chunk_size)"
+                                + " VALUES ('migration-tables-test', 'SELECT 1', 1)"
+                                + " RETURNING run_id")
                 .get(0, Long.class);
 
         dsl.execute("UPDATE dml_utils.migration_run"

@@ -14,10 +14,27 @@ COMMENT ON TABLE dml_utils.migration_run IS
     'One row per boundary calculation; groups the boundaries of migration_boundary.';
 COMMENT ON COLUMN dml_utils.migration_run.run_id IS
     'Surrogate primary key identifying the migration run.';
+COMMENT ON COLUMN dml_utils.migration_run.label IS
+    'Caller-supplied run label; unique among the runs that are not archived.';
+COMMENT ON COLUMN dml_utils.migration_run.sql_text IS
+    'The migration SQL recorded for the run; stored as given.';
+COMMENT ON COLUMN dml_utils.migration_run.chunk_size IS
+    'Number of source rows per chunk used to compute the boundaries.';
 COMMENT ON COLUMN dml_utils.migration_run.created_at IS
     'Row creation time.';
 COMMENT ON COLUMN dml_utils.migration_run.updated_at IS
     'Last update time, maintained by the set_updated_at() trigger.';
+COMMENT ON COLUMN dml_utils.migration_run.completed_at IS
+    'Set when the run finishes; NULL while the run is in progress.';
+COMMENT ON COLUMN dml_utils.migration_run.archived_at IS
+    'Set when the run is archived; NULL means the run is active.';
+
+CREATE UNIQUE INDEX migration_run_label_active_idx
+    ON dml_utils.migration_run (label)
+    WHERE archived_at IS NULL;
+
+COMMENT ON INDEX dml_utils.migration_run_label_active_idx IS
+    'Ensures at most one active (not archived) run per label.';
 
 -- PostgreSQL has no CREATE TRIGGER IF NOT EXISTS, so drop first to keep the
 -- changeset re-runnable against a partially seeded database.
@@ -54,6 +71,8 @@ COMMENT ON COLUMN dml_utils.migration_boundary.created_at IS
     'Row creation time.';
 COMMENT ON COLUMN dml_utils.migration_boundary.updated_at IS
     'Last update time, maintained by the set_updated_at() trigger.';
+COMMENT ON COLUMN dml_utils.migration_boundary.completed_at IS
+    'Set when the chunk for this boundary is processed; NULL until then.';
 
 CREATE INDEX migration_boundary_id_idx
     ON dml_utils.migration_boundary (run_id, boundary_id);

@@ -51,12 +51,22 @@ GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_bigint_primary_key(
     dml_utils.non_null_text,
     dml_utils.non_null_text
     ) TO dml_utils_caller;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_no_active_run_for_label(
+    dml_utils.non_null_text
+    ) FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_no_active_run_for_label(
+    dml_utils.non_null_text
+    ) TO dml_utils_caller;
 REVOKE EXECUTE ON FUNCTION dml_utils.populate_migration_boundaries(
+    dml_utils.non_null_text,
+    dml_utils.non_null_text,
     dml_utils.non_null_text,
     dml_utils.non_null_text,
     dml_utils.positive_integer
     ) FROM public;
 GRANT EXECUTE ON FUNCTION dml_utils.populate_migration_boundaries(
+    dml_utils.non_null_text,
+    dml_utils.non_null_text,
     dml_utils.non_null_text,
     dml_utils.non_null_text,
     dml_utils.positive_integer

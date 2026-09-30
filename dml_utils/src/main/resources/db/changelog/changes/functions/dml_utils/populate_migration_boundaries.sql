@@ -1,7 +1,9 @@
 CREATE OR REPLACE FUNCTION dml_utils.populate_migration_boundaries(
     i_schema_name dml_utils.non_null_text,
-    i_table_name dml_utils.non_null_text,
-    i_chunk_size dml_utils.positive_integer
+    i_table_name  dml_utils.non_null_text,
+    i_label       dml_utils.non_null_text,
+    i_sql_text    dml_utils.non_null_text,
+    i_chunk_size  dml_utils.positive_integer
 )
     RETURNS bigint
     LANGUAGE plpgsql
@@ -22,9 +24,10 @@ BEGIN
     PERFORM dml_utils_lib.assert_bigint_primary_key(
             i_schema_name => i_schema_name,
             i_table_name => i_table_name);
+    PERFORM dml_utils_lib.assert_no_active_run_for_label(i_label => i_label);
 
-    INSERT INTO dml_utils.migration_run DEFAULT
-    VALUES
+    INSERT INTO dml_utils.migration_run (label, sql_text, chunk_size)
+    VALUES (i_label, i_sql_text, i_chunk_size)
     RETURNING run_id
         INTO l_run_id;
 
@@ -34,7 +37,7 @@ BEGIN
     -- bound as parameters.
     EXECUTE pg_catalog.format(
             $chunk$
-        INSERT INTO dml_utils.migration_boundary (run_id, boundary_no, boundary_id)
+        INSERT INTO dml_utils.migration_boundary (run_id, boundary_no, boundary_id, completed_at)
         WITH numbered AS MATERIALIZED (
             SELECT
                 %1$I AS id,
@@ -58,7 +61,8 @@ BEGIN
                 WHEN GROUPING(chunk_no) = 1
                     THEN max(id)
                 ELSE min(id)
-            END AS boundary_id
+            END AS boundary_id,
+            NULL AS completed_at
         FROM chunked
         GROUP BY GROUPING SETS (
             (chunk_no),
@@ -76,5 +80,5 @@ END;
 $$;
 
 COMMENT ON FUNCTION dml_utils.populate_migration_boundaries IS
-    'Creates a migration run and populates its fixed-row chunk boundaries for '
-        'the given table, returning the new run_id.';
+    'Creates a migration run for the label and populates its fixed-row chunk '
+        'boundaries for the given table, returning the new run_id.';
