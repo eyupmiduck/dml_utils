@@ -164,6 +164,16 @@
         </rollback>
     </changeSet>
 
+    <changeSet id="function-dml_utils.set_migration_run_threads" author="dml_utils"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils/set_migration_run_threads.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils/set_migration_run_threads-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
     <changeSet id="function-dml_utils.archive_migration_run" author="dml_utils"
                dbms="postgresql" runOnChange="true">
         <createProcedure path="functions/dml_utils/archive_migration_run.sql"

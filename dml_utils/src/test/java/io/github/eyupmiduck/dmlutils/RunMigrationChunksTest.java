@@ -549,6 +549,68 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     /**
+     * A resumed run uses the threads recorded when it was created: a differing
+     * input is ignored.
+     */
+    @Test
+    void resumeUsesTheStoredThreads() {
+        createSource(1, 2, 3, 4, 5, 6);
+        String label = label("threads-resume");
+        long runId = populate(TEST_BIGINT, label, TEMPLATE, 2, 2);
+
+        runWith(label, TEMPLATE, 2, 5, TEST_BIGINT);
+
+        int stored = dsl.select(MIGRATION_RUN.THREADS)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_RUN.THREADS);
+        assertEquals(2, stored, "the stored threads should be used, not the input 5");
+        assertTrue(runCompleted(runId), "the run should be marked complete");
+    }
+
+    /**
+     * {@code set_migration_run_threads} changes the recorded threads of an
+     * unfinished run, and the next call uses the adjusted value.
+     */
+    @Test
+    void setMigrationRunThreadsChangesTheStoredThreads() {
+        createSource(1, 2, 3, 4);
+        String label = label("set-threads");
+        long runId = populate(TEST_BIGINT, label, TEMPLATE, 2);
+
+        Routines.setMigrationRunThreads(dsl.configuration(), label, 3);
+
+        int stored = dsl.select(MIGRATION_RUN.THREADS)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_RUN.THREADS);
+        assertEquals(3, stored, "the adjusted threads should be stored");
+
+        run(label, 2, TEST_BIGINT);
+        assertEquals(4, doneCount(TEST_BIGINT), "the run should process every row");
+    }
+
+    /**
+     * {@code set_migration_run_threads} raises {@code P0002} when there is no
+     * unfinished run for the label.
+     */
+    @Test
+    void setMigrationRunThreadsRaisesWhenNoUnfinishedRun() {
+        assertSqlState("P0002", () -> Routines.setMigrationRunThreads(
+                dsl.configuration(), "no-such-label", 2));
+    }
+
+    /**
+     * A non-positive thread count is rejected by the positive-integer domain.
+     */
+    @Test
+    void rejectsNonPositiveThreads() {
+        assertDomainViolation(() -> Routines.runMigrationChunks(
+                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 0,
+                "t"));
+    }
+
+    /**
      * The alias argument defaults to {@code t} at the SQL level when omitted.
      */
     @Test
@@ -630,8 +692,12 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     private long populate(Table<?> table, String label, String template, int chunkSize) {
+        return populate(table, label, template, chunkSize, 1);
+    }
+
+    private long populate(Table<?> table, String label, String template, int chunkSize, int threads) {
         return io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
-                dsl.configuration(), schema(table), name(table), label, template, chunkSize);
+                dsl.configuration(), schema(table), name(table), label, template, chunkSize, threads);
     }
 
     private String label(String suffix) {

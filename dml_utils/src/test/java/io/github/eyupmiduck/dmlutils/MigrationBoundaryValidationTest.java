@@ -74,7 +74,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     @Test
     void rejectsNullLabel() {
         assertDomainViolation(() -> Routines.populateMigrationBoundaries(
-                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), null, SQL_TEXT, 1));
+                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), null, SQL_TEXT, 1, 1));
     }
 
     /**
@@ -83,7 +83,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     @Test
     void rejectsBlankLabel() {
         assertDomainViolation(() -> Routines.populateMigrationBoundaries(
-                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), "   ", SQL_TEXT, 1));
+                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), "   ", SQL_TEXT, 1, 1));
     }
 
     /**
@@ -92,7 +92,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     @Test
     void rejectsNullSqlText() {
         assertDomainViolation(() -> Routines.populateMigrationBoundaries(
-                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), "null-sql-text", null, 1));
+                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), "null-sql-text", null, 1, 1));
     }
 
     /**
@@ -101,7 +101,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     @Test
     void rejectsBlankSqlText() {
         assertDomainViolation(() -> Routines.populateMigrationBoundaries(
-                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), "blank-sql-text", "   ", 1));
+                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), "blank-sql-text", "   ", 1, 1));
     }
 
     /**
@@ -317,7 +317,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
 
     private long populateByNames(String schema, String table, String label, Integer chunkSize) {
         return Routines.populateMigrationBoundaries(
-                dsl.configuration(), schema, table, label, SQL_TEXT, chunkSize);
+                dsl.configuration(), schema, table, label, SQL_TEXT, chunkSize, 1);
     }
 
     private String uniqueLabel() {

@@ -53,8 +53,10 @@ table's locks and pages. `i_sql_text` is a template with
 active run for the label, or creates it by running
 `dml_utils_lib.populate_migration_boundaries` in a worker so its boundaries
 commit before the chunks run. A resumed run uses the recorded SQL text, chunk
-size and driving table; a differing input is ignored with a notice, so the
-boundaries and the rendered chunk SQL always refer to the same table. Each chunk
+size, threads and driving table; a differing input is ignored with a notice, so
+the boundaries and the rendered chunk SQL always refer to the same table. Use
+`set_migration_run_sql_text` or `set_migration_run_threads` to change the
+recorded SQL text or thread count of an unfinished run. Each chunk
 worker claims its boundary and commits autonomously, so a re-run resumes at the
 first unclaimed boundary. Raises `unique_violation` (`23505`) when another
 active run already exists for the label, and re-raises a chunk worker's failure
@@ -78,6 +80,21 @@ it is not), and raises
 this to adjust the SQL of an existing run (for example to fix a bad execution
 plan) instead of passing a changed template to a resumed `run_migration_chunks`
 call, which would ignore it.
+
+### `dml_utils.set_migration_run_threads(i_label, i_threads)`
+
+```sql
+i_label   dml_utils_data.non_null_text
+i_threads dml_utils_data.positive_integer
+RETURNS void
+```
+
+`SECURITY INVOKER`. Replaces the recorded `threads` of the unfinished (`completed_at IS NULL`) run for the label, so the
+next `run_migration_chunks`
+call uses the adjusted worker count. Raises `no_data_found` (`P0002`) when there
+is no unfinished run for the label. Use this to tune the parallelism of an
+existing run instead of passing a changed `i_threads` to a resumed call, which
+would ignore it.
 
 ### `dml_utils.archive_migration_run(i_label)`
 
@@ -192,7 +209,8 @@ RETURNS void
 `SECURITY INVOKER`. Raises `unique_violation` (`23505`) when a not-archived
 migration run already exists for the label.
 
-### `dml_utils_lib.populate_migration_boundaries(i_schema_name, i_table_name, i_label, i_sql_text, i_chunk_size)`
+###
+`dml_utils_lib.populate_migration_boundaries(i_schema_name, i_table_name, i_label, i_sql_text, i_chunk_size, i_threads)`
 
 ```sql
 i_schema_name dml_utils_data.non_null_text
@@ -200,11 +218,12 @@ i_table_name  dml_utils_data.non_null_text
 i_label       dml_utils_data.non_null_text
 i_sql_text    dml_utils_data.non_null_text
 i_chunk_size  dml_utils_data.positive_integer
+i_threads     dml_utils_data.positive_integer DEFAULT 1
 RETURNS bigint
 ```
 
 `SECURITY INVOKER`. Creates a `dml_utils_data.migration_run` row for the label,
-with the recorded SQL text, chunk size and driving table, then inserts one
+with the recorded SQL text, chunk size, threads and driving table, then inserts one
 fixed-row chunk boundary per chunk plus a terminal high-water boundary at the
 captured maximum primary key; returns the new `run_id`. The source table must
 exist and have a single primary-key column of a supported type (`smallint`,

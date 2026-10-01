@@ -18,9 +18,11 @@ DECLARE
     l_completed_at          timestamptz;
     l_stored_sql_text       text;
     l_stored_chunk_size     integer;
+    l_stored_threads        integer;
     l_stored_schema_name    text;
     l_stored_table_name     text;
     l_effective_sql_text    text;
+    l_effective_threads     integer;
     l_effective_schema_name text;
     l_effective_table_name  text;
     l_key_kind              text;
@@ -48,14 +50,6 @@ BEGIN
     -- worker exists.
     PERFORM dml_utils_lib.assert_chunking_template(i_sql_text => i_sql_text);
 
-    -- Each chunk is one background worker; more workers than the server allows
-    -- would fail at launch, so reject the request up front.
-    IF i_threads > pg_catalog.current_setting('max_worker_processes')::integer THEN
-        RAISE EXCEPTION 'i_threads (%) exceeds max_worker_processes (%)',
-            i_threads, pg_catalog.current_setting('max_worker_processes')
-            USING ERRCODE = '22023';
-    END IF;
-
     -- Reuse the active run for the label when there is one; otherwise create it
     -- by running populate_migration_boundaries in a worker so it commits
     -- autonomously and the boundaries become visible to the processing workers.
@@ -63,10 +57,11 @@ BEGIN
            completed_at,
            sql_text,
            chunk_size,
+           threads::integer,
            driving_table_schema_name::text,
            driving_table_name::text
     INTO l_run_id, l_completed_at, l_stored_sql_text, l_stored_chunk_size,
-        l_stored_schema_name, l_stored_table_name
+        l_stored_threads, l_stored_schema_name, l_stored_table_name
     FROM dml_utils_data.migration_run
     WHERE label = i_label
       AND archived_at IS NULL;
@@ -76,13 +71,23 @@ BEGIN
         RETURN;
     END IF;
 
+    -- The stored thread count wins for a resumed run. Each chunk is one
+    -- background worker, and more workers than the server allows would fail at
+    -- launch, so validate before creating a run or scheduling any worker.
+    l_effective_threads := CASE WHEN FOUND THEN l_stored_threads ELSE i_threads::integer END;
+    IF l_effective_threads > pg_catalog.current_setting('max_worker_processes')::integer THEN
+        RAISE EXCEPTION 'threads (%) exceeds max_worker_processes (%)',
+            l_effective_threads, pg_catalog.current_setting('max_worker_processes')
+            USING ERRCODE = '22023';
+    END IF;
+
     IF FOUND THEN
-        -- A resumed run uses the SQL, chunk size and driving table recorded when
-        -- it was created, so an adjusted statement (for example to fix a bad
-        -- execution plan) is applied via set_migration_run_sql_text rather than a
-        -- changed call. A differing input is ignored, with a notice, so the
-        -- boundaries and their chunk SQL are never silently redefined against a
-        -- different table.
+        -- A resumed run uses the SQL, chunk size, threads and driving table
+        -- recorded when it was created, so an adjusted statement (for example to
+        -- fix a bad execution plan) is applied via set_migration_run_sql_text
+        -- rather than a changed call. A differing input is ignored, with a
+        -- notice, so the boundaries and their chunk SQL are never silently
+        -- redefined against a different table.
         l_effective_sql_text := l_stored_sql_text;
         l_effective_schema_name := l_stored_schema_name;
         l_effective_table_name := l_stored_table_name;
@@ -93,6 +98,10 @@ BEGIN
         IF l_stored_chunk_size IS DISTINCT FROM i_chunk_size THEN
             RAISE NOTICE 'run for label % already exists; using the stored chunk_size %',
                 i_label, l_stored_chunk_size;
+        END IF;
+        IF l_stored_threads IS DISTINCT FROM i_threads::integer THEN
+            RAISE NOTICE 'run for label % already exists; using the stored threads %',
+                i_label, l_stored_threads;
         END IF;
         IF l_stored_schema_name IS DISTINCT FROM i_driving_table_schema_name
             OR l_stored_table_name IS DISTINCT FROM i_driving_table_name
@@ -106,12 +115,13 @@ BEGIN
         l_effective_table_name := i_driving_table_name;
 
         l_handle := public.pg_background_launch(pg_catalog.format(
-                'SELECT dml_utils_lib.populate_migration_boundaries(%L, %L, %L, %L, %s) AS run_id',
+                'SELECT dml_utils_lib.populate_migration_boundaries(%L, %L, %L, %L, %s, %s) AS run_id',
                 i_driving_table_schema_name,
                 i_driving_table_name,
                 i_label,
                 i_sql_text,
-                i_chunk_size));
+                i_chunk_size,
+                i_threads));
         PERFORM public.pg_background_wait(l_handle.pid, l_handle.cookie);
 
         -- result() is one-time consumption and auto-detaches; it re-raises the

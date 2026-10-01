@@ -245,6 +245,7 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
         assertEquals(label, run.getLabel());
         assertEquals(SQL_TEXT, run.getSqlText());
         assertEquals(5, run.getChunkSize());
+        assertEquals(1, run.getThreads().intValue());
         assertEquals(TEST_BIGINT.getSchema().getName(), run.getDrivingTableSchemaName());
         assertEquals(TEST_BIGINT.getName(), run.getDrivingTableName());
     }
@@ -345,7 +346,7 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
     private long populate(Table<?> table, String label, int chunkSize) {
         return io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
                 dsl.configuration(), table.getSchema().getName(), table.getName(), label, SQL_TEXT,
-                chunkSize);
+                chunkSize, 1);
     }
 
     private List<MigrationBoundaryRecord> boundaries(long runId) {

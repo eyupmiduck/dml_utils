@@ -98,6 +98,7 @@ REVOKE EXECUTE ON FUNCTION dml_utils_lib.populate_migration_boundaries(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text,
+    dml_utils_data.positive_integer,
     dml_utils_data.positive_integer
     ) FROM public;
 GRANT EXECUTE ON FUNCTION dml_utils_lib.populate_migration_boundaries(
@@ -105,6 +106,7 @@ GRANT EXECUTE ON FUNCTION dml_utils_lib.populate_migration_boundaries(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text,
+    dml_utils_data.positive_integer,
     dml_utils_data.positive_integer
     ) TO dml_utils_caller;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.process_migration_chunk(
@@ -155,6 +157,14 @@ REVOKE EXECUTE ON FUNCTION dml_utils.set_migration_run_sql_text(
 GRANT EXECUTE ON FUNCTION dml_utils.set_migration_run_sql_text(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text
+    ) TO dml_utils_caller;
+REVOKE EXECUTE ON FUNCTION dml_utils.set_migration_run_threads(
+    dml_utils_data.non_null_text,
+    dml_utils_data.positive_integer
+    ) FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils.set_migration_run_threads(
+    dml_utils_data.non_null_text,
+    dml_utils_data.positive_integer
     ) TO dml_utils_caller;
 REVOKE EXECUTE ON FUNCTION dml_utils.archive_migration_run(
     dml_utils_data.non_null_text
