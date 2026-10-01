@@ -149,7 +149,7 @@ jOOQ codegen and tests; `docker_java_config` is a build shim. CI: GitHub Actions
   an explicit `DROP FUNCTION IF EXISTS <old signature>;` (for example another
   `sqlFile` in the same changeset) so the deprecated signature is removed.
 - Type routine arguments with the `dml_utils` domains (for example
-  `non_null_text`, `non_negative_integer`) so null or invalid inputs fail
+  `non_null_text`, `positive_integer`) so null or invalid inputs fail
   fast with a check-constraint violation.
 - Use `SECURITY INVOKER` (the default). A routine must never require callers to
   hold privileges beyond what they would need to run its SQL directly: if a

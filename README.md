@@ -8,9 +8,9 @@ the Liquibase CLI, without building anything or running Docker (see
 
 Liquibase loads two application schemas:
 
-- **`dml_utils`** — the application surface. It holds the shared domains (`non_null_text`, `non_negative_integer`,
-  `positive_integer`, and the array
-  domains) and the fixed-row chunk migration tables `migration_run` /
+- **`dml_utils`** — the application surface. It holds the shared domains (`non_null_text`, `positive_integer`) and the
+  fixed-row chunk migration tables
+  `migration_run` /
   `migration_boundary` (`migration_error` records failed chunks), populated by
   `dml_utils.populate_migration_boundaries`, plus
   `dml_utils.run_migration_chunks`, which processes those chunks one
@@ -147,8 +147,10 @@ without the worker logs:
 ```sql
 SELECT boundary_no, sqlstate, message, created_at
 FROM dml_utils.migration_error
-WHERE run_id = (SELECT run_id FROM dml_utils.migration_run
-                WHERE label = 'events-region-backfill' AND archived_at IS NULL)
+WHERE run_id = (SELECT run_id
+                FROM dml_utils.migration_run
+                WHERE label = 'events-region-backfill'
+                  AND archived_at IS NULL)
 ORDER BY created_at;
 ```
 
