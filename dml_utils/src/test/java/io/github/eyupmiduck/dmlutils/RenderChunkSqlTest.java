@@ -83,6 +83,36 @@ class RenderChunkSqlTest extends PostgresTestBase {
     }
 
     /**
+     * The primary-key name is whatever the caller resolved from the catalog,
+     * not hard-coded {@code id}, and it appears in both range bounds.
+     */
+    @Test
+    void usesTheGivenPrimaryKeyName() {
+        String rendered = Routines.renderChunkSql(
+                dsl.configuration(), TEMPLATE, "public", "src", "s", "pk", 5L, 15L, false);
+
+        assertEquals(
+                "UPDATE public.src s SET processed = true"
+                        + " WHERE (s.pk >= 5 AND s.pk < 15)",
+                rendered);
+    }
+
+    /**
+     * An explicit alias is used verbatim in the driving-table reference and the
+     * range predicate.
+     */
+    @Test
+    void usesTheGivenAlias() {
+        String rendered = Routines.renderChunkSql(
+                dsl.configuration(), TEMPLATE, "public", "src", "src_row", "id", 1L, 2L, false);
+
+        assertEquals(
+                "UPDATE public.src src_row SET processed = true"
+                        + " WHERE (src_row.id >= 1 AND src_row.id < 2)",
+                rendered);
+    }
+
+    /**
      * The schema, table, alias and primary-key name are quoted so unusual
      * identifiers (and a substituted value) cannot break the SQL or reintroduce
      * a token.

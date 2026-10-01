@@ -130,6 +130,44 @@ class RunMigrationChunksTest extends PostgresTestBase {
         assertTrue(!runCompleted(runId(label)), "a failed run must not be marked complete");
     }
 
+    /**
+     * The primary-key column is resolved from the catalog, not assumed to be
+     * named {@code id}: a table whose key is {@code key} still chunks correctly.
+     */
+    @Test
+    void resolvesThePrimaryKeyColumnNameFromTheCatalog() {
+        dropTestTable(SOURCE_QUALIFIED);
+        createTestTable(SOURCE_QUALIFIED, "key bigint PRIMARY KEY, payload text");
+        for (long id = 1; id <= 6; id++) {
+            dsl.execute("INSERT INTO " + SOURCE_QUALIFIED + " (key) VALUES (?)", id);
+        }
+        String label = label("catalog-pk");
+
+        run(label, 2);
+
+        assertEquals(6, doneCount(), "all rows should be processed using the catalog key");
+        assertTrue(runCompleted(runId(label)), "the run should be marked complete");
+    }
+
+    /**
+     * The alias argument defaults to {@code t} at the SQL level when omitted.
+     */
+    @Test
+    void usesTheDefaultAliasWhenOmitted() {
+        createSource(1, 2, 3, 4);
+        String label = label("default-alias");
+
+        dsl.execute(
+                "SELECT dml_utils.run_migration_chunks("
+                        + "?::dml_utils.non_null_text, ?::dml_utils.non_null_text,"
+                        + " ?::dml_utils.non_null_text, ?::dml_utils.non_null_text,"
+                        + " ?::dml_utils.positive_integer)",
+                TEMPLATE, PUBLIC_SCHEMA, SOURCE, label, 2);
+
+        assertEquals(4, doneCount(), "the default alias t should be used");
+        assertTrue(runCompleted(runId(label)), "the run should be marked complete");
+    }
+
     private void createSource(long... ids) {
         dropTestTable(SOURCE_QUALIFIED);
         createTestTable(SOURCE_QUALIFIED, "id bigint PRIMARY KEY, payload text");
