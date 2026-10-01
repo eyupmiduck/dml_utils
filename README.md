@@ -90,8 +90,8 @@ SELECT dml_utils.run_migration_chunks(
 ```
 
 `i_chunk_size` defaults to `1000` and must be positive; omit it to use the
-default. `i_threads` defaults to `1` and processes that many chunks in parallel
-(each in its own worker); if one chunk fails, the call stops launching new
+default. `i_threads` defaults to `1` and processes that many chunks in parallel (each in its own worker); if one chunk
+fails, the call stops launching new
 chunks, lets the in-flight ones commit, and then raises the error, leaving the
 run to be resumed. It must not exceed `max_worker_processes`, and parallel
 chunks still contend for the same table's locks and pages, so it is not always

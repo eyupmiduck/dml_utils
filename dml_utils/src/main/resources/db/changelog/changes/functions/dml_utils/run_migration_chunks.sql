@@ -31,10 +31,10 @@ DECLARE
     l_chunk_sql             text;
     -- The workers kept in flight, and the boundary each one was launched for
     -- (parallel arrays, aligned by position).
-    l_in_flight             public.pg_background_handle[] := ARRAY[]::public.pg_background_handle[];
-    l_in_flight_boundaries  bigint[] := ARRAY[]::bigint[];
+    l_in_flight             public.pg_background_handle[] := ARRAY []::public.pg_background_handle[];
+    l_in_flight_boundaries  bigint[]                      := ARRAY []::bigint[];
     l_worker_index          integer;
-    l_aborting              boolean := false;
+    l_aborting              boolean                       := false;
     l_error_sqlstate        text;
     l_error_message         text;
     l_error_boundary_no     bigint;
@@ -156,60 +156,61 @@ BEGIN
         -- Keep launching until i_threads are in flight (or there is nothing left
         -- to launch), unless a worker has already failed.
         IF NOT l_aborting THEN
-            WHILE pg_catalog.cardinality(l_in_flight) < i_threads LOOP
-                SELECT b.boundary_no,
-                       CASE l_key_kind
-                           WHEN 'bigint' THEN (b.boundary_id).bigint_value::text
-                           WHEN 'text' THEN (b.boundary_id).text_value
-                           WHEN 'uuid' THEN (b.boundary_id).uuid_value::text
-                           END,
-                       CASE l_key_kind
-                           WHEN 'bigint' THEN (next.boundary_id).bigint_value::text
-                           WHEN 'text' THEN (next.boundary_id).text_value
-                           WHEN 'uuid' THEN (next.boundary_id).uuid_value::text
-                           END,
-                       next.boundary_no = last.boundary_no
-                INTO l_boundary_no, l_start_value, l_end_value, l_is_final
-                FROM dml_utils_data.migration_boundary AS b
-                         JOIN dml_utils_data.migration_boundary AS next
-                              ON next.run_id = b.run_id
-                                  AND next.boundary_no = b.boundary_no + 1
-                         CROSS JOIN LATERAL (
-                    SELECT max(boundary_no) AS boundary_no
-                    FROM dml_utils_data.migration_boundary
-                    WHERE run_id = b.run_id
-                    ) AS last
-                WHERE b.run_id = l_run_id
-                  AND b.completed_at IS NULL
-                  AND b.boundary_no <> ALL (l_in_flight_boundaries)
-                ORDER BY b.boundary_no
-                LIMIT 1;
+            WHILE pg_catalog.cardinality(l_in_flight) < i_threads
+                LOOP
+                    SELECT b.boundary_no,
+                           CASE l_key_kind
+                               WHEN 'bigint' THEN (b.boundary_id).bigint_value::text
+                               WHEN 'text' THEN (b.boundary_id).text_value
+                               WHEN 'uuid' THEN (b.boundary_id).uuid_value::text
+                               END,
+                           CASE l_key_kind
+                               WHEN 'bigint' THEN (next.boundary_id).bigint_value::text
+                               WHEN 'text' THEN (next.boundary_id).text_value
+                               WHEN 'uuid' THEN (next.boundary_id).uuid_value::text
+                               END,
+                           next.boundary_no = last.boundary_no
+                    INTO l_boundary_no, l_start_value, l_end_value, l_is_final
+                    FROM dml_utils_data.migration_boundary AS b
+                             JOIN dml_utils_data.migration_boundary AS next
+                                  ON next.run_id = b.run_id
+                                      AND next.boundary_no = b.boundary_no + 1
+                             CROSS JOIN LATERAL (
+                        SELECT max(boundary_no) AS boundary_no
+                        FROM dml_utils_data.migration_boundary
+                        WHERE run_id = b.run_id
+                        ) AS last
+                    WHERE b.run_id = l_run_id
+                      AND b.completed_at IS NULL
+                      AND b.boundary_no <> ALL (l_in_flight_boundaries)
+                    ORDER BY b.boundary_no
+                    LIMIT 1;
 
-                EXIT WHEN NOT FOUND;
+                    EXIT WHEN NOT FOUND;
 
-                l_chunk_sql := dml_utils_lib.render_chunk_sql(
-                        i_sql_text => l_effective_sql_text,
-                        i_schema_name => l_effective_schema_name,
-                        i_table_name => l_effective_table_name,
-                        i_table_alias => i_driving_table_alias,
-                        i_primary_key_name => l_primary_key_name,
-                        i_key_kind => l_key_kind,
-                        i_start_value => l_start_value,
-                        i_end_value => l_end_value,
-                        i_is_final => l_is_final);
+                    l_chunk_sql := dml_utils_lib.render_chunk_sql(
+                            i_sql_text => l_effective_sql_text,
+                            i_schema_name => l_effective_schema_name,
+                            i_table_name => l_effective_table_name,
+                            i_table_alias => i_driving_table_alias,
+                            i_primary_key_name => l_primary_key_name,
+                            i_key_kind => l_key_kind,
+                            i_start_value => l_start_value,
+                            i_end_value => l_end_value,
+                            i_is_final => l_is_final);
 
-                -- pg_background has no USING, so the run id, boundary number and
-                -- chunk SQL are inlined: the first two are bigint (%s), the chunk
-                -- SQL is a literal (%L).
-                l_handle := public.pg_background_launch(
-                        pg_catalog.format(
-                                'SELECT dml_utils_lib.process_migration_chunk(%s, %s, %L)',
-                                l_run_id, l_boundary_no, l_chunk_sql),
-                        0,
-                        pg_catalog.format('run %s chunk %s', l_run_id, l_boundary_no));
-                l_in_flight := l_in_flight || l_handle;
-                l_in_flight_boundaries := l_in_flight_boundaries || l_boundary_no;
-            END LOOP;
+                    -- pg_background has no USING, so the run id, boundary number and
+                    -- chunk SQL are inlined: the first two are bigint (%s), the chunk
+                    -- SQL is a literal (%L).
+                    l_handle := public.pg_background_launch(
+                            pg_catalog.format(
+                                    'SELECT dml_utils_lib.process_migration_chunk(%s, %s, %L)',
+                                    l_run_id, l_boundary_no, l_chunk_sql),
+                            0,
+                            pg_catalog.format('run %s chunk %s', l_run_id, l_boundary_no));
+                    l_in_flight := l_in_flight || l_handle;
+                    l_in_flight_boundaries := l_in_flight_boundaries || l_boundary_no;
+                END LOOP;
         END IF;
 
         -- Nothing running and nothing left to launch: done (or draining is done).
@@ -231,7 +232,8 @@ BEGIN
         l_in_flight_boundaries := l_in_flight_boundaries[1:l_worker_index - 1]
             || l_in_flight_boundaries[l_worker_index + 1:];
 
-        SELECT * INTO l_outcome
+        SELECT *
+        INTO l_outcome
         FROM public.pg_background_outcome(l_handle.pid, l_handle.cookie);
         PERFORM public.pg_background_detach(l_handle.pid, l_handle.cookie);
 
