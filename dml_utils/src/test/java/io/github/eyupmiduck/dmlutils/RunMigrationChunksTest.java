@@ -375,6 +375,42 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     /**
+     * An {@code integer} (non-bigint) primary key is supported end to end.
+     */
+    @Test
+    void processesATableWithAnIntegerPrimaryKey() {
+        dropTestTable(SOURCE_QUALIFIED);
+        createTestTable(SOURCE_QUALIFIED, "id integer PRIMARY KEY, payload text");
+        for (int id = 1; id <= 6; id++) {
+            dsl.execute("INSERT INTO " + SOURCE_QUALIFIED + " (id) VALUES (?)", id);
+        }
+        String label = label("integer-pk");
+
+        run(label, 2);
+
+        assertEquals(6, doneCount(), "every row of an integer-keyed table should be processed");
+        assertTrue(runCompleted(runId(label)), "the run should be marked complete");
+    }
+
+    /**
+     * A {@code smallint} (non-bigint) primary key is supported end to end.
+     */
+    @Test
+    void processesATableWithASmallintPrimaryKey() {
+        dropTestTable(SOURCE_QUALIFIED);
+        createTestTable(SOURCE_QUALIFIED, "id smallint PRIMARY KEY, payload text");
+        for (int id = 1; id <= 6; id++) {
+            dsl.execute("INSERT INTO " + SOURCE_QUALIFIED + " (id) VALUES (?)", id);
+        }
+        String label = label("smallint-pk");
+
+        run(label, 2);
+
+        assertEquals(6, doneCount(), "every row of a smallint-keyed table should be processed");
+        assertTrue(runCompleted(runId(label)), "the run should be marked complete");
+    }
+
+    /**
      * The alias argument defaults to {@code t} at the SQL level when omitted.
      */
     @Test

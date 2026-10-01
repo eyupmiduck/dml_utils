@@ -21,7 +21,7 @@ BEGIN
     l_primary_key_name := dml_utils_lib.single_column_primary_key(
             i_schema_name => i_schema_name,
             i_table_name => i_table_name);
-    PERFORM dml_utils_lib.assert_bigint_primary_key(
+    PERFORM dml_utils_lib.assert_supported_primary_key(
             i_schema_name => i_schema_name,
             i_table_name => i_table_name);
     PERFORM dml_utils_lib.assert_no_active_run_for_label(i_label => i_label);

@@ -205,6 +205,19 @@ RETURNS void
 `SECURITY INVOKER`. Raises `invalid_parameter_value` (`22023`) when the single
 primary-key column is not `bigint`.
 
+### `dml_utils_lib.assert_supported_primary_key(i_schema_name, i_table_name)`
+
+```sql
+i_schema_name dml_utils.non_null_text
+i_table_name  dml_utils.non_null_text
+RETURNS void
+```
+
+`SECURITY INVOKER`. Raises `invalid_parameter_value` (`22023`) when the single
+primary-key column is not an integer type (`smallint`, `integer` or `bigint`).
+The chunking routines use this so they work with an `integer` (or `smallint`)
+key as well as `bigint`.
+
 ### `dml_utils_lib.assert_no_active_run_for_label(i_label)`
 
 ```sql
