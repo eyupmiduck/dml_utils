@@ -23,6 +23,14 @@ REVOKE EXECUTE ON FUNCTION dml_utils.archive_migration_run(
 GRANT EXECUTE ON FUNCTION dml_utils.archive_migration_run(
     dml_utils.non_null_text
     ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils.set_migration_run_sql_text(
+    dml_utils.non_null_text,
+    dml_utils.non_null_text
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils.set_migration_run_sql_text(
+    dml_utils.non_null_text,
+    dml_utils.non_null_text
+    ) TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils.process_migration_chunk(
     bigint,
     bigint,

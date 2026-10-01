@@ -114,6 +114,23 @@ boundary does not exist or is already completed. If the chunk SQL fails, the
 transaction aborts and the claim rolls back, so the chunk is retried on the next
 run. Intended to run inside a `pg_background` worker, one call per chunk.
 
+### `dml_utils.set_migration_run_sql_text(i_label, i_sql_text)`
+
+```sql
+i_label    dml_utils.non_null_text
+i_sql_text dml_utils.non_null_text
+RETURNS void
+```
+
+`SECURITY INVOKER`. Replaces the recorded `sql_text` of the unfinished
+(`completed_at IS NULL`) run for the label, so the next `run_migration_chunks`
+call uses the adjusted SQL. Validates the new SQL as a chunking template
+(raising `invalid_parameter_value`, `22023`, if it is not), and raises
+`no_data_found` (`P0002`) when there is no unfinished run for the label. Use
+this to adjust the SQL of an existing run
+(for example to fix a bad execution plan) instead of passing a changed template
+to a resumed `run_migration_chunks` call, which would ignore it.
+
 ### `dml_utils.archive_migration_run(i_label)`
 
 ```sql

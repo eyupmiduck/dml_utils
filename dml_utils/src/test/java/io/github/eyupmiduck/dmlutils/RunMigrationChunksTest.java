@@ -135,7 +135,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
         // Create the run and boundaries, then mark the first chunk complete by
         // hand to simulate a partially processed run.
         long runId = Routines.populateMigrationBoundaries(
-                dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label, "SELECT 1", 2);
+                dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label, TEMPLATE, 2);
         dsl.update(MIGRATION_BOUNDARY)
                 .set(MIGRATION_BOUNDARY.COMPLETED_AT, OffsetDateTime.now())
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId)
@@ -176,13 +176,82 @@ class RunMigrationChunksTest extends PostgresTestBase {
         String label = label("active");
 
         long existingRun = Routines.populateMigrationBoundaries(
-                dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label, "SELECT 1", 2);
+                dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label, TEMPLATE, 2);
 
         run(label, 2);
 
         assertEquals(6, doneCount(), "every chunk of the existing run should be processed");
         assertEquals(existingRun, runId(label), "the existing run should be reused");
         assertTrue(runCompleted(existingRun), "the reused run should be marked complete");
+    }
+
+    /**
+     * On resume the stored {@code sql_text} is used and a differing input is
+     * ignored; a resumed run whose stored SQL was adjusted via
+     * {@code set_migration_run_sql_text} then uses the adjusted SQL.
+     */
+    @Test
+    void resumeUsesTheStoredSqlText() {
+        createSource(1, 2, 3, 4);
+        String label = label("stored");
+
+        // An unfinished run whose stored SQL writes 'first'.
+        Routines.populateMigrationBoundaries(
+                dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label,
+                "UPDATE <driving_table> SET payload = 'first' WHERE <chunking_clause>", 2);
+
+        // A resumed call with a different input must ignore the input.
+        runWith(label, "UPDATE <driving_table> SET payload = 'ignored' WHERE <chunking_clause>", 2);
+
+        assertEquals(4, firstCount(), "the stored SQL should be used on resume");
+        assertEquals(0, ignoredCount(), "the caller's differing SQL should be ignored");
+    }
+
+    /**
+     * A resumed run whose stored SQL was changed via
+     * {@code set_migration_run_sql_text} uses the new SQL.
+     */
+    @Test
+    void setMigrationRunSqlTextChangesTheResumedSql() {
+        createSource(1, 2, 3, 4);
+        String label = label("set-sql");
+
+        // Create an unfinished run (populate only), then adjust its SQL.
+        Routines.populateMigrationBoundaries(
+                dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label,
+                "UPDATE <driving_table> SET payload = 'first' WHERE <chunking_clause>", 2);
+        Routines.setMigrationRunSqlText(dsl.configuration(), label,
+                "UPDATE <driving_table> SET payload = 'second' WHERE <chunking_clause>");
+
+        runWith(label, "UPDATE <driving_table> SET payload = 'ignored' WHERE <chunking_clause>", 2);
+
+        assertEquals(4, secondCount(), "the adjusted (stored) SQL should be used");
+        assertEquals(0, firstCount(), "the original stored SQL should not be used");
+    }
+
+    /**
+     * {@code set_migration_run_sql_text} raises {@code P0002} when there is no
+     * unfinished run for the label.
+     */
+    @Test
+    void setMigrationRunSqlTextRaisesWhenNoUnfinishedRun() {
+        assertSqlState("P0002", () -> Routines.setMigrationRunSqlText(
+                dsl.configuration(), "no-such-label", TEMPLATE));
+    }
+
+    /**
+     * {@code set_migration_run_sql_text} rejects a value that is not a valid
+     * chunking template with {@code 22023}.
+     */
+    @Test
+    void setMigrationRunSqlTextRejectsAnInvalidTemplate() {
+        createSource(1, 2, 3, 4);
+        String label = label("invalid-template");
+        Routines.populateMigrationBoundaries(
+                dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label, TEMPLATE, 2);
+
+        assertSqlState("22023", () -> Routines.setMigrationRunSqlText(
+                dsl.configuration(), label, "UPDATE <driving_table> SET x = 1"));
     }
 
     /**
@@ -272,8 +341,12 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     private void run(String label, int chunkSize) {
+        runWith(label, TEMPLATE, chunkSize);
+    }
+
+    private void runWith(String label, String template, int chunkSize) {
         Routines.runMigrationChunks(
-                dsl.configuration(), TEMPLATE, PUBLIC_SCHEMA, SOURCE, label, chunkSize, "t");
+                dsl.configuration(), template, PUBLIC_SCHEMA, SOURCE, label, chunkSize, "t");
     }
 
     private long runId(String label) {
@@ -318,14 +391,29 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     private int doneCount() {
-        return dsl.fetchOne(
-                        "SELECT count(*)::int FROM " + SOURCE_QUALIFIED + " WHERE payload = 'done'")
-                .get(0, Integer.class);
+        return payloadCount("done");
     }
 
     private int touchedCount() {
+        return payloadCount("touched");
+    }
+
+    private int firstCount() {
+        return payloadCount("first");
+    }
+
+    private int secondCount() {
+        return payloadCount("second");
+    }
+
+    private int ignoredCount() {
+        return payloadCount("ignored");
+    }
+
+    private int payloadCount(String value) {
         return dsl.fetchOne(
-                        "SELECT count(*)::int FROM " + SOURCE_QUALIFIED + " WHERE payload = 'touched'")
+                        "SELECT count(*)::int FROM " + SOURCE_QUALIFIED + " WHERE payload = ?",
+                        value)
                 .get(0, Integer.class);
     }
 }

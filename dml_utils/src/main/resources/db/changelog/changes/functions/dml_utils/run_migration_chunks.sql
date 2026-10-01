@@ -12,14 +12,16 @@ CREATE OR REPLACE FUNCTION dml_utils.run_migration_chunks(
 AS
 $$
 DECLARE
-    l_primary_key_name name;
-    l_run_id           bigint;
-    l_completed_at     timestamptz;
-    l_boundary_no      bigint;
-    l_start_id         bigint;
-    l_end_id           bigint;
-    l_is_final         boolean;
-    l_chunk_sql        text;
+    l_primary_key_name   name;
+    l_run_id             bigint;
+    l_completed_at       timestamptz;
+    l_stored_sql_text    text;
+    l_effective_sql_text text;
+    l_boundary_no        bigint;
+    l_start_id           bigint;
+    l_end_id             bigint;
+    l_is_final           boolean;
+    l_chunk_sql          text;
     -- pg_background is installed in the public schema. Qualify its types and
     -- functions explicitly so this routine resolves them regardless of the
     -- caller's (or Liquibase's) search_path.
@@ -39,8 +41,8 @@ BEGIN
     -- Reuse the active run for the label when there is one; otherwise create it
     -- by running populate_migration_boundaries in a worker so it commits
     -- autonomously and the boundaries become visible to the processing workers.
-    SELECT run_id, completed_at
-    INTO l_run_id, l_completed_at
+    SELECT run_id, completed_at, sql_text
+    INTO l_run_id, l_completed_at, l_stored_sql_text
     FROM dml_utils.migration_run
     WHERE label = i_label
       AND archived_at IS NULL;
@@ -50,7 +52,18 @@ BEGIN
         RETURN;
     END IF;
 
-    IF NOT FOUND THEN
+    IF FOUND THEN
+        -- A resumed run uses the SQL recorded when it was created, so an
+        -- adjusted statement (for example to fix a bad execution plan) is
+        -- applied via set_migration_run_sql_text rather than a changed call.
+        l_effective_sql_text := l_stored_sql_text;
+        IF l_stored_sql_text IS DISTINCT FROM i_sql_text THEN
+            RAISE NOTICE 'run for label % already exists; using the stored sql_text',
+                i_label;
+        END IF;
+    ELSE
+        l_effective_sql_text := i_sql_text;
+
         l_handle := public.pg_background_launch(pg_catalog.format(
                 'SELECT dml_utils.populate_migration_boundaries(%L, %L, %L, %L, %s) AS run_id',
                 i_driving_table_schema_name,
@@ -90,7 +103,7 @@ BEGIN
         EXIT WHEN l_end_id IS NULL;
 
         l_chunk_sql := dml_utils_lib.render_chunk_sql(
-                i_sql_text => i_sql_text,
+                i_sql_text => l_effective_sql_text,
                 i_schema_name => i_driving_table_schema_name,
                 i_table_name => i_driving_table_name,
                 i_table_alias => i_driving_table_alias,
