@@ -169,7 +169,8 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     @Test
     void acceptsAnIntegerPrimaryKey() {
         createTestTable(TABLE_QUALIFIED, "id integer PRIMARY KEY");
-        dsl.execute("INSERT INTO " + TABLE_QUALIFIED + " (id) VALUES (1), (2), (3)");
+        dsl.insertInto(table(TABLE_QUALIFIED)).columns(field("id", Integer.class))
+                .values(1).values(2).values(3).execute();
 
         long runId = populate(PUBLIC_SCHEMA, TABLE, 2);
 
@@ -182,7 +183,8 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     @Test
     void acceptsASmallintPrimaryKey() {
         createTestTable(TABLE_QUALIFIED, "id smallint PRIMARY KEY");
-        dsl.execute("INSERT INTO " + TABLE_QUALIFIED + " (id) VALUES (1), (2), (3)");
+        dsl.insertInto(table(TABLE_QUALIFIED)).columns(field("id", Short.class))
+                .values((short) 1).values((short) 2).values((short) 3).execute();
 
         long runId = populate(PUBLIC_SCHEMA, TABLE, 2);
 
@@ -270,7 +272,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     @Test
     void rejectsLabelWithAnActiveRun() {
         createTestTable(TABLE_QUALIFIED, "id bigint PRIMARY KEY, payload text");
-        dsl.execute("INSERT INTO " + TABLE_QUALIFIED + " (id) VALUES (1)");
+        dsl.insertInto(table(TABLE_QUALIFIED)).columns(field("id", Long.class)).values(1L).execute();
 
         String label = uniqueLabel();
         long firstRun = populate(label);
@@ -289,7 +291,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     @Test
     void allowsLabelReuseAfterTheRunIsArchived() {
         createTestTable(TABLE_QUALIFIED, "id bigint PRIMARY KEY, payload text");
-        dsl.execute("INSERT INTO " + TABLE_QUALIFIED + " (id) VALUES (1)");
+        dsl.insertInto(table(TABLE_QUALIFIED)).columns(field("id", Long.class)).values(1L).execute();
 
         String label = uniqueLabel();
         long firstRun = populate(label);
@@ -335,6 +337,6 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     }
 
     private int countRows(String qualifiedTable) {
-        return dsl.fetchOne("SELECT count(*)::int FROM " + qualifiedTable).get(0, Integer.class);
+        return dsl.selectCount().from(table(qualifiedTable)).fetchOne(0, Integer.class);
     }
 }

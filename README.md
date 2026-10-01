@@ -89,6 +89,9 @@ SELECT dml_utils.run_migration_chunks(
                i_chunk_size => 10000);
 ```
 
+`i_chunk_size` defaults to `1000` and must be positive; omit it to use the
+default.
+
 The worker SQL for the first chunk is:
 
 ```sql

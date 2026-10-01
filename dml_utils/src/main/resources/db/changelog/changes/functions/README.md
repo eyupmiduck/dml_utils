@@ -24,14 +24,16 @@ comment targets the right overload.
 
 ## `dml_utils`
 
-### `dml_utils.run_migration_chunks(i_sql_text, i_driving_table_schema_name, i_driving_table_name, i_label, i_chunk_size [, i_driving_table_alias])`
+###
+
+`dml_utils.run_migration_chunks(i_sql_text, i_driving_table_schema_name, i_driving_table_name, i_label, i_chunk_size [, i_driving_table_alias])`
 
 ```sql
 i_sql_text                  dml_utils_data.non_null_text
 i_driving_table_schema_name dml_utils_data.non_null_text
 i_driving_table_name        dml_utils_data.non_null_text
 i_label                     dml_utils_data.non_null_text
-i_chunk_size                dml_utils_data.positive_integer
+i_chunk_size                dml_utils_data.positive_integer DEFAULT 1000
 i_driving_table_alias       dml_utils_data.non_null_text DEFAULT 't'
 RETURNS void
 ```
@@ -59,10 +61,10 @@ i_sql_text dml_utils_data.non_null_text
 RETURNS void
 ```
 
-`SECURITY INVOKER`. Replaces the recorded `sql_text` of the unfinished
-(`completed_at IS NULL`) run for the label, so the next `run_migration_chunks`
-call uses the adjusted SQL. Validates the new SQL as a chunking template
-(raising `invalid_parameter_value`, `22023`, if it is not), and raises
+`SECURITY INVOKER`. Replaces the recorded `sql_text` of the unfinished (`completed_at IS NULL`) run for the label, so
+the next `run_migration_chunks`
+call uses the adjusted SQL. Validates the new SQL as a chunking template (raising `invalid_parameter_value`, `22023`, if
+it is not), and raises
 `no_data_found` (`P0002`) when there is no unfinished run for the label. Use
 this to adjust the SQL of an existing run (for example to fix a bad execution
 plan) instead of passing a changed template to a resumed `run_migration_chunks`
@@ -143,7 +145,9 @@ RETURNS void
 unless `i_sql_text` contains `<driving_table>` and `<chunking_clause>` exactly
 once each.
 
-### `dml_utils_lib.render_chunk_sql(i_sql_text, i_schema_name, i_table_name, i_table_alias, i_primary_key_name, i_key_kind, i_start_value, i_end_value, i_is_final)`
+###
+
+`dml_utils_lib.render_chunk_sql(i_sql_text, i_schema_name, i_table_name, i_table_alias, i_primary_key_name, i_key_kind, i_start_value, i_end_value, i_is_final)`
 
 ```sql
 i_sql_text         dml_utils_data.non_null_text

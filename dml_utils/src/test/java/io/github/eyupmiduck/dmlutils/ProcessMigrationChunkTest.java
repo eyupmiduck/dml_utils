@@ -71,7 +71,7 @@ class ProcessMigrationChunkTest extends PostgresTestBase {
         dropTestTable(SOURCE_QUALIFIED);
         createTestTable(SOURCE_QUALIFIED, "id bigint PRIMARY KEY, payload text");
         for (long id : ids) {
-            dsl.execute("INSERT INTO " + SOURCE_QUALIFIED + " (id) VALUES (?)", id);
+            dsl.insertInto(table(SOURCE_QUALIFIED)).columns(field("id", Long.class)).values(id).execute();
         }
     }
 

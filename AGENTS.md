@@ -33,8 +33,8 @@ jOOQ codegen and tests; `docker_java_config` is a build shim. CI: GitHub Actions
       file per routine under `changes/functions/<schema>/` and rollback bodies
       under `changes/functions-rollback/<schema>/`. `changes/functions/README.md`
       lists each routine's signature and purpose. The schemas are layered:
-      `dml_utils` is the caller-facing API, `dml_utils_lib` is the engine
-      (generic helpers plus the internal routines that populate and process
+      `dml_utils` is the caller-facing API, `dml_utils_lib` is the engine (generic helpers plus the internal routines
+      that populate and process
       boundaries), and `dml_utils_data` is the data layer (the shared domains,
       the `migration_key` composite type and the migration tables). Dependencies
       point downward (`dml_utils` -> `dml_utils_lib` -> `dml_utils_data`);

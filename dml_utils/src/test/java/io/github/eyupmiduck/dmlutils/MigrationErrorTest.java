@@ -1,8 +1,8 @@
 package io.github.eyupmiduck.dmlutils;
 
-import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.records.MigrationErrorRecord;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.udt.records.MigrationKeyRecord;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines;
 import org.junit.jupiter.api.Test;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
