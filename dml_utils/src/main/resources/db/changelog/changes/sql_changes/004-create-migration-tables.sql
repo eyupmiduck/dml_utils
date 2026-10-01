@@ -1,13 +1,15 @@
 CREATE TABLE dml_utils.migration_run
 (
-    run_id       bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    label        text        NOT NULL,
-    sql_text     text        NOT NULL,
-    chunk_size   integer     NOT NULL,
-    created_at   timestamptz NOT NULL DEFAULT pg_catalog.now(),
-    updated_at   timestamptz NOT NULL DEFAULT pg_catalog.now(),
-    completed_at timestamptz,
-    archived_at  timestamptz,
+    run_id                    bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    label                     text                    NOT NULL,
+    sql_text                  text                    NOT NULL,
+    chunk_size                integer                 NOT NULL,
+    driving_table_schema_name dml_utils.non_null_text NOT NULL,
+    driving_table_name        dml_utils.non_null_text NOT NULL,
+    created_at                timestamptz             NOT NULL DEFAULT pg_catalog.now(),
+    updated_at                timestamptz             NOT NULL DEFAULT pg_catalog.now(),
+    completed_at              timestamptz,
+    archived_at               timestamptz,
     CONSTRAINT migration_run_chunk_size_check CHECK (chunk_size > 0)
 );
 
@@ -21,6 +23,10 @@ COMMENT ON COLUMN dml_utils.migration_run.sql_text IS
     'The migration SQL recorded for the run; stored as given.';
 COMMENT ON COLUMN dml_utils.migration_run.chunk_size IS
     'Number of source rows per chunk used to compute the boundaries.';
+COMMENT ON COLUMN dml_utils.migration_run.driving_table_schema_name IS
+    'Schema of the driving table whose primary-key order defines the chunks.';
+COMMENT ON COLUMN dml_utils.migration_run.driving_table_name IS
+    'Driving table whose primary-key order defines the chunks.';
 COMMENT ON COLUMN dml_utils.migration_run.created_at IS
     'Row creation time.';
 COMMENT ON COLUMN dml_utils.migration_run.updated_at IS
@@ -46,7 +52,8 @@ CREATE TRIGGER migration_run_set_updated_at
     FOR EACH ROW
 EXECUTE FUNCTION dml_utils.set_updated_at();
 
--- label and chunk_size are fixed at creation; reject any attempt to change them.
+-- label, chunk_size and the driving table are fixed at creation; reject any
+-- attempt to change them.
 DROP TRIGGER IF EXISTS migration_run_immutable ON dml_utils.migration_run;
 CREATE TRIGGER migration_run_immutable
     BEFORE UPDATE
@@ -56,13 +63,20 @@ EXECUTE FUNCTION dml_utils.reject_migration_run_update();
 
 CREATE TABLE dml_utils.migration_boundary
 (
-    run_id       bigint      NOT NULL REFERENCES dml_utils.migration_run (run_id) ON DELETE CASCADE,
-    boundary_no  bigint      NOT NULL,
-    boundary_id  bigint      NOT NULL,
-    created_at   timestamptz NOT NULL DEFAULT pg_catalog.now(),
-    updated_at   timestamptz NOT NULL DEFAULT pg_catalog.now(),
+    run_id       bigint                  NOT NULL REFERENCES dml_utils.migration_run (run_id) ON DELETE CASCADE,
+    boundary_no  bigint                  NOT NULL,
+    boundary_id  dml_utils.migration_key NOT NULL,
+    created_at   timestamptz             NOT NULL DEFAULT pg_catalog.now(),
+    updated_at   timestamptz             NOT NULL DEFAULT pg_catalog.now(),
     completed_at timestamptz,
-    PRIMARY KEY (run_id, boundary_no)
+    PRIMARY KEY (run_id, boundary_no),
+    CONSTRAINT migration_boundary_key_check CHECK (
+        pg_catalog.num_nonnulls(
+                (boundary_id).bigint_value,
+                (boundary_id).text_value,
+                (boundary_id).uuid_value
+        ) = 1
+        )
 );
 
 COMMENT ON TABLE dml_utils.migration_boundary IS
@@ -74,7 +88,8 @@ COMMENT ON COLUMN dml_utils.migration_boundary.run_id IS
 COMMENT ON COLUMN dml_utils.migration_boundary.boundary_no IS
     'Boundary order within the run; 0 is the first chunk start.';
 COMMENT ON COLUMN dml_utils.migration_boundary.boundary_id IS
-    'Primary-key value of the first row in the chunk, or the captured maximum '
+    'Packed primary-key value (one of bigint_value, text_value or uuid_value in '
+        'migration_key) of the first row in the chunk, or the captured maximum '
         'for the final high-water boundary.';
 COMMENT ON COLUMN dml_utils.migration_boundary.created_at IS
     'Row creation time.';
@@ -82,9 +97,6 @@ COMMENT ON COLUMN dml_utils.migration_boundary.updated_at IS
     'Last update time, maintained by the set_updated_at() trigger.';
 COMMENT ON COLUMN dml_utils.migration_boundary.completed_at IS
     'Set when the chunk for this boundary is processed; NULL until then.';
-
-CREATE INDEX migration_boundary_id_idx
-    ON dml_utils.migration_boundary (run_id, boundary_id);
 
 DROP TRIGGER IF EXISTS migration_boundary_set_updated_at ON dml_utils.migration_boundary;
 CREATE TRIGGER migration_boundary_set_updated_at

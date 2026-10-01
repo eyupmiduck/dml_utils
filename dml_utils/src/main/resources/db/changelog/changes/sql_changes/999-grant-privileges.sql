@@ -2,8 +2,16 @@
 -- keep the statements idempotent.
 GRANT USAGE ON SCHEMA dml_utils TO dml_utils_caller;
 GRANT USAGE ON SCHEMA dml_utils_lib TO dml_utils_caller;
+
+-- PostgreSQL grants USAGE on types and domains to PUBLIC by default. Revoke
+-- that and grant it only to the caller, so the application's types follow the
+-- same least-privilege rule as its tables and routines.
+REVOKE USAGE ON DOMAIN dml_utils.non_null_text FROM public;
 GRANT USAGE ON DOMAIN dml_utils.non_null_text TO dml_utils_caller;
+REVOKE USAGE ON DOMAIN dml_utils.positive_integer FROM public;
 GRANT USAGE ON DOMAIN dml_utils.positive_integer TO dml_utils_caller;
+REVOKE USAGE ON TYPE dml_utils.migration_key FROM public;
+GRANT USAGE ON TYPE dml_utils.migration_key TO dml_utils_caller;
 
 REVOKE ALL ON dml_utils.migration_run FROM public;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dml_utils.migration_run TO dml_utils_caller;
@@ -42,19 +50,11 @@ GRANT EXECUTE ON FUNCTION dml_utils_lib.single_column_primary_key(
     dml_utils.non_null_text,
     dml_utils.non_null_text
     ) TO dml_utils_caller;
-REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_bigint_primary_key(
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.primary_key_kind(
     dml_utils.non_null_text,
     dml_utils.non_null_text
     ) FROM public;
-GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_bigint_primary_key(
-    dml_utils.non_null_text,
-    dml_utils.non_null_text
-    ) TO dml_utils_caller;
-REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_supported_primary_key(
-    dml_utils.non_null_text,
-    dml_utils.non_null_text
-    ) FROM public;
-GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_supported_primary_key(
+GRANT EXECUTE ON FUNCTION dml_utils_lib.primary_key_kind(
     dml_utils.non_null_text,
     dml_utils.non_null_text
     ) TO dml_utils_caller;
@@ -76,8 +76,9 @@ REVOKE EXECUTE ON FUNCTION dml_utils_lib.render_chunk_sql(
     dml_utils.non_null_text,
     dml_utils.non_null_text,
     name,
-    bigint,
-    bigint,
+    dml_utils.non_null_text,
+    text,
+    text,
     boolean
     ) FROM public;
 GRANT EXECUTE ON FUNCTION dml_utils_lib.render_chunk_sql(
@@ -86,8 +87,9 @@ GRANT EXECUTE ON FUNCTION dml_utils_lib.render_chunk_sql(
     dml_utils.non_null_text,
     dml_utils.non_null_text,
     name,
-    bigint,
-    bigint,
+    dml_utils.non_null_text,
+    text,
+    text,
     boolean
     ) TO dml_utils_caller;
 REVOKE EXECUTE ON FUNCTION dml_utils.populate_migration_boundaries(

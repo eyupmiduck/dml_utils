@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.UUID;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationBoundary.MIGRATION_BOUNDARY;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationError.MIGRATION_ERROR;
@@ -26,6 +27,13 @@ class RunMigrationChunksTest extends PostgresTestBase {
     private static final String SOURCE_QUALIFIED = PUBLIC_SCHEMA + "." + SOURCE;
     private static final String TEMPLATE =
             "UPDATE <driving_table> SET payload = 'done' WHERE <chunking_clause>";
+
+    /**
+     * Builds the ordered uuid used for source key {@code n}.
+     */
+    private static UUID uuid(int n) {
+        return UUID.fromString("00000000-0000-0000-0000-" + String.format("%012d", n));
+    }
 
     @AfterEach
     void dropSource() {
@@ -251,6 +259,37 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     /**
+     * A resumed run uses the driving table recorded when the run was created: a
+     * different input table is ignored, so the stored boundaries and the
+     * rendered chunk SQL always refer to the same table.
+     */
+    @Test
+    void resumeUsesTheStoredDrivingTable() {
+        createSource(1, 2, 3, 4);
+        String other = "run_chunks_other";
+        String otherQualified = PUBLIC_SCHEMA + "." + other;
+        dropTestTable(otherQualified);
+        createTestTable(otherQualified, "id bigint PRIMARY KEY, payload text");
+        for (long id = 1; id <= 4; id++) {
+            dsl.execute("INSERT INTO " + otherQualified + " (id) VALUES (?)", id);
+        }
+
+        String label = label("stored-table");
+        Routines.populateMigrationBoundaries(
+                dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label, TEMPLATE, 2);
+
+        // A resumed call naming a different driving table must be ignored.
+        Routines.runMigrationChunks(
+                dsl.configuration(), TEMPLATE, PUBLIC_SCHEMA, other, label, 2, "t");
+
+        assertEquals(4, doneCount(), "the stored driving table should be processed");
+        assertEquals(0, payloadCount(otherQualified, "done"),
+                "the input table must not be touched");
+
+        dropTestTable(otherQualified);
+    }
+
+    /**
      * On resume the stored {@code sql_text} is used and a differing input is
      * ignored; a resumed run whose stored SQL was adjusted via
      * {@code set_migration_run_sql_text} then uses the adjusted SQL.
@@ -411,6 +450,81 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     /**
+     * A table with a text primary key is chunked end to end, including a key
+     * that contains a quote (the rendered literal must escape it).
+     */
+    @Test
+    void processesATableWithATextPrimaryKey() {
+        dropTestTable(SOURCE_QUALIFIED);
+        createTestTable(SOURCE_QUALIFIED, "id text PRIMARY KEY, payload text");
+        for (String id : new String[]{"a", "b", "o'brien", "z"}) {
+            dsl.execute("INSERT INTO " + SOURCE_QUALIFIED + " (id) VALUES (?)", id);
+        }
+        String label = label("text-pk");
+
+        run(label, 2);
+
+        long runId = runId(label);
+        assertEquals(4, doneCount(), "every row of a text-keyed table should be processed");
+        assertTrue(runCompleted(runId), "the run should be marked complete");
+        assertEquals(List.of("a", "o'brien", "z"), textBoundaryValues(runId),
+                "the stored boundaries should hold the chunk start keys and the high-water key");
+    }
+
+    /**
+     * A table with a uuid primary key is chunked end to end, even though
+     * PostgreSQL has no {@code min}/{@code max} aggregate for uuid.
+     */
+    @Test
+    void processesATableWithAUuidPrimaryKey() {
+        dropTestTable(SOURCE_QUALIFIED);
+        createTestTable(SOURCE_QUALIFIED, "id uuid PRIMARY KEY, payload text");
+        for (int i = 1; i <= 6; i++) {
+            dsl.execute("INSERT INTO " + SOURCE_QUALIFIED + " (id) VALUES (?::uuid)",
+                    "00000000-0000-0000-0000-" + String.format("%012d", i));
+        }
+        String label = label("uuid-pk");
+
+        run(label, 2);
+
+        long runId = runId(label);
+        assertEquals(6, doneCount(), "every row of a uuid-keyed table should be processed");
+        assertTrue(runCompleted(runId), "the run should be marked complete");
+        assertEquals(
+                List.of(uuid(1), uuid(3), uuid(5), uuid(6)),
+                uuidBoundaryValues(runId),
+                "the stored boundaries should hold the chunk start keys and the high-water key");
+    }
+
+    /**
+     * Returns the run's boundary keys in order as their text attribute.
+     */
+    private List<String> textBoundaryValues(long runId) {
+        return dsl.select(MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .from(MIGRATION_BOUNDARY)
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .orderBy(MIGRATION_BOUNDARY.BOUNDARY_NO)
+                .fetch(MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .stream()
+                .map(key -> key.getTextValue())
+                .toList();
+    }
+
+    /**
+     * Returns the run's boundary keys in order as their uuid attribute.
+     */
+    private List<UUID> uuidBoundaryValues(long runId) {
+        return dsl.select(MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .from(MIGRATION_BOUNDARY)
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .orderBy(MIGRATION_BOUNDARY.BOUNDARY_NO)
+                .fetch(MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .stream()
+                .map(key -> key.getUuidValue())
+                .toList();
+    }
+
+    /**
      * The alias argument defaults to {@code t} at the SQL level when omitted.
      */
     @Test
@@ -486,7 +600,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
         for (int i = 0; i < expected.length; i++) {
             assertEquals(expected[i][0], actual.get(i).getBoundaryNo().longValue(),
                     "boundary_no " + i);
-            assertEquals(expected[i][1], actual.get(i).getBoundaryId().longValue(),
+            assertEquals(expected[i][1], actual.get(i).getBoundaryId().getBigintValue().longValue(),
                     "boundary_id " + i);
         }
     }
@@ -512,8 +626,12 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     private int payloadCount(String value) {
+        return payloadCount(SOURCE_QUALIFIED, value);
+    }
+
+    private int payloadCount(String qualifiedTable, String value) {
         return dsl.fetchOne(
-                        "SELECT count(*)::int FROM " + SOURCE_QUALIFIED + " WHERE payload = ?",
+                        "SELECT count(*)::int FROM " + qualifiedTable + " WHERE payload = ?",
                         value)
                 .get(0, Integer.class);
     }

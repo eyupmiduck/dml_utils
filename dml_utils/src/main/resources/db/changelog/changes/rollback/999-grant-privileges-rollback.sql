@@ -3,6 +3,8 @@
 GRANT EXECUTE ON FUNCTION dml_utils.set_updated_at() TO public;
 GRANT EXECUTE ON FUNCTION dml_utils.reject_migration_run_update() TO public;
 GRANT EXECUTE ON FUNCTION dml_utils.reject_migration_boundary_update() TO public;
+GRANT USAGE ON TYPE dml_utils.migration_key TO public;
+REVOKE USAGE ON TYPE dml_utils.migration_key FROM dml_utils_caller;
 REVOKE EXECUTE ON FUNCTION dml_utils.populate_migration_boundaries(
     dml_utils.non_null_text,
     dml_utils.non_null_text,
@@ -87,8 +89,9 @@ REVOKE EXECUTE ON FUNCTION dml_utils_lib.render_chunk_sql(
     dml_utils.non_null_text,
     dml_utils.non_null_text,
     name,
-    bigint,
-    bigint,
+    dml_utils.non_null_text,
+    text,
+    text,
     boolean
     ) FROM dml_utils_caller;
 GRANT EXECUTE ON FUNCTION dml_utils_lib.render_chunk_sql(
@@ -97,23 +100,16 @@ GRANT EXECUTE ON FUNCTION dml_utils_lib.render_chunk_sql(
     dml_utils.non_null_text,
     dml_utils.non_null_text,
     name,
-    bigint,
-    bigint,
+    dml_utils.non_null_text,
+    text,
+    text,
     boolean
     ) TO public;
-REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_bigint_primary_key(
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.primary_key_kind(
     dml_utils.non_null_text,
     dml_utils.non_null_text
     ) FROM dml_utils_caller;
-GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_bigint_primary_key(
-    dml_utils.non_null_text,
-    dml_utils.non_null_text
-    ) TO public;
-REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_supported_primary_key(
-    dml_utils.non_null_text,
-    dml_utils.non_null_text
-    ) FROM dml_utils_caller;
-GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_supported_primary_key(
+GRANT EXECUTE ON FUNCTION dml_utils_lib.primary_key_kind(
     dml_utils.non_null_text,
     dml_utils.non_null_text
     ) TO public;
@@ -142,7 +138,9 @@ GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_schema_exists(
 REVOKE SELECT, INSERT, UPDATE, DELETE ON dml_utils.migration_boundary FROM dml_utils_caller;
 REVOKE SELECT, INSERT, UPDATE, DELETE ON dml_utils.migration_error FROM dml_utils_caller;
 REVOKE SELECT, INSERT, UPDATE, DELETE ON dml_utils.migration_run FROM dml_utils_caller;
+GRANT USAGE ON DOMAIN dml_utils.positive_integer TO public;
 REVOKE USAGE ON DOMAIN dml_utils.positive_integer FROM dml_utils_caller;
+GRANT USAGE ON DOMAIN dml_utils.non_null_text TO public;
 REVOKE USAGE ON DOMAIN dml_utils.non_null_text FROM dml_utils_caller;
 REVOKE USAGE ON SCHEMA dml_utils_lib FROM dml_utils_caller;
 REVOKE USAGE ON SCHEMA dml_utils FROM dml_utils_caller;

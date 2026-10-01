@@ -8,8 +8,9 @@ the Liquibase CLI, without building anything or running Docker (see
 
 Liquibase loads two application schemas:
 
-- **`dml_utils`** — the application surface. It holds the shared domains (`non_null_text`, `positive_integer`) and the
-  fixed-row chunk migration tables
+- **`dml_utils`** — the application surface. It holds the shared domains (`non_null_text`, `positive_integer`), the
+  `migration_key` composite type that packs a boundary's primary-key value, and
+  the fixed-row chunk migration tables
   `migration_run` /
   `migration_boundary` (`migration_error` records failed chunks), populated by
   `dml_utils.populate_migration_boundaries`, plus
@@ -44,23 +45,26 @@ exactly once:
   `(<alias>.<pk> >= <start> AND <alias>.<pk> < <end>)` for every chunk except
   the last, which uses `<= <end>` so the captured maximum row is included.
 
-The driving table must have a **single `bigint` primary key**; the column name
-is read from the catalog, so it need not be `id`. Chunks are cut by row number
-over `ORDER BY <pk>`; rows inserted later with keys above the captured maximum
-are outside the final chunk and are not processed.
+The driving table must have a **single-column primary key** of type `smallint`,
+`integer`, `bigint`, `text` or `uuid`; the column name is read from the catalog,
+so it need not be `id`. The predicate compares the key to an explicitly cast
+literal (`t.id >= '1'::bigint`) so the planner can use the primary-key index.
+Chunks are cut by row number over `ORDER BY <pk>`; rows inserted later with keys
+above the captured maximum are outside the final chunk and are not processed.
 
 The first call for a `label` computes the boundaries (via
 `populate_migration_boundaries`) and then processes them. Re-running with the
-same `label` is safe: it resumes at the first unprocessed chunk using the SQL
-and chunk size recorded when the run was created (a differing `i_sql_text` or
-`i_chunk_size` is ignored, with a notice), and a run that is already complete is
-a no-op. To change the SQL of an existing run deliberately, use
+same `label` is safe: it resumes at the first unprocessed chunk using the SQL,
+chunk size and driving table recorded when the run was created (a differing
+`i_sql_text`, `i_chunk_size` or `i_driving_table_*` is ignored, with a notice),
+and a run that is already complete is a no-op. To change the SQL of an existing run deliberately, use
 `dml_utils.set_migration_run_sql_text`. Progress and completion are visible in
 `dml_utils.migration_run` and `dml_utils.migration_boundary`.
 
 ### Example: backfill a column
 
-Given a table with a single `bigint` primary key:
+Given a table with a single `bigint` primary key (any supported key type works
+the same way):
 
 ```sql
 CREATE TABLE app.events
@@ -88,10 +92,10 @@ The worker SQL for the first chunk is:
 ```sql
 UPDATE "app"."events" "t"
 SET region = 'unknown'
-WHERE (t.id >= 1 AND t.id < 10001)
+WHERE (t.id >= '1'::bigint AND t.id < '10001'::bigint)
 ```
 
-and the final chunk uses `t.id <= <max>`.
+and the final chunk uses `t.id <= '<max>'::bigint`.
 
 ### Example: a custom alias
 
@@ -127,12 +131,20 @@ SELECT dml_utils.run_migration_chunks(
 
 ```sql
 -- Is the run done, and when did it finish?
-SELECT run_id, label, chunk_size, completed_at, archived_at
+SELECT run_id,
+       label,
+       driving_table_schema_name,
+       driving_table_name,
+       chunk_size,
+       completed_at,
+       archived_at
 FROM dml_utils.migration_run
 WHERE label = 'events-region-backfill';
 
--- Per-chunk progress (completed_at IS NULL means still to do).
-SELECT boundary_no, boundary_id, completed_at
+-- Per-chunk progress (completed_at IS NULL means still to do). boundary_id is a
+-- migration_key; read the attribute for the table's key type, for example
+-- (boundary_id).bigint_value for a bigint key.
+SELECT boundary_no, boundary_id, (boundary_id).bigint_value, completed_at
 FROM dml_utils.migration_boundary
 WHERE run_id = (SELECT run_id
                 FROM dml_utils.migration_run

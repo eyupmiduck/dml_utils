@@ -13,3 +13,23 @@ CREATE DOMAIN dml_utils.non_null_text AS text
 
 COMMENT ON DOMAIN dml_utils.non_null_text IS
     'text that is NOT NULL and not blank.';
+
+-- Packs a single primary-key value of any supported kind into one column. The
+-- "exactly one attribute" invariant is enforced by the migration_boundary
+-- check constraint; the type is not wrapped in a domain because a domain over
+-- a UDT makes jOOQ generate a static-init cycle for the schema class.
+-- SQLFluff parses a composite type's attributes as bare words, so the
+-- layout:type:data_type alignment relaxation (see .sqlfluff) does not apply
+-- here and IntelliJ's aligned columns would trip LT01.
+-- noqa:disable=LT01
+CREATE TYPE dml_utils.migration_key AS
+(
+    bigint_value bigint,
+    text_value   text,
+    uuid_value   uuid
+);
+-- noqa:enable=LT01
+
+COMMENT ON TYPE dml_utils.migration_key IS
+    'Packed primary-key value for a chunk boundary; exactly one of bigint_value, '
+        'text_value or uuid_value holds the key.';

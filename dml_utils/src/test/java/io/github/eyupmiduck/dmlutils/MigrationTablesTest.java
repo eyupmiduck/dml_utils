@@ -1,11 +1,13 @@
 package io.github.eyupmiduck.dmlutils;
 
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils.udt.records.MigrationKeyRecord;
 import org.junit.jupiter.api.Test;
 
 import java.time.OffsetDateTime;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationBoundary.MIGRATION_BOUNDARY;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationRun.MIGRATION_RUN;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -25,6 +27,10 @@ class MigrationTablesTest extends PostgresTestBase {
         assertTrue(hasColumn("dml_utils", "migration_run", "run_id"), "run_id should exist");
         assertTrue(hasColumn("dml_utils", "migration_run", "created_at"), "created_at should exist");
         assertTrue(hasColumn("dml_utils", "migration_run", "updated_at"), "updated_at should exist");
+        assertTrue(hasColumn("dml_utils", "migration_run", "driving_table_schema_name"),
+                "driving_table_schema_name should exist");
+        assertTrue(hasColumn("dml_utils", "migration_run", "driving_table_name"),
+                "driving_table_name should exist");
 
         assertTrue(tableExists("dml_utils", "migration_boundary"), "migration_boundary should exist");
         assertTrue(hasColumn("dml_utils", "migration_boundary", "run_id"), "run_id should exist");
@@ -73,8 +79,10 @@ class MigrationTablesTest extends PostgresTestBase {
      */
     private Long insertRun() {
         return dsl.insertInto(MIGRATION_RUN)
-                .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE)
-                .values("migration-tables-test-" + System.nanoTime(), "SELECT 1", 1)
+                .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE,
+                        MIGRATION_RUN.DRIVING_TABLE_SCHEMA_NAME, MIGRATION_RUN.DRIVING_TABLE_NAME)
+                .values("migration-tables-test-" + System.nanoTime(), "SELECT 1", 1,
+                        PUBLIC_SCHEMA, "migration_tables_source")
                 .returningResult(MIGRATION_RUN.RUN_ID)
                 .fetchOne(MIGRATION_RUN.RUN_ID);
     }
@@ -87,9 +95,50 @@ class MigrationTablesTest extends PostgresTestBase {
         dsl.insertInto(MIGRATION_BOUNDARY)
                 .columns(MIGRATION_BOUNDARY.RUN_ID, MIGRATION_BOUNDARY.BOUNDARY_NO,
                         MIGRATION_BOUNDARY.BOUNDARY_ID)
-                .values(runId, 0L, 1L)
+                .values(runId, 0L, new MigrationKeyRecord(1L, null, null))
                 .execute();
         return runId;
+    }
+
+    /**
+     * The boundary key check constraint accepts a key with exactly one
+     * populated attribute.
+     */
+    @Test
+    void acceptsASingleAttributeBoundaryKey() {
+        Long runId = insertRun();
+
+        dsl.insertInto(MIGRATION_BOUNDARY)
+                .columns(MIGRATION_BOUNDARY.RUN_ID, MIGRATION_BOUNDARY.BOUNDARY_NO,
+                        MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .values(runId, 0L, new MigrationKeyRecord(null, "abc", null))
+                .execute();
+
+        assertEquals("abc", dsl.select(MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .from(MIGRATION_BOUNDARY)
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .getTextValue());
+    }
+
+    /**
+     * A boundary key with no populated attribute or more than one populated
+     * attribute violates the check constraint.
+     */
+    @Test
+    void rejectsBoundaryKeysWithZeroOrMultipleAttributes() {
+        Long runId = insertRun();
+
+        assertDomainViolation(() -> dsl.insertInto(MIGRATION_BOUNDARY)
+                .columns(MIGRATION_BOUNDARY.RUN_ID, MIGRATION_BOUNDARY.BOUNDARY_NO,
+                        MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .values(runId, 0L, new MigrationKeyRecord(null, null, null))
+                .execute());
+        assertDomainViolation(() -> dsl.insertInto(MIGRATION_BOUNDARY)
+                .columns(MIGRATION_BOUNDARY.RUN_ID, MIGRATION_BOUNDARY.BOUNDARY_NO,
+                        MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .values(runId, 0L, new MigrationKeyRecord(1L, "abc", null))
+                .execute());
     }
 
     /**
@@ -98,18 +147,19 @@ class MigrationTablesTest extends PostgresTestBase {
     @Test
     void rejectsNonPositiveChunkSize() {
         assertDomainViolation(() -> dsl.insertInto(MIGRATION_RUN)
-                .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE)
-                .values("chunk-size-check", "SELECT 1", 0)
+                .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE,
+                        MIGRATION_RUN.DRIVING_TABLE_SCHEMA_NAME, MIGRATION_RUN.DRIVING_TABLE_NAME)
+                .values("chunk-size-check", "SELECT 1", 0, PUBLIC_SCHEMA, "migration_tables_source")
                 .execute());
     }
 
     /**
-     * {@code label} and {@code chunk_size} are immutable: updating either is
-     * rejected, while updating a mutable column (for example {@code completed_at})
-     * is allowed.
+     * {@code label}, {@code chunk_size} and the driving table schema/name are
+     * immutable: updating any of them is rejected, while updating a mutable
+     * column (for example {@code completed_at}) is allowed.
      */
     @Test
-    void rejectsUpdatesToLabelAndChunkSize() {
+    void rejectsUpdatesToImmutableRunColumns() {
         Long runId = insertRun();
 
         assertSqlState("22023", () -> dsl.update(MIGRATION_RUN)
@@ -118,6 +168,14 @@ class MigrationTablesTest extends PostgresTestBase {
                 .execute());
         assertSqlState("22023", () -> dsl.update(MIGRATION_RUN)
                 .set(MIGRATION_RUN.CHUNK_SIZE, 99)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute());
+        assertSqlState("22023", () -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.DRIVING_TABLE_SCHEMA_NAME, "other")
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute());
+        assertSqlState("22023", () -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.DRIVING_TABLE_NAME, "other")
                 .where(MIGRATION_RUN.RUN_ID.eq(runId))
                 .execute());
 
@@ -137,7 +195,7 @@ class MigrationTablesTest extends PostgresTestBase {
         long runId = insertRunWithBoundary();
 
         assertSqlState("22023", () -> dsl.update(MIGRATION_BOUNDARY)
-                .set(MIGRATION_BOUNDARY.BOUNDARY_ID, 999L)
+                .set(MIGRATION_BOUNDARY.BOUNDARY_ID, new MigrationKeyRecord(999L, null, null))
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
                 .execute());
         assertSqlState("22023", () -> dsl.update(MIGRATION_BOUNDARY)

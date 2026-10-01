@@ -1,7 +1,7 @@
 [sqlfluff]
 dialect = postgres
 templater = raw
-max_line_length = 100
+max_line_length = 120
 
 # The grant/rollback files list one EXECUTE grant per routine and now exceed
 # SQLFluff's default 20 KB parse limit, which would silently stop linting them.
