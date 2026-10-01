@@ -21,6 +21,16 @@ REVOKE EXECUTE ON FUNCTION dml_utils.archive_migration_run(
 GRANT EXECUTE ON FUNCTION dml_utils.archive_migration_run(
     dml_utils.non_null_text
     ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils.process_migration_chunk(
+    bigint,
+    bigint,
+    dml_utils.non_null_text
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils.process_migration_chunk(
+    bigint,
+    bigint,
+    dml_utils.non_null_text
+    ) TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_no_active_run_for_label(
     dml_utils.non_null_text
     ) FROM dml_utils_caller;

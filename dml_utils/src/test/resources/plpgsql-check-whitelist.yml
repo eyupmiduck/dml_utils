@@ -5,6 +5,13 @@
 # against one of these entries (field by field; omit a field to match any
 # value). A finding with no match fails the test, and an entry that matches no
 # finding is reported as stale and also fails.
-#
-# There are no routines yet, so the list is empty.
-[ ]
+- schema: dml_utils
+  function: process_migration_chunk
+  level: security
+  statement: EXECUTE
+  message: text type variable is not sanitized
+  reason: >-
+    The routine executes the fully-formed chunk SQL built by
+    dml_utils_lib.render_chunk_sql from validated identifiers (%I) and typed
+    ids, and is SECURITY INVOKER, so a caller already holds the privileges the
+    SQL would use. The dynamic SQL is deliberate; see process_migration_chunk.sql.

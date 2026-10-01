@@ -50,6 +50,22 @@ exists for the label. Boundaries are inserted with `completed_at` null. An empty
 source produces a run with no boundaries. Later inserts above the captured
 maximum fall outside the terminal boundary and are not processed.
 
+### `dml_utils.process_migration_chunk(i_run_id, i_boundary_no, i_sql_text)`
+
+```sql
+i_run_id      bigint
+i_boundary_no bigint
+i_sql_text    dml_utils.non_null_text
+RETURNS void
+```
+
+`SECURITY INVOKER`. Claims one boundary by setting its `completed_at` (an atomic
+`UPDATE ... RETURNING` that locks the row for the caller's transaction) and then
+runs the fully-formed chunk SQL. Raises `no_data_found` (`P0002`) when the
+boundary does not exist or is already completed. If the chunk SQL fails, the
+transaction aborts and the claim rolls back, so the chunk is retried on the next
+run. Intended to run inside a `pg_background` worker, one call per chunk.
+
 ### `dml_utils.archive_migration_run(i_label)`
 
 ```sql

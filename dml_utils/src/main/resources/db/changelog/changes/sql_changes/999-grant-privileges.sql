@@ -103,3 +103,13 @@ REVOKE EXECUTE ON FUNCTION dml_utils.archive_migration_run(
 GRANT EXECUTE ON FUNCTION dml_utils.archive_migration_run(
     dml_utils.non_null_text
     ) TO dml_utils_caller;
+REVOKE EXECUTE ON FUNCTION dml_utils.process_migration_chunk(
+    bigint,
+    bigint,
+    dml_utils.non_null_text
+    ) FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils.process_migration_chunk(
+    bigint,
+    bigint,
+    dml_utils.non_null_text
+    ) TO dml_utils_caller;
