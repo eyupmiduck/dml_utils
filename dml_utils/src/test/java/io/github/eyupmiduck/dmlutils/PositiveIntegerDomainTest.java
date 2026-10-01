@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Verifies that the Liquibase changelog creates the
- * {@code dml_utils.positive_integer} domain with the expected constraints.
+ * {@code dml_utils_data.positive_integer} domain with the expected constraints.
  */
 class PositiveIntegerDomainTest extends PostgresTestBase {
 
@@ -15,9 +15,9 @@ class PositiveIntegerDomainTest extends PostgresTestBase {
      */
     @Test
     void acceptsPositiveValues() {
-        assertEquals(1, evaluate("1::dml_utils.positive_integer", Integer.class));
+        assertEquals(1, evaluate("1::dml_utils_data.positive_integer", Integer.class));
         assertEquals(Integer.MAX_VALUE,
-                evaluate("2147483647::dml_utils.positive_integer", Integer.class));
+                evaluate("2147483647::dml_utils_data.positive_integer", Integer.class));
     }
 
     /**
@@ -25,7 +25,7 @@ class PositiveIntegerDomainTest extends PostgresTestBase {
      */
     @Test
     void rejectsZero() {
-        assertDomainViolation(() -> evaluate("0::dml_utils.positive_integer", Integer.class));
+        assertDomainViolation(() -> evaluate("0::dml_utils_data.positive_integer", Integer.class));
     }
 
     /**
@@ -33,7 +33,7 @@ class PositiveIntegerDomainTest extends PostgresTestBase {
      */
     @Test
     void rejectsNegativeValues() {
-        assertDomainViolation(() -> evaluate("(-5)::dml_utils.positive_integer", Integer.class));
+        assertDomainViolation(() -> evaluate("(-5)::dml_utils_data.positive_integer", Integer.class));
     }
 
     /**
@@ -41,7 +41,7 @@ class PositiveIntegerDomainTest extends PostgresTestBase {
      */
     @Test
     void rejectsNull() {
-        assertDomainViolation(() -> evaluate("NULL::dml_utils.positive_integer", Integer.class));
+        assertDomainViolation(() -> evaluate("NULL::dml_utils_data.positive_integer", Integer.class));
     }
 
 }

@@ -37,8 +37,8 @@ GRANT CREATE ON SCHEMA public TO dml_utils_owner;
 CREATE SCHEMA IF NOT EXISTS liquibase AUTHORIZATION dml_utils_owner;
 
 -- plpgsql_check is compiled into this image and used for static analysis of
--- the dml_utils / dml_utils_lib routines (for example
--- SELECT plpgsql_check_function('dml_utils.set_updated_at()'::regprocedure)).
+-- the dml_utils / dml_utils_lib / dml_utils_data routines (for example
+-- SELECT plpgsql_check_function('dml_utils_data.set_updated_at()'::regprocedure)).
 -- pg_background is compiled into this image and runs SQL in background
 -- workers (autonomous transactions); the chunking routines will use it.
 -- These only create the extensions in the dml_utils database, and init scripts

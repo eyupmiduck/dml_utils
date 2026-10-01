@@ -23,7 +23,7 @@ class GrantPrivilegesTest extends PostgresTestBase {
                                     SELECT 1
                                     FROM pg_proc p
                                     JOIN pg_namespace n ON n.oid = p.pronamespace
-                                    WHERE n.nspname IN ('dml_utils', 'dml_utils_lib')
+                                    WHERE n.nspname IN ('dml_utils', 'dml_utils_lib', 'dml_utils_data')
                                       AND p.prokind = 'f'
                                       AND (
                                           p.proacl IS NULL
@@ -53,9 +53,9 @@ class GrantPrivilegesTest extends PostgresTestBase {
                                 FROM pg_type t
                                 JOIN pg_namespace n ON n.oid = t.typnamespace
                                 WHERE (n.nspname, t.typname) IN (
-                                    ('dml_utils', 'migration_key'),
-                                    ('dml_utils', 'non_null_text'),
-                                    ('dml_utils', 'positive_integer'))
+                                    ('dml_utils_data', 'migration_key'),
+                                    ('dml_utils_data', 'non_null_text'),
+                                    ('dml_utils_data', 'positive_integer'))
                                   AND (
                                       t.typacl IS NULL
                                       OR EXISTS (
@@ -81,7 +81,7 @@ class GrantPrivilegesTest extends PostgresTestBase {
                                 SELECT count(*)::int
                                 FROM pg_proc p
                                 JOIN pg_namespace n ON n.oid = p.pronamespace
-                                WHERE n.nspname IN ('dml_utils', 'dml_utils_lib')
+                                WHERE n.nspname IN ('dml_utils', 'dml_utils_lib', 'dml_utils_data')
                                   AND p.prokind = 'f'
                                   AND p.prorettype <> 'trigger'::regtype
                                   AND NOT pg_catalog.has_function_privilege(
@@ -107,18 +107,18 @@ class GrantPrivilegesTest extends PostgresTestBase {
                                     JOIN pg_namespace n ON n.oid = t.typnamespace
                                     CROSS JOIN LATERAL unnest(
                                         coalesce(t.typacl, '{}'::aclitem[])) AS a
-                                    WHERE n.nspname = 'dml_utils'
+                                    WHERE n.nspname = 'dml_utils_data'
                                       AND t.typname = 'migration_key'
                                       AND a::text LIKE 'dml_utils_caller=U%'
                                 )
                                 """)
                 .get(0, Boolean.class);
         assertTrue(Boolean.TRUE.equals(explicitUsage),
-                "the caller should have an explicit USAGE grant on dml_utils.migration_key");
+                "the caller should have an explicit USAGE grant on dml_utils_data.migration_key");
 
         assertTrue(Boolean.TRUE.equals(dsl.fetchOne(
                                 "SELECT pg_catalog.has_table_privilege('dml_utils_caller',"
-                                        + " 'dml_utils.migration_boundary', 'SELECT')")
+                                        + " 'dml_utils_data.migration_boundary', 'SELECT')")
                         .get(0, Boolean.class)),
                 "the caller should be able to select migration_boundary");
     }

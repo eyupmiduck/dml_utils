@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION dml_utils.reject_migration_run_update()
+CREATE OR REPLACE FUNCTION dml_utils_data.reject_migration_run_update()
     RETURNS trigger
     LANGUAGE plpgsql
     SECURITY INVOKER
@@ -21,6 +21,6 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION dml_utils.reject_migration_run_update IS
+COMMENT ON FUNCTION dml_utils_data.reject_migration_run_update IS
     'BEFORE UPDATE trigger that rejects any change to migration_run.label, '
         'migration_run.chunk_size or the driving table schema/name.';

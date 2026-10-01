@@ -1,9 +1,9 @@
-CREATE OR REPLACE FUNCTION dml_utils.populate_migration_boundaries(
-    i_schema_name dml_utils.non_null_text,
-    i_table_name dml_utils.non_null_text,
-    i_label dml_utils.non_null_text,
-    i_sql_text dml_utils.non_null_text,
-    i_chunk_size dml_utils.positive_integer
+CREATE OR REPLACE FUNCTION dml_utils_lib.populate_migration_boundaries(
+    i_schema_name dml_utils_data.non_null_text,
+    i_table_name dml_utils_data.non_null_text,
+    i_label dml_utils_data.non_null_text,
+    i_sql_text dml_utils_data.non_null_text,
+    i_chunk_size dml_utils_data.positive_integer
 )
     RETURNS bigint
     LANGUAGE plpgsql
@@ -42,14 +42,14 @@ BEGIN
     -- interpolating it into the dynamic SQL is safe.
     l_pack_expression := CASE l_key_kind
                              WHEN 'bigint' THEN
-                                 'ROW(id::bigint, NULL, NULL)::dml_utils.migration_key'
+                                 'ROW(id::bigint, NULL, NULL)::dml_utils_data.migration_key'
                              WHEN 'text' THEN
-                                 'ROW(NULL, id::text, NULL)::dml_utils.migration_key'
+                                 'ROW(NULL, id::text, NULL)::dml_utils_data.migration_key'
                              WHEN 'uuid' THEN
-                                 'ROW(NULL, NULL, id::uuid)::dml_utils.migration_key'
+                                 'ROW(NULL, NULL, id::uuid)::dml_utils_data.migration_key'
         END;
 
-    INSERT INTO dml_utils.migration_run (label, sql_text, chunk_size, driving_table_schema_name,
+    INSERT INTO dml_utils_data.migration_run (label, sql_text, chunk_size, driving_table_schema_name,
                                          driving_table_name)
     VALUES (i_label, i_sql_text, i_chunk_size, i_schema_name, i_table_name)
     RETURNING run_id
@@ -74,7 +74,7 @@ BEGIN
     -- parameters ($1, $2).
     EXECUTE pg_catalog.format(
             $chunk$
-        INSERT INTO dml_utils.migration_boundary (run_id, boundary_no, boundary_id, completed_at)
+        INSERT INTO dml_utils_data.migration_boundary (run_id, boundary_no, boundary_id, completed_at)
         WITH numbered AS (
             SELECT
                 %1$I AS id,
@@ -121,6 +121,6 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION dml_utils.populate_migration_boundaries IS
+COMMENT ON FUNCTION dml_utils_lib.populate_migration_boundaries IS
     'Creates a migration run for the label and populates its fixed-row chunk '
         'boundaries for the given table, returning the new run_id.';

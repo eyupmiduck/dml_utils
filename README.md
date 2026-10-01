@@ -6,25 +6,27 @@ the Liquibase CLI, without building anything or running Docker (see
 
 ## What is in the box
 
-Liquibase loads two application schemas:
+Liquibase loads three application schemas, layered so nothing lower depends on
+anything above it:
 
-- **`dml_utils`** — the application surface. It holds the shared domains (`non_null_text`, `positive_integer`), the
-  `migration_key` composite type that packs a boundary's primary-key value, and
-  the fixed-row chunk migration tables
-  `migration_run` /
-  `migration_boundary` (`migration_error` records failed chunks), populated by
-  `dml_utils.populate_migration_boundaries`, plus
-  `dml_utils.run_migration_chunks`, which processes those chunks one
-  `pg_background` worker at a time.
-- **`dml_utils_lib`** — generic helpers that take their parameters explicitly,
-  such as the catalog validation routines used before a migration run.
+- **`dml_utils`** — the caller-facing API: `dml_utils.run_migration_chunks`, plus
+  `set_migration_run_sql_text` and `archive_migration_run`. It depends on the
+  two schemas below.
+- **`dml_utils_lib`** — the engine: the generic catalog and template helpers and
+  the internal routines that populate boundaries, run one chunk and record
+  errors. It may use `dml_utils_data`, never `dml_utils`.
+- **`dml_utils_data`** — the data layer: the shared domains (`non_null_text`,
+  `positive_integer`), the `migration_key` composite type that packs a
+  boundary's primary-key value, and the fixed-row chunk migration tables
+  `migration_run` / `migration_boundary` (`migration_error` records failed
+  chunks), plus their trigger functions.
 
-Liquibase's own tracking tables are kept out of both schemas: they live in a
-dedicated `liquibase` schema as `liquibase.dml_utils_databasechangelog` and
+Liquibase's own tracking tables are kept out of all three schemas: they live in
+a dedicated `liquibase` schema as `liquibase.dml_utils_databasechangelog` and
 `liquibase.dml_utils_databasechangeloglock`.
 
 Every table carries `created_at`/`updated_at` (both `timestamptz NOT NULL
-DEFAULT now()`), and the shared `dml_utils.set_updated_at()` trigger keeps
+DEFAULT now()`), and the shared `dml_utils_data.set_updated_at()` trigger keeps
 `updated_at` current on every `UPDATE`, so a caller cannot bypass it.
 
 ## Processing a table in chunks
@@ -59,7 +61,7 @@ chunk size and driving table recorded when the run was created (a differing
 `i_sql_text`, `i_chunk_size` or `i_driving_table_*` is ignored, with a notice),
 and a run that is already complete is a no-op. To change the SQL of an existing run deliberately, use
 `dml_utils.set_migration_run_sql_text`. Progress and completion are visible in
-`dml_utils.migration_run` and `dml_utils.migration_boundary`.
+`dml_utils_data.migration_run` and `dml_utils_data.migration_boundary`.
 
 ### Example: backfill a column
 
@@ -138,16 +140,16 @@ SELECT run_id,
        chunk_size,
        completed_at,
        archived_at
-FROM dml_utils.migration_run
+FROM dml_utils_data.migration_run
 WHERE label = 'events-region-backfill';
 
 -- Per-chunk progress (completed_at IS NULL means still to do). boundary_id is a
 -- migration_key; read the attribute for the table's key type, for example
 -- (boundary_id).bigint_value for a bigint key.
 SELECT boundary_no, boundary_id, (boundary_id).bigint_value, completed_at
-FROM dml_utils.migration_boundary
+FROM dml_utils_data.migration_boundary
 WHERE run_id = (SELECT run_id
-                FROM dml_utils.migration_run
+                FROM dml_utils_data.migration_run
                 WHERE label = 'events-region-backfill'
                   AND archived_at IS NULL)
 ORDER BY boundary_no;
@@ -158,9 +160,9 @@ without the worker logs:
 
 ```sql
 SELECT boundary_no, sqlstate, message, created_at
-FROM dml_utils.migration_error
+FROM dml_utils_data.migration_error
 WHERE run_id = (SELECT run_id
-                FROM dml_utils.migration_run
+                FROM dml_utils_data.migration_run
                 WHERE label = 'events-region-backfill'
                   AND archived_at IS NULL)
 ORDER BY created_at;

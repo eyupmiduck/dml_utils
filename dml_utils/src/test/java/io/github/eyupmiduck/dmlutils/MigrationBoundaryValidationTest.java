@@ -1,17 +1,17 @@
 package io.github.eyupmiduck.dmlutils;
 
-import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.OffsetDateTime;
 
-import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationBoundary.MIGRATION_BOUNDARY;
-import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationRun.MIGRATION_RUN;
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Verifies that {@code dml_utils.populate_migration_boundaries} rejects invalid
+ * Verifies that {@code dml_utils_lib.populate_migration_boundaries} rejects invalid
  * input through its argument domains and its catalog validations, and writes
  * nothing when validation fails.
  */
@@ -253,13 +253,13 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
      */
     @Test
     void writesNothingWhenValidationFails() {
-        int runsBefore = countRows("dml_utils.migration_run");
-        int boundariesBefore = countRows("dml_utils.migration_boundary");
+        int runsBefore = countRows("dml_utils_data.migration_run");
+        int boundariesBefore = countRows("dml_utils_data.migration_boundary");
 
         assertSqlState("42P01", () -> populate(PUBLIC_SCHEMA, TABLE, 1));
 
-        assertEquals(runsBefore, countRows("dml_utils.migration_run"), "no run should be written");
-        assertEquals(boundariesBefore, countRows("dml_utils.migration_boundary"),
+        assertEquals(runsBefore, countRows("dml_utils_data.migration_run"), "no run should be written");
+        assertEquals(boundariesBefore, countRows("dml_utils_data.migration_boundary"),
                 "no boundary should be written");
     }
 
@@ -274,11 +274,11 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
 
         String label = uniqueLabel();
         long firstRun = populate(label);
-        int runsAfterFirst = countRows("dml_utils.migration_run");
+        int runsAfterFirst = countRows("dml_utils_data.migration_run");
 
         assertSqlState("23505", () -> populate(label));
 
-        assertEquals(runsAfterFirst, countRows("dml_utils.migration_run"),
+        assertEquals(runsAfterFirst, countRows("dml_utils_data.migration_run"),
                 "the rejected run should not be written");
         assertEquals(2, boundaries(firstRun).intValue(), "the first run is untouched");
     }

@@ -1,20 +1,20 @@
 package io.github.eyupmiduck.dmlutils;
 
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
-import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.MigrationBoundaryRecord;
-import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.MigrationRunRecord;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.records.MigrationBoundaryRecord;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.records.MigrationRunRecord;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.UUID;
 
-import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationBoundary.MIGRATION_BOUNDARY;
-import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationRun.MIGRATION_RUN;
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Verifies {@code dml_utils.populate_migration_boundaries}: it records a
+ * Verifies {@code dml_utils_lib.populate_migration_boundaries}: it records a
  * migration run and one fixed-row chunk boundary per chunk, ending with a
  * terminal high-water boundary at the captured maximum primary key.
  */
@@ -338,7 +338,7 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
     }
 
     private long populate(String label, int chunkSize) {
-        return Routines.populateMigrationBoundaries(
+        return io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
                 dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label, SQL_TEXT, chunkSize);
     }
 

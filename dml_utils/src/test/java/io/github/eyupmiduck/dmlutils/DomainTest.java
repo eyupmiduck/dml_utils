@@ -5,7 +5,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * Verifies that the Liquibase changelog creates the {@code dml_utils.non_null_text}
+ * Verifies that the Liquibase changelog creates the {@code dml_utils_data.non_null_text}
  * domain with the expected constraints.
  */
 class DomainTest extends PostgresTestBase {
@@ -15,7 +15,7 @@ class DomainTest extends PostgresTestBase {
      */
     @Test
     void nonNullTextAcceptsText() {
-        assertEquals("hello", evaluate("'hello'::dml_utils.non_null_text", String.class));
+        assertEquals("hello", evaluate("'hello'::dml_utils_data.non_null_text", String.class));
     }
 
     /**
@@ -23,7 +23,7 @@ class DomainTest extends PostgresTestBase {
      */
     @Test
     void nonNullTextRejectsNull() {
-        assertDomainViolation(() -> evaluate("NULL::dml_utils.non_null_text", String.class));
+        assertDomainViolation(() -> evaluate("NULL::dml_utils_data.non_null_text", String.class));
     }
 
     /**
@@ -32,7 +32,7 @@ class DomainTest extends PostgresTestBase {
      */
     @Test
     void nonNullTextRejectsEmptyString() {
-        assertDomainViolation(() -> evaluate("''::dml_utils.non_null_text", String.class));
+        assertDomainViolation(() -> evaluate("''::dml_utils_data.non_null_text", String.class));
     }
 
     /**
@@ -41,7 +41,7 @@ class DomainTest extends PostgresTestBase {
      */
     @Test
     void nonNullTextRejectsBlankString() {
-        assertDomainViolation(() -> evaluate("'   '::dml_utils.non_null_text", String.class));
+        assertDomainViolation(() -> evaluate("'   '::dml_utils_data.non_null_text", String.class));
     }
 
     /**
@@ -50,7 +50,7 @@ class DomainTest extends PostgresTestBase {
      */
     @Test
     void nonNullTextRejectsNonSpaceWhitespace() {
-        assertDomainViolation(() -> evaluate("E'\\t\\n\\r'::dml_utils.non_null_text", String.class));
+        assertDomainViolation(() -> evaluate("E'\\t\\n\\r'::dml_utils_data.non_null_text", String.class));
     }
 
     /**
@@ -62,7 +62,7 @@ class DomainTest extends PostgresTestBase {
      */
     @Test
     void nonNullTextAcceptsLetterV() {
-        assertEquals("vvv", evaluate("'vvv'::dml_utils.non_null_text", String.class));
+        assertEquals("vvv", evaluate("'vvv'::dml_utils_data.non_null_text", String.class));
     }
 
     /**
@@ -71,6 +71,6 @@ class DomainTest extends PostgresTestBase {
      */
     @Test
     void nonNullTextRejectsVerticalTab() {
-        assertDomainViolation(() -> evaluate("E'\\013'::dml_utils.non_null_text", String.class));
+        assertDomainViolation(() -> evaluate("E'\\013'::dml_utils_data.non_null_text", String.class));
     }
 }

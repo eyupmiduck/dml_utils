@@ -1,18 +1,18 @@
 package io.github.eyupmiduck.dmlutils;
 
-import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
-import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.MigrationErrorRecord;
-import io.github.eyupmiduck.dmlutils.jooq.dml_utils.udt.records.MigrationKeyRecord;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.records.MigrationErrorRecord;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.udt.records.MigrationKeyRecord;
 import org.junit.jupiter.api.Test;
 
-import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationBoundary.MIGRATION_BOUNDARY;
-import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationError.MIGRATION_ERROR;
-import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationRun.MIGRATION_RUN;
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationError.MIGRATION_ERROR;
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
- * Verifies {@code dml_utils.record_migration_error}: it inserts an error row for
+ * Verifies {@code dml_utils_lib.record_migration_error}: it inserts an error row for
  * a migration boundary, rejects invalid input, requires an existing boundary,
  * and is removed when the boundary is deleted.
  */

@@ -1,7 +1,7 @@
-CREATE OR REPLACE FUNCTION dml_utils.process_migration_chunk(
+CREATE OR REPLACE FUNCTION dml_utils_lib.process_migration_chunk(
     i_run_id bigint,
     i_boundary_no bigint,
-    i_sql_text dml_utils.non_null_text
+    i_sql_text dml_utils_data.non_null_text
 )
     RETURNS void
     LANGUAGE plpgsql
@@ -17,7 +17,7 @@ BEGIN
     -- processed only once. If the chunk SQL then fails, the worker transaction
     -- aborts and the claim rolls back, leaving the boundary unclaimed so a later
     -- run resumes it.
-    UPDATE dml_utils.migration_boundary
+    UPDATE dml_utils_data.migration_boundary
     SET completed_at = pg_catalog.now()
     WHERE run_id = i_run_id
       AND boundary_no = i_boundary_no
@@ -39,7 +39,7 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION dml_utils.process_migration_chunk IS
+COMMENT ON FUNCTION dml_utils_lib.process_migration_chunk IS
     'Claims one migration boundary and runs its chunk SQL in the caller''s '
         'transaction; raises P0002 when the boundary is missing or already '
         'completed. Intended to run inside a pg_background worker.';

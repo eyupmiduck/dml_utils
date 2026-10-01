@@ -1,6 +1,6 @@
 CREATE OR REPLACE FUNCTION dml_utils.set_migration_run_sql_text(
-    i_label dml_utils.non_null_text,
-    i_sql_text dml_utils.non_null_text
+    i_label dml_utils_data.non_null_text,
+    i_sql_text dml_utils_data.non_null_text
 )
     RETURNS void
     LANGUAGE plpgsql
@@ -14,7 +14,7 @@ BEGIN
 
     -- Only an unfinished run can have its SQL adjusted: a completed run's
     -- boundaries are already processed and must not be redefined.
-    UPDATE dml_utils.migration_run
+    UPDATE dml_utils_data.migration_run
     SET sql_text = i_sql_text
     WHERE label = i_label
       AND completed_at IS NULL;

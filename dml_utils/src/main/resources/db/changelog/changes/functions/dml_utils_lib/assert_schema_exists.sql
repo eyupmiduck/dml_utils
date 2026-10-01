@@ -1,5 +1,5 @@
 CREATE OR REPLACE FUNCTION dml_utils_lib.assert_schema_exists(
-    i_schema_name dml_utils.non_null_text
+    i_schema_name dml_utils_data.non_null_text
 )
     RETURNS void
     LANGUAGE plpgsql

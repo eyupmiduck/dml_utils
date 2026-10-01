@@ -1,12 +1,12 @@
 package io.github.eyupmiduck.dmlutils;
 
-import io.github.eyupmiduck.dmlutils.jooq.dml_utils.udt.records.MigrationKeyRecord;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.udt.records.MigrationKeyRecord;
 import org.junit.jupiter.api.Test;
 
 import java.time.OffsetDateTime;
 
-import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationBoundary.MIGRATION_BOUNDARY;
-import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationRun.MIGRATION_RUN;
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -23,30 +23,30 @@ class MigrationTablesTest extends PostgresTestBase {
      */
     @Test
     void migrationTablesAreLoaded() {
-        assertTrue(tableExists("dml_utils", "migration_run"), "migration_run should exist");
-        assertTrue(hasColumn("dml_utils", "migration_run", "run_id"), "run_id should exist");
-        assertTrue(hasColumn("dml_utils", "migration_run", "created_at"), "created_at should exist");
-        assertTrue(hasColumn("dml_utils", "migration_run", "updated_at"), "updated_at should exist");
-        assertTrue(hasColumn("dml_utils", "migration_run", "driving_table_schema_name"),
+        assertTrue(tableExists("dml_utils_data", "migration_run"), "migration_run should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_run", "run_id"), "run_id should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_run", "created_at"), "created_at should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_run", "updated_at"), "updated_at should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_run", "driving_table_schema_name"),
                 "driving_table_schema_name should exist");
-        assertTrue(hasColumn("dml_utils", "migration_run", "driving_table_name"),
+        assertTrue(hasColumn("dml_utils_data", "migration_run", "driving_table_name"),
                 "driving_table_name should exist");
 
-        assertTrue(tableExists("dml_utils", "migration_boundary"), "migration_boundary should exist");
-        assertTrue(hasColumn("dml_utils", "migration_boundary", "run_id"), "run_id should exist");
-        assertTrue(hasColumn("dml_utils", "migration_boundary", "boundary_no"), "boundary_no should exist");
-        assertTrue(hasColumn("dml_utils", "migration_boundary", "boundary_id"), "boundary_id should exist");
-        assertTrue(hasColumn("dml_utils", "migration_boundary", "created_at"), "created_at should exist");
-        assertTrue(hasColumn("dml_utils", "migration_boundary", "updated_at"), "updated_at should exist");
+        assertTrue(tableExists("dml_utils_data", "migration_boundary"), "migration_boundary should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_boundary", "run_id"), "run_id should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_boundary", "boundary_no"), "boundary_no should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_boundary", "boundary_id"), "boundary_id should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_boundary", "created_at"), "created_at should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_boundary", "updated_at"), "updated_at should exist");
 
-        assertTrue(tableExists("dml_utils", "migration_error"), "migration_error should exist");
-        assertTrue(hasColumn("dml_utils", "migration_error", "error_id"), "error_id should exist");
-        assertTrue(hasColumn("dml_utils", "migration_error", "run_id"), "run_id should exist");
-        assertTrue(hasColumn("dml_utils", "migration_error", "boundary_no"), "boundary_no should exist");
-        assertTrue(hasColumn("dml_utils", "migration_error", "sqlstate"), "sqlstate should exist");
-        assertTrue(hasColumn("dml_utils", "migration_error", "message"), "message should exist");
-        assertTrue(hasColumn("dml_utils", "migration_error", "created_at"), "created_at should exist");
-        assertTrue(hasColumn("dml_utils", "migration_error", "updated_at"), "updated_at should exist");
+        assertTrue(tableExists("dml_utils_data", "migration_error"), "migration_error should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_error", "error_id"), "error_id should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_error", "run_id"), "run_id should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_error", "boundary_no"), "boundary_no should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_error", "sqlstate"), "sqlstate should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_error", "message"), "message should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_error", "created_at"), "created_at should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_error", "updated_at"), "updated_at should exist");
     }
 
     /**
@@ -56,8 +56,8 @@ class MigrationTablesTest extends PostgresTestBase {
      */
     @Test
     void updatedAtIsMaintainedByTheTriggerOnMigrationRun() {
-        assertTrue(triggerExists("dml_utils", "migration_run", "migration_run_set_updated_at"),
-                "migration_run_set_updated_at should be attached to dml_utils.migration_run");
+        assertTrue(triggerExists("dml_utils_data", "migration_run", "migration_run_set_updated_at"),
+                "migration_run_set_updated_at should be attached to dml_utils_data.migration_run");
 
         Long runId = insertRun();
 
@@ -215,8 +215,8 @@ class MigrationTablesTest extends PostgresTestBase {
      */
     @Test
     void updatedAtTriggerIsAttachedToMigrationBoundary() {
-        assertTrue(triggerExists("dml_utils", "migration_boundary", "migration_boundary_set_updated_at"),
-                "migration_boundary_set_updated_at should be attached to dml_utils.migration_boundary");
+        assertTrue(triggerExists("dml_utils_data", "migration_boundary", "migration_boundary_set_updated_at"),
+                "migration_boundary_set_updated_at should be attached to dml_utils_data.migration_boundary");
     }
 
     /**
@@ -224,7 +224,7 @@ class MigrationTablesTest extends PostgresTestBase {
      */
     @Test
     void updatedAtTriggerIsAttachedToMigrationError() {
-        assertTrue(triggerExists("dml_utils", "migration_error", "migration_error_set_updated_at"),
-                "migration_error_set_updated_at should be attached to dml_utils.migration_error");
+        assertTrue(triggerExists("dml_utils_data", "migration_error", "migration_error_set_updated_at"),
+                "migration_error_set_updated_at should be attached to dml_utils_data.migration_error");
     }
 }

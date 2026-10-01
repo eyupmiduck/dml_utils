@@ -40,7 +40,7 @@ class PlpgsqlCheckTest extends PostgresTestBase {
 
         PlpgsqlCheck.Report report;
         try (Connection owner = openOwnerConnection()) {
-            report = PlpgsqlCheck.check(owner, List.of("dml_utils", "dml_utils_lib"), allowed);
+            report = PlpgsqlCheck.check(owner, List.of("dml_utils", "dml_utils_lib", "dml_utils_data"), allowed);
         }
 
         assertEquals(List.of(), report.unexpected(),

@@ -1,5 +1,5 @@
 CREATE OR REPLACE FUNCTION dml_utils.archive_migration_run(
-    i_label dml_utils.non_null_text
+    i_label dml_utils_data.non_null_text
 )
     RETURNS bigint
     LANGUAGE plpgsql
@@ -9,7 +9,7 @@ $$
 DECLARE
     l_run_id bigint;
 BEGIN
-    UPDATE dml_utils.migration_run
+    UPDATE dml_utils_data.migration_run
     SET archived_at = pg_catalog.now()
     WHERE label = i_label
       AND archived_at IS NULL

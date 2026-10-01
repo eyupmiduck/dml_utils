@@ -1,10 +1,10 @@
 CREATE OR REPLACE FUNCTION dml_utils.run_migration_chunks(
-    i_sql_text dml_utils.non_null_text,
-    i_driving_table_schema_name dml_utils.non_null_text,
-    i_driving_table_name dml_utils.non_null_text,
-    i_label dml_utils.non_null_text,
-    i_chunk_size dml_utils.positive_integer,
-    i_driving_table_alias dml_utils.non_null_text DEFAULT 't'
+    i_sql_text dml_utils_data.non_null_text,
+    i_driving_table_schema_name dml_utils_data.non_null_text,
+    i_driving_table_name dml_utils_data.non_null_text,
+    i_label dml_utils_data.non_null_text,
+    i_chunk_size dml_utils_data.positive_integer,
+    i_driving_table_alias dml_utils_data.non_null_text DEFAULT 't'
 )
     RETURNS void
     LANGUAGE plpgsql
@@ -49,7 +49,7 @@ BEGIN
            driving_table_name::text
     INTO l_run_id, l_completed_at, l_stored_sql_text, l_stored_chunk_size,
         l_stored_schema_name, l_stored_table_name
-    FROM dml_utils.migration_run
+    FROM dml_utils_data.migration_run
     WHERE label = i_label
       AND archived_at IS NULL;
 
@@ -88,7 +88,7 @@ BEGIN
         l_effective_table_name := i_driving_table_name;
 
         l_handle := public.pg_background_launch(pg_catalog.format(
-                'SELECT dml_utils.populate_migration_boundaries(%L, %L, %L, %L, %s) AS run_id',
+                'SELECT dml_utils_lib.populate_migration_boundaries(%L, %L, %L, %L, %s) AS run_id',
                 i_driving_table_schema_name,
                 i_driving_table_name,
                 i_label,
@@ -146,13 +146,13 @@ BEGIN
                    END,
                next.boundary_no = last.boundary_no
         INTO l_boundary_no, l_start_value, l_end_value, l_is_final
-        FROM dml_utils.migration_boundary AS b
-                 JOIN dml_utils.migration_boundary AS next
+        FROM dml_utils_data.migration_boundary AS b
+                 JOIN dml_utils_data.migration_boundary AS next
                       ON next.run_id = b.run_id
                           AND next.boundary_no = b.boundary_no + 1
                  CROSS JOIN LATERAL (
             SELECT max(boundary_no) AS boundary_no
-            FROM dml_utils.migration_boundary
+            FROM dml_utils_data.migration_boundary
             WHERE run_id = b.run_id
             ) AS last
         WHERE b.run_id = l_run_id
@@ -180,7 +180,7 @@ BEGIN
         SELECT *
         INTO l_result
         FROM public.pg_background_run(pg_catalog.format(
-                                              'SELECT dml_utils.process_migration_chunk(%s, %s, %L)',
+                                              'SELECT dml_utils_lib.process_migration_chunk(%s, %s, %L)',
                                               l_run_id, l_boundary_no, l_chunk_sql)
             , 0, 0, pg_catalog.format('run %s chunk %s', l_run_id, l_boundary_no));
 
@@ -191,7 +191,7 @@ BEGIN
             -- the original error is always re-raised. The ids are bigint (%s);
             -- the SQLSTATE and message are literals (%L).
             PERFORM public.pg_background_run(pg_catalog.format(
-                    'SELECT dml_utils.record_migration_error(%s, %s, %L, %L)',
+                    'SELECT dml_utils_lib.record_migration_error(%s, %s, %L, %L)',
                     l_run_id, l_boundary_no, l_result.sqlstate, l_result.error_message));
 
             RAISE EXCEPTION 'chunk % for run % failed: %', l_boundary_no, l_run_id,
@@ -202,7 +202,7 @@ BEGIN
 
     -- All boundaries are claimed and every chunk SQL already ran; record the run
     -- completion in the caller's transaction.
-    UPDATE dml_utils.migration_run
+    UPDATE dml_utils_data.migration_run
     SET completed_at = pg_catalog.now()
     WHERE run_id = l_run_id
       AND completed_at IS NULL;
@@ -213,4 +213,4 @@ COMMENT ON FUNCTION dml_utils.run_migration_chunks IS
     'Runs the chunk SQL for every fixed-row chunk of the driving table, one '
         'pg_background worker per chunk, resuming an active run for the label and '
         'recording its completion. A failed chunk is recorded in '
-        'dml_utils.migration_error before its error is re-raised.';
+        'dml_utils_data.migration_error before its error is re-raised.';

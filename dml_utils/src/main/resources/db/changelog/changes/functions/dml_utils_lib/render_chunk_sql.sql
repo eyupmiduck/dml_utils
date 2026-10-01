@@ -1,10 +1,10 @@
 CREATE OR REPLACE FUNCTION dml_utils_lib.render_chunk_sql(
-    i_sql_text dml_utils.non_null_text,
-    i_schema_name dml_utils.non_null_text,
-    i_table_name dml_utils.non_null_text,
-    i_table_alias dml_utils.non_null_text,
+    i_sql_text dml_utils_data.non_null_text,
+    i_schema_name dml_utils_data.non_null_text,
+    i_table_name dml_utils_data.non_null_text,
+    i_table_alias dml_utils_data.non_null_text,
     i_primary_key_name name,
-    i_key_kind dml_utils.non_null_text,
+    i_key_kind dml_utils_data.non_null_text,
     i_start_value text,
     i_end_value text,
     i_is_final boolean

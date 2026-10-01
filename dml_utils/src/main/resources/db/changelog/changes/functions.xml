@@ -15,31 +15,31 @@
          signature changes, add an explicit
          `DROP FUNCTION IF EXISTS <old signature>;` (for example another sqlFile
          in that routine's changeset) so the deprecated signature is removed. -->
-    <changeSet id="function-dml_utils.set_updated_at" author="dml_utils" dbms="postgresql"
+    <changeSet id="function-dml_utils_data.set_updated_at" author="dml_utils" dbms="postgresql"
                runOnChange="true">
-        <createProcedure path="functions/dml_utils/set_updated_at.sql" relativeToChangelogFile="true"/>
+        <createProcedure path="functions/dml_utils_data/set_updated_at.sql" relativeToChangelogFile="true"/>
         <rollback>
-            <sqlFile path="functions-rollback/dml_utils/set_updated_at-rollback.sql"
+            <sqlFile path="functions-rollback/dml_utils_data/set_updated_at-rollback.sql"
                      relativeToChangelogFile="true"/>
         </rollback>
     </changeSet>
 
-    <changeSet id="function-dml_utils.reject_migration_run_update" author="dml_utils"
+    <changeSet id="function-dml_utils_data.reject_migration_run_update" author="dml_utils"
                dbms="postgresql" runOnChange="true">
-        <createProcedure path="functions/dml_utils/reject_migration_run_update.sql"
+        <createProcedure path="functions/dml_utils_data/reject_migration_run_update.sql"
                          relativeToChangelogFile="true"/>
         <rollback>
-            <sqlFile path="functions-rollback/dml_utils/reject_migration_run_update-rollback.sql"
+            <sqlFile path="functions-rollback/dml_utils_data/reject_migration_run_update-rollback.sql"
                      relativeToChangelogFile="true"/>
         </rollback>
     </changeSet>
 
-    <changeSet id="function-dml_utils.reject_migration_boundary_update" author="dml_utils"
+    <changeSet id="function-dml_utils_data.reject_migration_boundary_update" author="dml_utils"
                dbms="postgresql" runOnChange="true">
-        <createProcedure path="functions/dml_utils/reject_migration_boundary_update.sql"
+        <createProcedure path="functions/dml_utils_data/reject_migration_boundary_update.sql"
                          relativeToChangelogFile="true"/>
         <rollback>
-            <sqlFile path="functions-rollback/dml_utils/reject_migration_boundary_update-rollback.sql"
+            <sqlFile path="functions-rollback/dml_utils_data/reject_migration_boundary_update-rollback.sql"
                      relativeToChangelogFile="true"/>
         </rollback>
     </changeSet>
@@ -114,12 +114,12 @@
         </rollback>
     </changeSet>
 
-    <changeSet id="function-dml_utils.populate_migration_boundaries" author="dml_utils"
+    <changeSet id="function-dml_utils_lib.populate_migration_boundaries" author="dml_utils"
                dbms="postgresql" runOnChange="true">
-        <createProcedure path="functions/dml_utils/populate_migration_boundaries.sql"
+        <createProcedure path="functions/dml_utils_lib/populate_migration_boundaries.sql"
                          relativeToChangelogFile="true"/>
         <rollback>
-            <sqlFile path="functions-rollback/dml_utils/populate_migration_boundaries-rollback.sql"
+            <sqlFile path="functions-rollback/dml_utils_lib/populate_migration_boundaries-rollback.sql"
                      relativeToChangelogFile="true"/>
         </rollback>
     </changeSet>
@@ -134,22 +134,22 @@
         </rollback>
     </changeSet>
 
-    <changeSet id="function-dml_utils.process_migration_chunk" author="dml_utils"
+    <changeSet id="function-dml_utils_lib.process_migration_chunk" author="dml_utils"
                dbms="postgresql" runOnChange="true">
-        <createProcedure path="functions/dml_utils/process_migration_chunk.sql"
+        <createProcedure path="functions/dml_utils_lib/process_migration_chunk.sql"
                          relativeToChangelogFile="true"/>
         <rollback>
-            <sqlFile path="functions-rollback/dml_utils/process_migration_chunk-rollback.sql"
+            <sqlFile path="functions-rollback/dml_utils_lib/process_migration_chunk-rollback.sql"
                      relativeToChangelogFile="true"/>
         </rollback>
     </changeSet>
 
-    <changeSet id="function-dml_utils.record_migration_error" author="dml_utils"
+    <changeSet id="function-dml_utils_lib.record_migration_error" author="dml_utils"
                dbms="postgresql" runOnChange="true">
-        <createProcedure path="functions/dml_utils/record_migration_error.sql"
+        <createProcedure path="functions/dml_utils_lib/record_migration_error.sql"
                          relativeToChangelogFile="true"/>
         <rollback>
-            <sqlFile path="functions-rollback/dml_utils/record_migration_error-rollback.sql"
+            <sqlFile path="functions-rollback/dml_utils_lib/record_migration_error-rollback.sql"
                      relativeToChangelogFile="true"/>
         </rollback>
     </changeSet>

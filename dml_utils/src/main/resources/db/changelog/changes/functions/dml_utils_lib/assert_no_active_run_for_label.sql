@@ -1,5 +1,5 @@
 CREATE OR REPLACE FUNCTION dml_utils_lib.assert_no_active_run_for_label(
-    i_label dml_utils.non_null_text
+    i_label dml_utils_data.non_null_text
 )
     RETURNS void
     LANGUAGE plpgsql
@@ -9,7 +9,7 @@ AS
 $$
 BEGIN
     IF EXISTS (SELECT 1
-               FROM dml_utils.migration_run
+               FROM dml_utils_data.migration_run
                WHERE label = i_label
                  AND archived_at IS NULL)
     THEN

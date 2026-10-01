@@ -32,11 +32,13 @@ jOOQ codegen and tests; `docker_java_config` is a build shim. CI: GitHub Actions
       changeset per routine (one `createProcedure` plus its rollback), with one
       file per routine under `changes/functions/<schema>/` and rollback bodies
       under `changes/functions-rollback/<schema>/`. `changes/functions/README.md`
-      lists each routine's signature and purpose. The `dml_utils` schema holds
-      the application surface, the shared domains and the `migration_key`
-      composite type (the packed primary-key value stored in
-      `migration_boundary.boundary_id`); `dml_utils_lib` holds the generic
-      helpers that take their parameters explicitly.
+      lists each routine's signature and purpose. The schemas are layered:
+      `dml_utils` is the caller-facing API, `dml_utils_lib` is the engine
+      (generic helpers plus the internal routines that populate and process
+      boundaries), and `dml_utils_data` is the data layer (the shared domains,
+      the `migration_key` composite type and the migration tables). Dependencies
+      point downward (`dml_utils` -> `dml_utils_lib` -> `dml_utils_data`);
+      nothing lower references a schema above it.
     - jOOQ classes are generated at build time into
       `target/generated-sources/jooq` by
       `testcontainers-jooq-codegen-maven-plugin`, which starts a real
@@ -106,12 +108,12 @@ jOOQ codegen and tests; `docker_java_config` is a build shim. CI: GitHub Actions
 - **Every table has `created_at` and `updated_at`.** Both are
   `timestamptz NOT NULL DEFAULT now()`; never `timestamp without time zone` and
   never a different column name. Attach the shared
-  `dml_utils.set_updated_at()` trigger (`BEFORE UPDATE ... FOR EACH ROW`) to the
+  `dml_utils_data.set_updated_at()` trigger (`BEFORE UPDATE ... FOR EACH ROW`) to the
   table so `updated_at` is refreshed on every `UPDATE` regardless of the caller;
   a caller must not have to set it, and must not be able to bypass it. Create a
   table together with its trigger in the same changeset (the shared function
   already exists). The migration tables are the reference implementation for the
-  columns and the trigger (`changes/sql_changes/004-create-migration-tables.sql`).
+  columns and the trigger (`changes/sql_changes/005-create-migration-tables.sql`).
 - **Every object has a comment.** Add a `COMMENT ON` for each schema, table,
   column, domain, function and procedure, describing what it is for. Comment a
   function or procedure at the end of the `.sql` file that creates it; comment
@@ -138,7 +140,7 @@ jOOQ codegen and tests; `docker_java_config` is a build shim. CI: GitHub Actions
   named `snake_case` without an `NNN-` prefix. `changes/functions.xml` contains
   one changeset per routine, with the id `function-<schema>.<name>` (one
   `createProcedure` plus its rollback). The schema is part of the id because the
-  same routine name can exist in both `dml_utils` and `dml_utils_lib`.
+  same routine name can exist in more than one schema.
   Overloads of one routine (same schema and name, different signature) share a
   single changeset.
 - Load a routine with the `createProcedure` change type and an external body:
@@ -150,9 +152,9 @@ jOOQ codegen and tests; `docker_java_config` is a build shim. CI: GitHub Actions
   parameter type leaves the old overload behind. When a signature changes, add
   an explicit `DROP FUNCTION IF EXISTS <old signature>;` (for example another
   `sqlFile` in the same changeset) so the deprecated signature is removed.
-- Type routine arguments with the `dml_utils` domains (for example
-  `non_null_text`, `positive_integer`) so null or invalid inputs fail
-  fast with a check-constraint violation.
+- Type routine arguments with the `dml_utils_data` domains (for example
+  `non_null_text`, `positive_integer`) so null or invalid inputs fail fast with
+  a check-constraint violation.
 - Use `SECURITY INVOKER` (the default). A routine must never require callers to
   hold privileges beyond what they would need to run its SQL directly: if a
   caller could run the statement itself, calling the routine must just work.
@@ -215,11 +217,11 @@ jOOQ codegen and tests; `docker_java_config` is a build shim. CI: GitHub Actions
     - `dml_utils/pom.xml` sets `globalUDTReferences=false`: the generated `UDTs`
       facade calls a static factory through an instance field, which `-Werror`
       rejects. The UDT type and record are still generated (for example
-      `...jooq.dml_utils.udt.records.MigrationKeyRecord`).
+      `...jooq.dml_utils_data.udt.records.MigrationKeyRecord`).
     - Do not wrap a composite type that a table in the same schema uses in a
       domain. The generated `Domains` -> UDT -> schema class -> tables ->
       `Domains` initialisation cycle throws during class loading.
-      `dml_utils.migration_key` is a bare composite type, and the "exactly one
+      `dml_utils_data.migration_key` is a bare composite type, and the "exactly one
       populated attribute" rule is a table check constraint (`migration_boundary_key_check`).
 
 ## Testing
