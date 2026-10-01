@@ -5,8 +5,10 @@ import liquibase.database.Database;
 import liquibase.database.DatabaseFactory;
 import liquibase.database.jvm.JdbcConnection;
 import liquibase.resource.ClassLoaderResourceAccessor;
-import org.jooq.*;
+import org.jooq.DSLContext;
+import org.jooq.Field;
 import org.jooq.Record;
+import org.jooq.SQLDialect;
 import org.jooq.exception.DataAccessException;
 import org.jooq.impl.DSL;
 import org.junit.jupiter.api.AfterAll;
@@ -52,6 +54,13 @@ abstract class PostgresTestBase {
     static final String LIQUIBASE_SCHEMA = "liquibase";
     static final String DATABASE_CHANGELOG_TABLE = "dml_utils_databasechangelog";
     static final String DATABASE_CHANGELOG_LOCK_TABLE = "dml_utils_databasechangeloglock";
+    /**
+     * The test-only fixture changelog (fixture tables the tests drive the
+     * routines over), applied to the template database after the production
+     * changelog.
+     */
+    private static final String FIXTURES_RESOURCE =
+            "db/changelog-fixtures/db.changelog-fixtures.xml";
     private static final String TEMPLATE_DATABASE = "dml_utils_template";
     private static final String OWNER_USER = "dml_utils_owner";
     private static final String OWNER_PASSWORD = "dml_utils_owner";
@@ -140,6 +149,13 @@ abstract class PostgresTestBase {
                         new ClassLoaderResourceAccessor(),
                         database);
                 liquibase.update();
+                // The test-only fixtures are a separate changelog (not part of
+                // the production master), applied to the same database.
+                Liquibase fixtures = new Liquibase(
+                        FIXTURES_RESOURCE,
+                        new ClassLoaderResourceAccessor(),
+                        database);
+                fixtures.update();
             }
             // Mark as a real template so nothing can connect to it, which
             // keeps CREATE DATABASE ... TEMPLATE always safe.
@@ -199,20 +215,8 @@ abstract class PostgresTestBase {
     }
 
     /**
-     * Returns a jOOQ table reference for a test table created at runtime (and
-     * therefore absent from the generated schema), so its rows can be read and
-     * written through the jOOQ DSL rather than raw SQL strings.
-     *
-     * @param qualifiedName the schema-qualified table name
-     * @return the table reference
-     */
-    protected static Table<?> table(String qualifiedName) {
-        return DSL.table(qualifiedName);
-    }
-
-    /**
-     * Returns a jOOQ field reference for a column of a test table created at
-     * runtime.
+     * Returns a jOOQ field reference by name, for fixture columns when no
+     * generated field is available.
      *
      * @param name the column name
      * @param type the column's Java type
@@ -280,27 +284,6 @@ abstract class PostgresTestBase {
      */
     protected Connection openOwnerConnection() throws SQLException {
         return openConnection(databaseName, OWNER_USER, OWNER_PASSWORD);
-    }
-
-    /**
-     * Creates a table owned by the test role, so SECURITY INVOKER routines that
-     * require ownership can operate on it.
-     *
-     * @param table   the table name
-     * @param columns the column definitions, without the surrounding
-     *                parentheses
-     */
-    protected void createTestTable(String table, String columns) {
-        dsl.execute("CREATE TABLE " + table + " (" + columns + ")");
-    }
-
-    /**
-     * Drops a table created by {@link #createTestTable}, if it exists.
-     *
-     * @param table the table name
-     */
-    protected void dropTestTable(String table) {
-        dsl.execute("DROP TABLE IF EXISTS " + table);
     }
 
     /**

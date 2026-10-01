@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="fixture-001-create-schema" author="dml_utils_test">
+        <sqlFile path="changes/001-create-fixture-schema.sql" relativeToChangelogFile="true"/>
+    </changeSet>
+
+    <changeSet id="fixture-002-create-tables" author="dml_utils_test">
+        <sqlFile path="changes/002-create-fixture-tables.sql" relativeToChangelogFile="true"/>
+    </changeSet>
+
+    <changeSet id="fixture-003-grant" author="dml_utils_test">
+        <sqlFile path="changes/003-grant-fixtures.sql" relativeToChangelogFile="true"/>
+    </changeSet>
+</databaseChangeLog>

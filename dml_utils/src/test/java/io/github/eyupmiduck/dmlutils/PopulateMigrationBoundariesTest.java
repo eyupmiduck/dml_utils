@@ -3,7 +3,8 @@ package io.github.eyupmiduck.dmlutils;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.records.MigrationBoundaryRecord;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.records.MigrationRunRecord;
-import org.junit.jupiter.api.AfterEach;
+import org.jooq.Table;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -11,6 +12,11 @@ import java.util.UUID;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestInteger.TEST_INTEGER;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestKey.TEST_KEY;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestText.TEST_TEXT;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestUuid.TEST_UUID;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -20,8 +26,6 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class PopulateMigrationBoundariesTest extends PostgresTestBase {
 
-    private static final String SOURCE = "migration_boundary_source";
-    private static final String SOURCE_QUALIFIED = PUBLIC_SCHEMA + "." + SOURCE;
     private static final String LABEL = "boundary-test-run";
     private static final String SQL_TEXT = "SELECT 1";
 
@@ -31,9 +35,14 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
      */
     private int labelCounter;
 
-    @AfterEach
-    void dropSource() {
-        dropTestTable(SOURCE_QUALIFIED);
+    /**
+     * Clears the fixture tables this class populates boundaries for.
+     */
+    @BeforeEach
+    void resetFixtures() {
+        for (Table<?> table : List.of(TEST_BIGINT, TEST_TEXT, TEST_UUID, TEST_INTEGER, TEST_KEY)) {
+            dsl.truncate(table).execute();
+        }
     }
 
     /**
@@ -41,8 +50,6 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
      */
     @Test
     void emptySourceCreatesRunWithNoBoundaries() {
-        createSource();
-
         long runId = populate(10);
 
         assertTrue(runId > 0, "a run id should be returned");
@@ -140,7 +147,7 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
 
         assertBoundaries(runId, new long[][]{{0, 1}, {1, 3}, {2, 5}, {3, 5}});
 
-        dsl.insertInto(table(SOURCE_QUALIFIED)).columns(field("id", Long.class)).values(100L).execute();
+        dsl.insertInto(TEST_BIGINT, TEST_BIGINT.ID).values(100L).execute();
 
         assertBoundaries(runId, new long[][]{{0, 1}, {1, 3}, {2, 5}, {3, 5}});
     }
@@ -167,12 +174,11 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
      */
     @Test
     void createsBoundariesForATextPrimaryKey() {
-        dropTestTable(SOURCE_QUALIFIED);
-        createTestTable(SOURCE_QUALIFIED, "id text PRIMARY KEY, payload text");
-        dsl.execute("INSERT INTO " + SOURCE_QUALIFIED + " (id)"
-                + " SELECT 'k' || lpad(g::text, 2, '0') FROM generate_series(1, 10) g");
+        for (int i = 1; i <= 10; i++) {
+            dsl.insertInto(TEST_TEXT, TEST_TEXT.ID).values("k" + String.format("%02d", i)).execute();
+        }
 
-        long runId = populate(4);
+        long runId = populate(TEST_TEXT, 4);
 
         List<MigrationBoundaryRecord> actual = boundaries(runId);
         assertEquals(4, actual.size(), "ten rows at chunk size four yield four boundaries");
@@ -189,15 +195,11 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
      */
     @Test
     void createsBoundariesForAUuidPrimaryKey() {
-        dropTestTable(SOURCE_QUALIFIED);
-        createTestTable(SOURCE_QUALIFIED, "id uuid PRIMARY KEY, payload text");
         for (int i = 1; i <= 10; i++) {
-            dsl.insertInto(table(SOURCE_QUALIFIED)).columns(field("id", UUID.class))
-                    .values(uuid(i))
-                    .execute();
+            dsl.insertInto(TEST_UUID, TEST_UUID.ID).values(uuid(i)).execute();
         }
 
-        long runId = populate(4);
+        long runId = populate(TEST_UUID, 4);
 
         List<MigrationBoundaryRecord> actual = boundaries(runId);
         assertEquals(4, actual.size(), "ten rows at chunk size four yield four boundaries");
@@ -213,11 +215,11 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
      */
     @Test
     void createsBoundariesForAnIntegerPrimaryKey() {
-        dropTestTable(SOURCE_QUALIFIED);
-        createTestTable(SOURCE_QUALIFIED, "id integer PRIMARY KEY, payload text");
-        dsl.execute("INSERT INTO " + SOURCE_QUALIFIED + " (id) SELECT generate_series(1, 10)");
+        for (int i = 1; i <= 10; i++) {
+            dsl.insertInto(TEST_INTEGER, TEST_INTEGER.ID).values(i).execute();
+        }
 
-        long runId = populate(4);
+        long runId = populate(TEST_INTEGER, 4);
 
         List<MigrationBoundaryRecord> actual = boundaries(runId);
         assertEquals(4, actual.size(), "ten rows at chunk size four yield four boundaries");
@@ -228,7 +230,7 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
     }
 
     /**
-     * The run records the supplied label, SQL text and chunk size.
+     * The run records the supplied label, SQL text, chunk size and driving table.
      */
     @Test
     void recordsLabelSqlTextAndChunkSize() {
@@ -243,8 +245,8 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
         assertEquals(label, run.getLabel());
         assertEquals(SQL_TEXT, run.getSqlText());
         assertEquals(5, run.getChunkSize());
-        assertEquals(PUBLIC_SCHEMA, run.getDrivingTableSchemaName());
-        assertEquals(SOURCE, run.getDrivingTableName());
+        assertEquals(TEST_BIGINT.getSchema().getName(), run.getDrivingTableSchemaName());
+        assertEquals(TEST_BIGINT.getName(), run.getDrivingTableName());
     }
 
     /**
@@ -267,12 +269,9 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
      */
     @Test
     void resolvesThePrimaryKeyColumnNameFromTheCatalog() {
-        dropTestTable(SOURCE_QUALIFIED);
-        createTestTable(SOURCE_QUALIFIED, "key bigint PRIMARY KEY, payload text");
-        dsl.insertInto(table(SOURCE_QUALIFIED)).columns(field("key", Long.class))
-                .values(1L).values(2L).values(3L).execute();
+        dsl.insertInto(TEST_KEY, TEST_KEY.KEY).values(1L).values(2L).values(3L).execute();
 
-        long runId = populate(2);
+        long runId = populate(TEST_KEY, 2);
 
         assertBoundaries(runId, new long[][]{{0, 1}, {1, 3}, {2, 3}});
     }
@@ -319,10 +318,8 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
     }
 
     private void createSource(long... ids) {
-        dropTestTable(SOURCE_QUALIFIED);
-        createTestTable(SOURCE_QUALIFIED, "id bigint PRIMARY KEY, payload text");
         for (long id : ids) {
-            dsl.insertInto(table(SOURCE_QUALIFIED)).columns(field("id", Long.class)).values(id).execute();
+            dsl.insertInto(TEST_BIGINT, TEST_BIGINT.ID).values(id).execute();
         }
     }
 
@@ -338,8 +335,17 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
     }
 
     private long populate(String label, int chunkSize) {
+        return populate(TEST_BIGINT, label, chunkSize);
+    }
+
+    private long populate(Table<?> table, int chunkSize) {
+        return populate(table, LABEL + "-" + ++labelCounter, chunkSize);
+    }
+
+    private long populate(Table<?> table, String label, int chunkSize) {
         return io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
-                dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label, SQL_TEXT, chunkSize);
+                dsl.configuration(), table.getSchema().getName(), table.getName(), label, SQL_TEXT,
+                chunkSize);
     }
 
     private List<MigrationBoundaryRecord> boundaries(long runId) {

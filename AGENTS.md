@@ -243,6 +243,15 @@ jOOQ codegen and tests; `docker_java_config` is a build shim. CI: GitHub Actions
   it verifies.
 - Prefer testing observable behavior rather than implementation details.
 - Add regression tests when fixing bugs.
+- Drive the routines over the shared **test fixtures**, not tables created ad
+  hoc in each test. The fixtures are Liquibase-managed in
+  `src/test/resources/db/changelog-fixtures/` (their own changelog, never part
+  of the production master), applied to the template database and granted to
+  `dml_utils_test`. A second, test-scoped codegen execution (`generate-jooq-fixtures`)
+  generates their jOOQ classes into `target/generated-test-sources/jooq`
+  (package `...jooqfixtures`), which compile into the test classpath only. Add a
+  fixture table there (one per shape the tests need) rather than calling
+  `CREATE TABLE` in a test, and reset it with `truncate` between tests.
 - The routines are statically analysed with the `plpgsql_check` extension (`PlpgsqlCheckTest`). It is compiled into the
   custom image, created in the
   template database, and available in dev databases via

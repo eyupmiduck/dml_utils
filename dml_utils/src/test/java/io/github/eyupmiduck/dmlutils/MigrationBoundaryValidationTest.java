@@ -1,13 +1,22 @@
 package io.github.eyupmiduck.dmlutils;
 
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines;
-import org.junit.jupiter.api.AfterEach;
+import org.jooq.Table;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.OffsetDateTime;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositePk.TEST_COMPOSITE_PK;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestInteger.TEST_INTEGER;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestNoPk.TEST_NO_PK;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestNumeric.TEST_NUMERIC;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestSmallint.TEST_SMALLINT;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestText.TEST_TEXT;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestUuid.TEST_UUID;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -17,8 +26,8 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class MigrationBoundaryValidationTest extends PostgresTestBase {
 
-    private static final String TABLE = "migration_validation_source";
-    private static final String TABLE_QUALIFIED = PUBLIC_SCHEMA + "." + TABLE;
+    private static final String FIXTURE_SCHEMA = "dml_utils_fixtures";
+    private static final String NO_SUCH_TABLE = "no_such_table";
     private static final String SQL_TEXT = "SELECT 1";
 
     /**
@@ -27,9 +36,12 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
      */
     private int labelCounter;
 
-    @AfterEach
-    void dropSource() {
-        dropTestTable(TABLE_QUALIFIED);
+    @BeforeEach
+    void resetFixtures() {
+        for (Table<?> table : java.util.List.of(TEST_BIGINT, TEST_INTEGER, TEST_SMALLINT, TEST_TEXT,
+                TEST_UUID, TEST_NO_PK, TEST_COMPOSITE_PK, TEST_NUMERIC)) {
+            dsl.truncate(table).execute();
+        }
     }
 
     /**
@@ -37,7 +49,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
      */
     @Test
     void rejectsNullSchemaName() {
-        assertDomainViolation(() -> populate(null, TABLE, 1));
+        assertDomainViolation(() -> populateByNames(null, TEST_BIGINT.getName(), 1));
     }
 
     /**
@@ -45,7 +57,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
      */
     @Test
     void rejectsNullTableName() {
-        assertDomainViolation(() -> populate(PUBLIC_SCHEMA, null, 1));
+        assertDomainViolation(() -> populateByNames(FIXTURE_SCHEMA, null, 1));
     }
 
     /**
@@ -53,7 +65,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
      */
     @Test
     void rejectsBlankTableName() {
-        assertDomainViolation(() -> populate(PUBLIC_SCHEMA, "   ", 1));
+        assertDomainViolation(() -> populateByNames(FIXTURE_SCHEMA, "   ", 1));
     }
 
     /**
@@ -62,7 +74,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     @Test
     void rejectsNullLabel() {
         assertDomainViolation(() -> Routines.populateMigrationBoundaries(
-                dsl.configuration(), PUBLIC_SCHEMA, TABLE, null, SQL_TEXT, 1));
+                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), null, SQL_TEXT, 1));
     }
 
     /**
@@ -71,7 +83,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     @Test
     void rejectsBlankLabel() {
         assertDomainViolation(() -> Routines.populateMigrationBoundaries(
-                dsl.configuration(), PUBLIC_SCHEMA, TABLE, "   ", SQL_TEXT, 1));
+                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), "   ", SQL_TEXT, 1));
     }
 
     /**
@@ -80,7 +92,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     @Test
     void rejectsNullSqlText() {
         assertDomainViolation(() -> Routines.populateMigrationBoundaries(
-                dsl.configuration(), PUBLIC_SCHEMA, TABLE, "null-sql-text", null, 1));
+                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), "null-sql-text", null, 1));
     }
 
     /**
@@ -89,7 +101,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     @Test
     void rejectsBlankSqlText() {
         assertDomainViolation(() -> Routines.populateMigrationBoundaries(
-                dsl.configuration(), PUBLIC_SCHEMA, TABLE, "blank-sql-text", "   ", 1));
+                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), "blank-sql-text", "   ", 1));
     }
 
     /**
@@ -97,7 +109,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
      */
     @Test
     void rejectsZeroChunkSize() {
-        assertDomainViolation(() -> populate(PUBLIC_SCHEMA, TABLE, 0));
+        assertDomainViolation(() -> populateByNames(FIXTURE_SCHEMA, TEST_BIGINT.getName(), 0));
     }
 
     /**
@@ -105,7 +117,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
      */
     @Test
     void rejectsNegativeChunkSize() {
-        assertDomainViolation(() -> populate(PUBLIC_SCHEMA, TABLE, -1));
+        assertDomainViolation(() -> populateByNames(FIXTURE_SCHEMA, TEST_BIGINT.getName(), -1));
     }
 
     /**
@@ -113,7 +125,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
      */
     @Test
     void rejectsNullChunkSize() {
-        assertDomainViolation(() -> populate(PUBLIC_SCHEMA, TABLE, null));
+        assertDomainViolation(() -> populateByNames(FIXTURE_SCHEMA, TEST_BIGINT.getName(), null));
     }
 
     /**
@@ -121,7 +133,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
      */
     @Test
     void rejectsUnknownSchema() {
-        assertSqlState("3F000", () -> populate("no_such_schema", TABLE, 1));
+        assertSqlState("3F000", () -> populateByNames("no_such_schema", TEST_BIGINT.getName(), 1));
     }
 
     /**
@@ -129,7 +141,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
      */
     @Test
     void rejectsUnknownTable() {
-        assertSqlState("42P01", () -> populate(PUBLIC_SCHEMA, TABLE, 1));
+        assertSqlState("42P01", () -> populateByNames(FIXTURE_SCHEMA, NO_SUCH_TABLE, 1));
     }
 
     /**
@@ -137,9 +149,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
      */
     @Test
     void rejectsTableWithoutPrimaryKey() {
-        createTestTable(TABLE_QUALIFIED, "id bigint, payload text");
-
-        assertSqlState("22023", () -> populate(PUBLIC_SCHEMA, TABLE, 1));
+        assertSqlState("22023", () -> populateTable(TEST_NO_PK, 1));
     }
 
     /**
@@ -147,9 +157,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
      */
     @Test
     void rejectsCompositePrimaryKey() {
-        createTestTable(TABLE_QUALIFIED, "a bigint, b bigint, PRIMARY KEY (a, b)");
-
-        assertSqlState("22023", () -> populate(PUBLIC_SCHEMA, TABLE, 1));
+        assertSqlState("22023", () -> populateTable(TEST_COMPOSITE_PK, 1));
     }
 
     /**
@@ -158,9 +166,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
      */
     @Test
     void rejectsUnsupportedPrimaryKeyType() {
-        createTestTable(TABLE_QUALIFIED, "id numeric PRIMARY KEY");
-
-        assertSqlState("22023", () -> populate(PUBLIC_SCHEMA, TABLE, 1));
+        assertSqlState("22023", () -> populateTable(TEST_NUMERIC, 1));
     }
 
     /**
@@ -168,11 +174,9 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
      */
     @Test
     void acceptsAnIntegerPrimaryKey() {
-        createTestTable(TABLE_QUALIFIED, "id integer PRIMARY KEY");
-        dsl.insertInto(table(TABLE_QUALIFIED)).columns(field("id", Integer.class))
-                .values(1).values(2).values(3).execute();
+        dsl.insertInto(TEST_INTEGER, TEST_INTEGER.ID).values(1).values(2).values(3).execute();
 
-        long runId = populate(PUBLIC_SCHEMA, TABLE, 2);
+        long runId = populateTable(TEST_INTEGER, 2);
 
         assertTrue(runId > 0, "an integer primary key should be accepted");
     }
@@ -182,11 +186,10 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
      */
     @Test
     void acceptsASmallintPrimaryKey() {
-        createTestTable(TABLE_QUALIFIED, "id smallint PRIMARY KEY");
-        dsl.insertInto(table(TABLE_QUALIFIED)).columns(field("id", Short.class))
-                .values((short) 1).values((short) 2).values((short) 3).execute();
+        dsl.insertInto(TEST_SMALLINT, TEST_SMALLINT.ID).values((short) 1).values((short) 2)
+                .values((short) 3).execute();
 
-        long runId = populate(PUBLIC_SCHEMA, TABLE, 2);
+        long runId = populateTable(TEST_SMALLINT, 2);
 
         assertTrue(runId > 0, "a smallint primary key should be accepted");
     }
@@ -196,10 +199,8 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
      */
     @Test
     void singleColumnPrimaryKeyReturnsTheColumnName() {
-        createTestTable(TABLE_QUALIFIED, "id bigint PRIMARY KEY");
-
         String column = io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines
-                .singleColumnPrimaryKey(dsl.configuration(), PUBLIC_SCHEMA, TABLE);
+                .singleColumnPrimaryKey(dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName());
 
         assertEquals("id", column);
     }
@@ -210,13 +211,9 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
      */
     @Test
     void primaryKeyKindIsBigintForIntegerTypes() {
-        for (String type : new String[]{"smallint", "integer", "bigint"}) {
-            dropTestTable(TABLE_QUALIFIED);
-            createTestTable(TABLE_QUALIFIED, "id " + type + " PRIMARY KEY");
-
-            assertEquals("bigint", primaryKeyKind(),
-                    () -> "expected bigint for " + type);
-        }
+        assertEquals("bigint", primaryKeyKind(TEST_SMALLINT));
+        assertEquals("bigint", primaryKeyKind(TEST_INTEGER));
+        assertEquals("bigint", primaryKeyKind(TEST_BIGINT));
     }
 
     /**
@@ -224,9 +221,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
      */
     @Test
     void primaryKeyKindIsTextForText() {
-        createTestTable(TABLE_QUALIFIED, "id text PRIMARY KEY");
-
-        assertEquals("text", primaryKeyKind());
+        assertEquals("text", primaryKeyKind(TEST_TEXT));
     }
 
     /**
@@ -234,9 +229,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
      */
     @Test
     void primaryKeyKindIsUuidForUuid() {
-        createTestTable(TABLE_QUALIFIED, "id uuid PRIMARY KEY");
-
-        assertEquals("uuid", primaryKeyKind());
+        assertEquals("uuid", primaryKeyKind(TEST_UUID));
     }
 
     /**
@@ -245,9 +238,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
      */
     @Test
     void primaryKeyKindRejectsUnsupportedType() {
-        createTestTable(TABLE_QUALIFIED, "id numeric PRIMARY KEY");
-
-        assertSqlState("22023", this::primaryKeyKind);
+        assertSqlState("22023", () -> primaryKeyKind(TEST_NUMERIC));
     }
 
     /**
@@ -255,13 +246,13 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
      */
     @Test
     void writesNothingWhenValidationFails() {
-        int runsBefore = countRows("dml_utils_data.migration_run");
-        int boundariesBefore = countRows("dml_utils_data.migration_boundary");
+        int runsBefore = dsl.fetchCount(MIGRATION_RUN);
+        int boundariesBefore = dsl.fetchCount(MIGRATION_BOUNDARY);
 
-        assertSqlState("42P01", () -> populate(PUBLIC_SCHEMA, TABLE, 1));
+        assertSqlState("42P01", () -> populateByNames(FIXTURE_SCHEMA, NO_SUCH_TABLE, 1));
 
-        assertEquals(runsBefore, countRows("dml_utils_data.migration_run"), "no run should be written");
-        assertEquals(boundariesBefore, countRows("dml_utils_data.migration_boundary"),
+        assertEquals(runsBefore, dsl.fetchCount(MIGRATION_RUN), "no run should be written");
+        assertEquals(boundariesBefore, dsl.fetchCount(MIGRATION_BOUNDARY),
                 "no boundary should be written");
     }
 
@@ -271,16 +262,15 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
      */
     @Test
     void rejectsLabelWithAnActiveRun() {
-        createTestTable(TABLE_QUALIFIED, "id bigint PRIMARY KEY, payload text");
-        dsl.insertInto(table(TABLE_QUALIFIED)).columns(field("id", Long.class)).values(1L).execute();
+        dsl.insertInto(TEST_BIGINT, TEST_BIGINT.ID).values(1L).execute();
 
         String label = uniqueLabel();
-        long firstRun = populate(label);
-        int runsAfterFirst = countRows("dml_utils_data.migration_run");
+        long firstRun = populateTable(TEST_BIGINT, label, 1);
+        int runsAfterFirst = dsl.fetchCount(MIGRATION_RUN);
 
-        assertSqlState("23505", () -> populate(label));
+        assertSqlState("23505", () -> populateTable(TEST_BIGINT, label, 1));
 
-        assertEquals(runsAfterFirst, countRows("dml_utils_data.migration_run"),
+        assertEquals(runsAfterFirst, dsl.fetchCount(MIGRATION_RUN),
                 "the rejected run should not be written");
         assertEquals(2, boundaries(firstRun).intValue(), "the first run is untouched");
     }
@@ -290,38 +280,44 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
      */
     @Test
     void allowsLabelReuseAfterTheRunIsArchived() {
-        createTestTable(TABLE_QUALIFIED, "id bigint PRIMARY KEY, payload text");
-        dsl.insertInto(table(TABLE_QUALIFIED)).columns(field("id", Long.class)).values(1L).execute();
+        dsl.insertInto(TEST_BIGINT, TEST_BIGINT.ID).values(1L).execute();
 
         String label = uniqueLabel();
-        long firstRun = populate(label);
+        long firstRun = populateTable(TEST_BIGINT, label, 1);
         dsl.update(MIGRATION_RUN)
                 .set(MIGRATION_RUN.ARCHIVED_AT, OffsetDateTime.now())
                 .where(MIGRATION_RUN.RUN_ID.eq(firstRun))
                 .execute();
 
-        long secondRun = populate(label);
+        long secondRun = populateTable(TEST_BIGINT, label, 1);
 
         assertNotEquals(firstRun, secondRun, "a new run should be created");
         assertEquals(2, runCount(label), "both runs for the label should exist");
     }
 
     /**
-     * Calls {@code dml_utils_lib.primary_key_kind} for the test table.
+     * Calls {@code dml_utils_lib.primary_key_kind} for the fixture table.
      */
-    private String primaryKeyKind() {
+    private String primaryKeyKind(Table<?> table) {
         return io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines
-                .primaryKeyKind(dsl.configuration(), PUBLIC_SCHEMA, TABLE);
+                .primaryKeyKind(dsl.configuration(), table.getSchema().getName(), table.getName());
     }
 
-    private long populate(String schema, String table, Integer chunkSize) {
-        return Routines.populateMigrationBoundaries(
-                dsl.configuration(), schema, table, uniqueLabel(), SQL_TEXT, chunkSize);
+    private long populateTable(Table<?> table, int chunkSize) {
+        return populateTable(table, uniqueLabel(), chunkSize);
     }
 
-    private long populate(String label) {
+    private long populateTable(Table<?> table, String label, int chunkSize) {
+        return populateByNames(table.getSchema().getName(), table.getName(), label, chunkSize);
+    }
+
+    private long populateByNames(String schema, String table, Integer chunkSize) {
+        return populateByNames(schema, table, uniqueLabel(), chunkSize);
+    }
+
+    private long populateByNames(String schema, String table, String label, Integer chunkSize) {
         return Routines.populateMigrationBoundaries(
-                dsl.configuration(), PUBLIC_SCHEMA, TABLE, label, SQL_TEXT, 1);
+                dsl.configuration(), schema, table, label, SQL_TEXT, chunkSize);
     }
 
     private String uniqueLabel() {
@@ -334,9 +330,5 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
 
     private Integer boundaries(long runId) {
         return dsl.fetchCount(MIGRATION_BOUNDARY, MIGRATION_BOUNDARY.RUN_ID.eq(runId));
-    }
-
-    private int countRows(String qualifiedTable) {
-        return dsl.selectCount().from(table(qualifiedTable)).fetchOne(0, Integer.class);
     }
 }
