@@ -34,12 +34,21 @@ i_driving_table_schema_name dml_utils_data.non_null_text
 i_driving_table_name        dml_utils_data.non_null_text
 i_label                     dml_utils_data.non_null_text
 i_chunk_size                dml_utils_data.positive_integer DEFAULT 1000
+i_threads                   dml_utils_data.positive_integer DEFAULT 1
 i_driving_table_alias       dml_utils_data.non_null_text DEFAULT 't'
 RETURNS void
 ```
 
 `VOLATILE`, `SECURITY INVOKER`. Processes every fixed-row chunk of the driving
-table, one `pg_background` worker per chunk. `i_sql_text` is a template with
+table, up to `i_threads` `pg_background` workers at a time (default 1). Each
+worker runs one chunk in its own transaction; the coordinator only schedules
+and holds no locks on the driving table. On a failed chunk the coordinator
+records it, stops launching new chunks, lets the workers already in flight
+commit their current chunk, and then re-raises the error, leaving the run
+incomplete so it can be resumed. `i_threads` must not exceed
+`max_worker_processes` (`22023` otherwise), and parallel execution is not
+always faster: the chunks never overlap, but they still contend for the same
+table's locks and pages. `i_sql_text` is a template with
 `<driving_table>` and `<chunking_clause>` (see `render_chunk_sql`). Reuses the
 active run for the label, or creates it by running
 `dml_utils_lib.populate_migration_boundaries` in a worker so its boundaries

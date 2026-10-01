@@ -218,7 +218,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
         assertSqlState("22012", () -> Routines.runMigrationChunks(
                 dsl.configuration(),
                 "UPDATE <driving_table> SET payload = (1 / 0)::text WHERE <chunking_clause>",
-                schema(TEST_BIGINT), name(TEST_BIGINT), label, 2, "t"));
+                schema(TEST_BIGINT), name(TEST_BIGINT), label, 2, 1, "t"));
 
         long runId = runId(label);
         assertTrue(!runCompleted(runId), "a failed run must not be marked complete");
@@ -311,7 +311,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
 
         // A resumed call with a different input must ignore the input.
         runWith(label, "UPDATE <driving_table> SET payload = 'ignored' WHERE <chunking_clause>",
-                2, TEST_BIGINT);
+                2, 1, TEST_BIGINT);
 
         assertEquals(4, payloadCount(TEST_BIGINT, "first"), "the stored SQL should be used on resume");
         assertEquals(0, payloadCount(TEST_BIGINT, "ignored"),
@@ -334,7 +334,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
                 "UPDATE <driving_table> SET payload = 'second' WHERE <chunking_clause>");
 
         runWith(label, "UPDATE <driving_table> SET payload = 'ignored' WHERE <chunking_clause>",
-                2, TEST_BIGINT);
+                2, 1, TEST_BIGINT);
 
         assertEquals(4, payloadCount(TEST_BIGINT, "second"), "the adjusted (stored) SQL should be used");
         assertEquals(0, payloadCount(TEST_BIGINT, "first"), "the original stored SQL should not be used");
@@ -370,7 +370,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     @Test
     void rejectsNullSqlText() {
         assertDomainViolation(() -> Routines.runMigrationChunks(
-                dsl.configuration(), null, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, "t"));
+                dsl.configuration(), null, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 1, "t"));
     }
 
     /**
@@ -379,7 +379,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     @Test
     void rejectsBlankLabel() {
         assertDomainViolation(() -> Routines.runMigrationChunks(
-                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "   ", 2, "t"));
+                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "   ", 2, 1, "t"));
     }
 
     /**
@@ -388,7 +388,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     @Test
     void rejectsNonPositiveChunkSize() {
         assertDomainViolation(() -> Routines.runMigrationChunks(
-                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 0, "t"));
+                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 0, 1, "t"));
     }
 
     /**
@@ -397,7 +397,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     @Test
     void rejectsNullAlias() {
         assertDomainViolation(() -> Routines.runMigrationChunks(
-                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, null));
+                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 1, null));
     }
 
     /**
@@ -492,6 +492,63 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     /**
+     * With several threads the run still processes every chunk and completes.
+     */
+    @Test
+    void processesAllChunksWithSeveralThreads() {
+        createSource(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+        String label = label("threads");
+
+        runWith(label, TEMPLATE, 4, 3, TEST_BIGINT);
+
+        long runId = runId(label);
+        assertEquals(10, doneCount(TEST_BIGINT), "all rows should be processed");
+        assertBoundaries(runId, new long[][]{{0, 1}, {1, 5}, {2, 9}, {3, 10}});
+        assertEquals(3, completedBoundaries(runId), "the three chunk boundaries should be completed");
+        assertTrue(runCompleted(runId), "the run should be marked complete");
+    }
+
+    /**
+     * When one chunk fails with several threads in flight, the failure is
+     * recorded, the chunks that did not fail still commit, and the run is left
+     * incomplete.
+     */
+    @Test
+    void aFailedChunkLeavesOtherThreadsCommittedAndTheRunIncomplete() {
+        createSource(1, 2, 3, 4);
+        String label = label("threads-error");
+        String template =
+                "UPDATE <driving_table> SET payload ="
+                        + " CASE WHEN id = 3 THEN (id / 0)::text ELSE 'done' END"
+                        + " WHERE <chunking_clause>";
+
+        assertSqlState("22012", () -> runWith(label, template, 1, 4, TEST_BIGINT));
+
+        long runId = runId(label);
+        assertFalse(runCompleted(runId), "a failed run must not be marked complete");
+        assertEquals(3, doneCount(TEST_BIGINT), "the chunks that did not fail should have committed");
+        MigrationErrorRecord error = dsl.selectFrom(MIGRATION_ERROR)
+                .where(MIGRATION_ERROR.RUN_ID.eq(runId))
+                .fetchOne();
+        assertNotNull(error, "the failed chunk should be recorded");
+        assertEquals("22012", error.getSqlstate());
+    }
+
+    /**
+     * Requesting more threads than the server allows is rejected.
+     */
+    @Test
+    void rejectsTooManyThreads() {
+        int tooMany = dsl.fetchOne(
+                        "SELECT pg_catalog.current_setting('max_worker_processes')::int")
+                .get(0, Integer.class) + 1;
+
+        assertSqlState("22023", () -> Routines.runMigrationChunks(
+                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2,
+                tooMany, "t"));
+    }
+
+    /**
      * The alias argument defaults to {@code t} at the SQL level when omitted.
      */
     @Test
@@ -582,12 +639,13 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     private void run(String label, int chunkSize, Table<?> table) {
-        runWith(label, TEMPLATE, chunkSize, table);
+        runWith(label, TEMPLATE, chunkSize, 1, table);
     }
 
-    private void runWith(String label, String template, int chunkSize, Table<?> table) {
+    private void runWith(String label, String template, int chunkSize, int threads, Table<?> table) {
         Routines.runMigrationChunks(
-                dsl.configuration(), template, schema(table), name(table), label, chunkSize, "t");
+                dsl.configuration(), template, schema(table), name(table), label, chunkSize, threads,
+                "t");
     }
 
     private long runId(String label) {
