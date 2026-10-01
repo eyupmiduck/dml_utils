@@ -18,11 +18,11 @@ DECLARE
     -- Control-character sentinels that stand in for one token each while the
     -- other token is being replaced, so a substituted value can never be
     -- re-scanned or rewritten.
-    l_driving_table_sentinel  constant text := pg_catalog.chr(1);
+    l_driving_table_sentinel   constant text := pg_catalog.chr(1);
     l_chunking_clause_sentinel constant text := pg_catalog.chr(2);
-    l_driving_table   text;
-    l_chunking_clause text;
-    l_rendered        text;
+    l_driving_table                     text;
+    l_chunking_clause                   text;
+    l_rendered                          text;
 BEGIN
     PERFORM dml_utils_lib.assert_chunking_template(i_sql_text => i_sql_text);
 

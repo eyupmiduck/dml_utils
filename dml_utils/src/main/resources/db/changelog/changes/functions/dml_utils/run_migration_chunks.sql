@@ -109,10 +109,10 @@ BEGIN
                       ON next.run_id = b.run_id
                           AND next.boundary_no = b.boundary_no + 1
                  CROSS JOIN LATERAL (
-                     SELECT max(boundary_no) AS boundary_no
-                     FROM dml_utils.migration_boundary
-                     WHERE run_id = b.run_id
-                     ) AS last
+            SELECT max(boundary_no) AS boundary_no
+            FROM dml_utils.migration_boundary
+            WHERE run_id = b.run_id
+            ) AS last
         WHERE b.run_id = l_run_id
           AND b.completed_at IS NULL
         ORDER BY b.boundary_no
