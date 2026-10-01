@@ -168,6 +168,18 @@
                                         <packageName>io.github.eyupmiduck.dmlutils.jooq</packageName>
                                         <directory>target/generated-sources/jooq</directory>
                                     </target>
+                                    <generate>
+                                        <!-- jOOQ's per-schema UDTs convenience
+                                             class calls the UDT's static factory
+                                             through the static instance field
+                                             (MIGRATION_KEY.MIGRATION_KEY(...)),
+                                             which javac flags as a static-method
+                                             call via an expression; with -Werror
+                                             that fails the build. The UDT type and
+                                             record are still generated; only the
+                                             convenience facade is skipped. -->
+                                        <globalUDTReferences>false</globalUDTReferences>
+                                    </generate>
                                 </generator>
                             </jooq>
                         </configuration>

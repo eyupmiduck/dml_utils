@@ -13,3 +13,28 @@ CREATE DOMAIN dml_utils.non_null_text AS text
 
 COMMENT ON DOMAIN dml_utils.non_null_text IS
     'text that is NOT NULL and not blank.';
+
+-- Packs a single primary-key value of any supported kind. Exactly one of the
+-- three attributes is populated; migration_key_value enforces that.
+CREATE TYPE dml_utils.migration_key AS (
+    bigint_value bigint,
+    text_value text,
+    uuid_value uuid
+);
+
+COMMENT ON TYPE dml_utils.migration_key IS
+    'Packed primary-key value for a chunk boundary; exactly one of bigint_value, '
+        'text_value or uuid_value holds the key.';
+
+-- Enforce the "exactly one attribute" invariant at the type level so every
+-- boundary_id is a well-formed key.
+CREATE DOMAIN dml_utils.migration_key_value AS dml_utils.migration_key
+    CONSTRAINT migration_key_value_single_value_check CHECK (
+        pg_catalog.num_nonnulls(
+            (value).bigint_value, (value).text_value, (value).uuid_value
+            ) = 1
+        );
+
+COMMENT ON DOMAIN dml_utils.migration_key_value IS
+    'migration_key with exactly one populated attribute: a bigint, text or uuid '
+        'primary-key value.';
