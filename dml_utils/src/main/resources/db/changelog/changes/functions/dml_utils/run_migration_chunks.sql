@@ -1,10 +1,10 @@
 CREATE OR REPLACE FUNCTION dml_utils.run_migration_chunks(
-    i_sql_text                  dml_utils.non_null_text,
+    i_sql_text dml_utils.non_null_text,
     i_driving_table_schema_name dml_utils.non_null_text,
-    i_driving_table_name        dml_utils.non_null_text,
-    i_label                     dml_utils.non_null_text,
-    i_chunk_size                dml_utils.positive_integer,
-    i_driving_table_alias       dml_utils.non_null_text DEFAULT 't'
+    i_driving_table_name dml_utils.non_null_text,
+    i_label dml_utils.non_null_text,
+    i_chunk_size dml_utils.positive_integer,
+    i_driving_table_alias dml_utils.non_null_text DEFAULT 't'
 )
     RETURNS void
     LANGUAGE plpgsql
@@ -106,8 +106,8 @@ BEGIN
         SELECT *
         INTO l_result
         FROM public.pg_background_run(pg_catalog.format(
-                'SELECT dml_utils.process_migration_chunk(%s, %s, %L)',
-                l_run_id, l_boundary_no, l_chunk_sql)
+                                              'SELECT dml_utils.process_migration_chunk(%s, %s, %L)',
+                                              l_run_id, l_boundary_no, l_chunk_sql)
             , 0, 0, pg_catalog.format('run %s chunk %s', l_run_id, l_boundary_no));
 
         IF l_result.has_error THEN

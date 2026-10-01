@@ -3,7 +3,7 @@ CREATE TABLE dml_utils.migration_run
     run_id       bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     label        text        NOT NULL,
     sql_text     text        NOT NULL,
-    chunk_size   integer NOT NULL,
+    chunk_size   integer     NOT NULL,
     created_at   timestamptz NOT NULL DEFAULT pg_catalog.now(),
     updated_at   timestamptz NOT NULL DEFAULT pg_catalog.now(),
     completed_at timestamptz,

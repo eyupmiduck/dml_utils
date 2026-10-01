@@ -17,13 +17,13 @@ BEGIN
     -- fixed literals, so this avoids regex escaping entirely.
     l_probe := pg_catalog.replace(i_sql_text, '<driving_table>', '');
     l_driving_table_count :=
-        (pg_catalog.length(i_sql_text) - pg_catalog.length(l_probe))
-            / pg_catalog.length('<driving_table>');
+            (pg_catalog.length(i_sql_text) - pg_catalog.length(l_probe))
+                / pg_catalog.length('<driving_table>');
 
     l_probe := pg_catalog.replace(i_sql_text, '<chunking_clause>', '');
     l_chunking_clause_count :=
-        (pg_catalog.length(i_sql_text) - pg_catalog.length(l_probe))
-            / pg_catalog.length('<chunking_clause>');
+            (pg_catalog.length(i_sql_text) - pg_catalog.length(l_probe))
+                / pg_catalog.length('<chunking_clause>');
 
     IF l_driving_table_count <> 1 THEN
         RAISE EXCEPTION 'i_sql_text must contain <driving_table> exactly once'

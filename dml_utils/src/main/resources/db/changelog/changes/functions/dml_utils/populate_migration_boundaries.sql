@@ -1,9 +1,9 @@
 CREATE OR REPLACE FUNCTION dml_utils.populate_migration_boundaries(
     i_schema_name dml_utils.non_null_text,
-    i_table_name  dml_utils.non_null_text,
-    i_label       dml_utils.non_null_text,
-    i_sql_text    dml_utils.non_null_text,
-    i_chunk_size  dml_utils.positive_integer
+    i_table_name dml_utils.non_null_text,
+    i_label dml_utils.non_null_text,
+    i_sql_text dml_utils.non_null_text,
+    i_chunk_size dml_utils.positive_integer
 )
     RETURNS bigint
     LANGUAGE plpgsql

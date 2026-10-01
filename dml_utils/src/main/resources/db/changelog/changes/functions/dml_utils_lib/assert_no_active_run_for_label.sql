@@ -8,12 +8,10 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.assert_no_active_run_for_label(
 AS
 $$
 BEGIN
-    IF EXISTS (
-        SELECT 1
-        FROM dml_utils.migration_run
-        WHERE label = i_label
-          AND archived_at IS NULL
-    )
+    IF EXISTS (SELECT 1
+               FROM dml_utils.migration_run
+               WHERE label = i_label
+                 AND archived_at IS NULL)
     THEN
         RAISE EXCEPTION 'an active run for label % already exists', i_label
             USING ERRCODE = '23505';

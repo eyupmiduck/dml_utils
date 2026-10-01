@@ -1,7 +1,7 @@
 CREATE OR REPLACE FUNCTION dml_utils.process_migration_chunk(
-    i_run_id      bigint,
+    i_run_id bigint,
     i_boundary_no bigint,
-    i_sql_text    dml_utils.non_null_text
+    i_sql_text dml_utils.non_null_text
 )
     RETURNS void
     LANGUAGE plpgsql

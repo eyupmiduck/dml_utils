@@ -8,8 +8,8 @@ the Liquibase CLI, without building anything or running Docker (see
 
 Liquibase loads two application schemas:
 
-- **`dml_utils`** — the application surface. It holds the shared domains
-  (`non_null_text`, `non_negative_integer`, `positive_integer`, and the array
+- **`dml_utils`** — the application surface. It holds the shared domains (`non_null_text`, `non_negative_integer`,
+  `positive_integer`, and the array
   domains) and the fixed-row chunk migration tables `migration_run` /
   `migration_boundary` populated by `dml_utils.populate_migration_boundaries`,
   plus `dml_utils.run_migration_chunks`, which processes those chunks one
@@ -59,7 +59,8 @@ is already complete is a no-op. Progress and completion are visible in
 Given a table with a single `bigint` primary key:
 
 ```sql
-CREATE TABLE app.events (
+CREATE TABLE app.events
+(
     id      bigint PRIMARY KEY,
     payload jsonb,
     region  text
@@ -70,19 +71,20 @@ Backfill `region` in chunks of 10,000 rows:
 
 ```sql
 SELECT dml_utils.run_migration_chunks(
-    i_sql_text                  =>
-        'UPDATE <driving_table> SET region = ''unknown'' WHERE <chunking_clause>',
-    i_driving_table_schema_name => 'app',
-    i_driving_table_name        => 'events',
-    i_label                     => 'events-region-backfill',
-    i_chunk_size                => 10000);
+               i_sql_text =>
+                   'UPDATE <driving_table> SET region = ''unknown'' WHERE <chunking_clause>',
+               i_driving_table_schema_name => 'app',
+               i_driving_table_name => 'events',
+               i_label => 'events-region-backfill',
+               i_chunk_size => 10000);
 ```
 
 The worker SQL for the first chunk is:
 
 ```sql
-UPDATE "app"."events" "t" SET region = 'unknown'
- WHERE (t.id >= 1 AND t.id < 10001)
+UPDATE "app"."events" "t"
+SET region = 'unknown'
+WHERE (t.id >= 1 AND t.id < 10001)
 ```
 
 and the final chunk uses `t.id <= <max>`.
@@ -94,14 +96,14 @@ every reference resolves:
 
 ```sql
 SELECT dml_utils.run_migration_chunks(
-    i_sql_text                  =>
-        'UPDATE <driving_table> SET payload = payload || ''{"migrated":true}'''
-        ' WHERE <chunking_clause>',
-    i_driving_table_schema_name => 'app',
-    i_driving_table_name        => 'events',
-    i_label                     => 'events-payload-migrate',
-    i_chunk_size                => 5000,
-    i_driving_table_alias       => 'e');
+               i_sql_text =>
+                   'UPDATE <driving_table> SET payload = payload || ''{"migrated":true}'''
+                       ' WHERE <chunking_clause>',
+               i_driving_table_schema_name => 'app',
+               i_driving_table_name => 'events',
+               i_label => 'events-payload-migrate',
+               i_chunk_size => 5000,
+               i_driving_table_alias => 'e');
 ```
 
 ### Requirements and behavior
@@ -128,8 +130,10 @@ WHERE label = 'events-region-backfill';
 -- Per-chunk progress (completed_at IS NULL means still to do).
 SELECT boundary_no, boundary_id, completed_at
 FROM dml_utils.migration_boundary
-WHERE run_id = (SELECT run_id FROM dml_utils.migration_run
-                WHERE label = 'events-region-backfill' AND archived_at IS NULL)
+WHERE run_id = (SELECT run_id
+                FROM dml_utils.migration_run
+                WHERE label = 'events-region-backfill'
+                  AND archived_at IS NULL)
 ORDER BY boundary_no;
 ```
 

@@ -50,7 +50,8 @@ exists for the label. Boundaries are inserted with `completed_at` null. An empty
 source produces a run with no boundaries. Later inserts above the captured
 maximum fall outside the terminal boundary and are not processed.
 
-### `dml_utils.run_migration_chunks(i_sql_text, i_driving_table_schema_name, i_driving_table_name, i_label, i_chunk_size [, i_driving_table_alias])`
+###
+`dml_utils.run_migration_chunks(i_sql_text, i_driving_table_schema_name, i_driving_table_name, i_label, i_chunk_size [, i_driving_table_alias])`
 
 ```sql
 i_sql_text                  dml_utils.non_null_text
@@ -170,7 +171,8 @@ RETURNS void
 unless `i_sql_text` contains `<driving_table>` and `<chunking_clause>` exactly
 once each.
 
-### `dml_utils_lib.render_chunk_sql(i_sql_text, i_schema_name, i_table_name, i_table_alias, i_primary_key_name, i_start_id, i_end_id, i_is_final)`
+###
+`dml_utils_lib.render_chunk_sql(i_sql_text, i_schema_name, i_table_name, i_table_alias, i_primary_key_name, i_start_id, i_end_id, i_is_final)`
 
 ```sql
 i_sql_text         dml_utils.non_null_text
