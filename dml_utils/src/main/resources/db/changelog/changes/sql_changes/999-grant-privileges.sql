@@ -14,6 +14,8 @@ REVOKE ALL ON dml_utils.migration_run FROM public;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dml_utils.migration_run TO dml_utils_caller;
 REVOKE ALL ON dml_utils.migration_boundary FROM public;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dml_utils.migration_boundary TO dml_utils_caller;
+REVOKE ALL ON dml_utils.migration_error FROM public;
+GRANT SELECT, INSERT, UPDATE, DELETE ON dml_utils.migration_error TO dml_utils_caller;
 
 -- Trigger functions are invoked by the trigger machinery, not by callers, so
 -- revoke PUBLIC EXECUTE and grant it to no one.
@@ -137,5 +139,17 @@ GRANT EXECUTE ON FUNCTION dml_utils.run_migration_chunks(
     dml_utils.non_null_text,
     dml_utils.non_null_text,
     dml_utils.positive_integer,
+    dml_utils.non_null_text
+    ) TO dml_utils_caller;
+REVOKE EXECUTE ON FUNCTION dml_utils.record_migration_error(
+    bigint,
+    bigint,
+    dml_utils.non_null_text,
+    dml_utils.non_null_text
+    ) FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils.record_migration_error(
+    bigint,
+    bigint,
+    dml_utils.non_null_text,
     dml_utils.non_null_text
     ) TO dml_utils_caller;

@@ -57,6 +57,18 @@ GRANT EXECUTE ON FUNCTION dml_utils.run_migration_chunks(
     dml_utils.positive_integer,
     dml_utils.non_null_text
     ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils.record_migration_error(
+    bigint,
+    bigint,
+    dml_utils.non_null_text,
+    dml_utils.non_null_text
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils.record_migration_error(
+    bigint,
+    bigint,
+    dml_utils.non_null_text,
+    dml_utils.non_null_text
+    ) TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_no_active_run_for_label(
     dml_utils.non_null_text
     ) FROM dml_utils_caller;
@@ -120,6 +132,7 @@ GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_schema_exists(
     dml_utils.non_null_text
     ) TO public;
 REVOKE SELECT, INSERT, UPDATE, DELETE ON dml_utils.migration_boundary FROM dml_utils_caller;
+REVOKE SELECT, INSERT, UPDATE, DELETE ON dml_utils.migration_error FROM dml_utils_caller;
 REVOKE SELECT, INSERT, UPDATE, DELETE ON dml_utils.migration_run FROM dml_utils_caller;
 REVOKE USAGE ON DOMAIN dml_utils.positive_integer FROM dml_utils_caller;
 REVOKE USAGE ON DOMAIN dml_utils.non_empty_non_null_boolean_array FROM dml_utils_caller;

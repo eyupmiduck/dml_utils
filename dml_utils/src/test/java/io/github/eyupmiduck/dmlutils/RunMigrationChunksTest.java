@@ -2,6 +2,7 @@ package io.github.eyupmiduck.dmlutils;
 
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.MigrationBoundaryRecord;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.MigrationErrorRecord;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -9,8 +10,10 @@ import java.time.OffsetDateTime;
 import java.util.List;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationBoundary.MIGRATION_BOUNDARY;
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationError.MIGRATION_ERROR;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationRun.MIGRATION_RUN;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -163,7 +166,19 @@ class RunMigrationChunksTest extends PostgresTestBase {
                 "UPDATE <driving_table> SET payload = (1 / 0)::text WHERE <chunking_clause>",
                 PUBLIC_SCHEMA, SOURCE, label, 2, "t"));
 
-        assertTrue(!runCompleted(runId(label)), "a failed run must not be marked complete");
+        long runId = runId(label);
+        assertTrue(!runCompleted(runId), "a failed run must not be marked complete");
+
+        // The failure is recorded in its own transaction, so the row survives
+        // the re-raise that rolled the caller's transaction back.
+        MigrationErrorRecord error = dsl.selectFrom(MIGRATION_ERROR)
+                .where(MIGRATION_ERROR.RUN_ID.eq(runId))
+                .fetchOne();
+        assertNotNull(error, "the failed chunk should be recorded");
+        assertEquals(0L, error.getBoundaryNo(), "the first chunk should be the failure");
+        assertEquals("22012", error.getSqlstate());
+        assertTrue(error.getMessage().contains("division by zero"),
+                () -> "unexpected message: " + error.getMessage());
     }
 
     /**

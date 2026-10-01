@@ -124,6 +124,15 @@ BEGIN
             , 0, 0, pg_catalog.format('run %s chunk %s', l_run_id, l_boundary_no));
 
         IF l_result.has_error THEN
+            -- Record the failure first, in its own worker/transaction, so the
+            -- row commits autonomously and survives the re-raise below (which
+            -- rolls the caller's transaction back). Recording is best effort:
+            -- the original error is always re-raised. The ids are bigint (%s);
+            -- the SQLSTATE and message are literals (%L).
+            PERFORM public.pg_background_run(pg_catalog.format(
+                    'SELECT dml_utils.record_migration_error(%s, %s, %L, %L)',
+                    l_run_id, l_boundary_no, l_result.sqlstate, l_result.error_message));
+
             RAISE EXCEPTION 'chunk % for run % failed: %', l_boundary_no, l_run_id,
                 l_result.error_message
                 USING ERRCODE = l_result.sqlstate;
@@ -142,4 +151,5 @@ $$;
 COMMENT ON FUNCTION dml_utils.run_migration_chunks IS
     'Runs the chunk SQL for every fixed-row chunk of the driving table, one '
         'pg_background worker per chunk, resuming an active run for the label and '
-        'recording its completion.';
+        'recording its completion. A failed chunk is recorded in '
+        'dml_utils.migration_error before its error is re-raised.';

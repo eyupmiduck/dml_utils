@@ -144,6 +144,16 @@
         </rollback>
     </changeSet>
 
+    <changeSet id="function-dml_utils.record_migration_error" author="dml_utils"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils/record_migration_error.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils/record_migration_error-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
     <changeSet id="function-dml_utils.set_migration_run_sql_text" author="dml_utils"
                dbms="postgresql" runOnChange="true">
         <createProcedure path="functions/dml_utils/set_migration_run_sql_text.sql"

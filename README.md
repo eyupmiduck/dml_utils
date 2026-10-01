@@ -11,8 +11,9 @@ Liquibase loads two application schemas:
 - **`dml_utils`** — the application surface. It holds the shared domains (`non_null_text`, `non_negative_integer`,
   `positive_integer`, and the array
   domains) and the fixed-row chunk migration tables `migration_run` /
-  `migration_boundary` populated by `dml_utils.populate_migration_boundaries`,
-  plus `dml_utils.run_migration_chunks`, which processes those chunks one
+  `migration_boundary` (`migration_error` records failed chunks), populated by
+  `dml_utils.populate_migration_boundaries`, plus
+  `dml_utils.run_migration_chunks`, which processes those chunks one
   `pg_background` worker at a time.
 - **`dml_utils_lib`** — generic helpers that take their parameters explicitly,
   such as the catalog validation routines used before a migration run.
@@ -135,6 +136,17 @@ WHERE run_id = (SELECT run_id
                 WHERE label = 'events-region-backfill'
                   AND archived_at IS NULL)
 ORDER BY boundary_no;
+```
+
+A failed chunk is recorded in `migration_error`, so a run can be diagnosed
+without the worker logs:
+
+```sql
+SELECT boundary_no, sqlstate, message, created_at
+FROM dml_utils.migration_error
+WHERE run_id = (SELECT run_id FROM dml_utils.migration_run
+                WHERE label = 'events-region-backfill' AND archived_at IS NULL)
+ORDER BY created_at;
 ```
 
 To re-run a label from scratch (for example after changing the chunk size),

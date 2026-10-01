@@ -114,6 +114,21 @@ boundary does not exist or is already completed. If the chunk SQL fails, the
 transaction aborts and the claim rolls back, so the chunk is retried on the next
 run. Intended to run inside a `pg_background` worker, one call per chunk.
 
+### `dml_utils.record_migration_error(i_run_id, i_boundary_no, i_sqlstate, i_message)`
+
+```sql
+i_run_id      bigint
+i_boundary_no bigint
+i_sqlstate    dml_utils.non_null_text
+i_message     dml_utils.non_null_text
+RETURNS void
+```
+
+`SECURITY INVOKER`. Inserts one row into `dml_utils.migration_error` for a failed
+chunk worker. Intended to run inside a `pg_background` worker so the row commits
+autonomously; `run_migration_chunks` calls it that way before re-raising a chunk
+failure, so the error outlives the aborted caller transaction.
+
 ### `dml_utils.set_migration_run_sql_text(i_label, i_sql_text)`
 
 ```sql

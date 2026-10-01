@@ -16,8 +16,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class MigrationTablesTest extends PostgresTestBase {
 
     /**
-     * Both migration tables exist in the {@code dml_utils} schema with the
-     * audit columns.
+     * The migration tables exist in the {@code dml_utils} schema with the
+     * expected columns.
      */
     @Test
     void migrationTablesAreLoaded() {
@@ -32,6 +32,15 @@ class MigrationTablesTest extends PostgresTestBase {
         assertTrue(hasColumn("dml_utils", "migration_boundary", "boundary_id"), "boundary_id should exist");
         assertTrue(hasColumn("dml_utils", "migration_boundary", "created_at"), "created_at should exist");
         assertTrue(hasColumn("dml_utils", "migration_boundary", "updated_at"), "updated_at should exist");
+
+        assertTrue(tableExists("dml_utils", "migration_error"), "migration_error should exist");
+        assertTrue(hasColumn("dml_utils", "migration_error", "error_id"), "error_id should exist");
+        assertTrue(hasColumn("dml_utils", "migration_error", "run_id"), "run_id should exist");
+        assertTrue(hasColumn("dml_utils", "migration_error", "boundary_no"), "boundary_no should exist");
+        assertTrue(hasColumn("dml_utils", "migration_error", "sqlstate"), "sqlstate should exist");
+        assertTrue(hasColumn("dml_utils", "migration_error", "message"), "message should exist");
+        assertTrue(hasColumn("dml_utils", "migration_error", "created_at"), "created_at should exist");
+        assertTrue(hasColumn("dml_utils", "migration_error", "updated_at"), "updated_at should exist");
     }
 
     /**
@@ -150,5 +159,14 @@ class MigrationTablesTest extends PostgresTestBase {
     void updatedAtTriggerIsAttachedToMigrationBoundary() {
         assertTrue(triggerExists("dml_utils", "migration_boundary", "migration_boundary_set_updated_at"),
                 "migration_boundary_set_updated_at should be attached to dml_utils.migration_boundary");
+    }
+
+    /**
+     * The {@code updated_at} trigger is attached to {@code migration_error}.
+     */
+    @Test
+    void updatedAtTriggerIsAttachedToMigrationError() {
+        assertTrue(triggerExists("dml_utils", "migration_error", "migration_error_set_updated_at"),
+                "migration_error_set_updated_at should be attached to dml_utils.migration_error");
     }
 }

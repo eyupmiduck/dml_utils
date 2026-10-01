@@ -101,3 +101,48 @@ CREATE TRIGGER migration_boundary_immutable
     ON dml_utils.migration_boundary
     FOR EACH ROW
 EXECUTE FUNCTION dml_utils.reject_migration_boundary_update();
+
+CREATE TABLE dml_utils.migration_error
+(
+    error_id    bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    run_id      bigint      NOT NULL,
+    boundary_no bigint      NOT NULL,
+    sqlstate    text        NOT NULL,
+    message     text        NOT NULL,
+    created_at  timestamptz NOT NULL DEFAULT pg_catalog.now(),
+    updated_at  timestamptz NOT NULL DEFAULT pg_catalog.now(),
+    CONSTRAINT migration_error_boundary_fk
+        FOREIGN KEY (run_id, boundary_no)
+            REFERENCES dml_utils.migration_boundary (run_id, boundary_no)
+            ON DELETE CASCADE
+);
+
+COMMENT ON TABLE dml_utils.migration_error IS
+    'One row per failed chunk worker, recording the SQLSTATE and message so a '
+        'run can be diagnosed without the worker logs.';
+COMMENT ON COLUMN dml_utils.migration_error.error_id IS
+    'Surrogate primary key identifying the error record.';
+COMMENT ON COLUMN dml_utils.migration_error.run_id IS
+    'Migration run whose chunk failed.';
+COMMENT ON COLUMN dml_utils.migration_error.boundary_no IS
+    'Boundary (chunk) of the run that failed.';
+COMMENT ON COLUMN dml_utils.migration_error.sqlstate IS
+    'SQLSTATE of the failure, as reported by the chunk worker.';
+COMMENT ON COLUMN dml_utils.migration_error.message IS
+    'Error message of the failure, as reported by the chunk worker.';
+COMMENT ON COLUMN dml_utils.migration_error.created_at IS
+    'Row creation time.';
+COMMENT ON COLUMN dml_utils.migration_error.updated_at IS
+    'Last update time, maintained by the set_updated_at() trigger.';
+
+-- Index the referencing side of the FK so a boundary (or run) delete does not
+-- scan migration_error for every cascaded row.
+CREATE INDEX migration_error_boundary_idx
+    ON dml_utils.migration_error (run_id, boundary_no);
+
+DROP TRIGGER IF EXISTS migration_error_set_updated_at ON dml_utils.migration_error;
+CREATE TRIGGER migration_error_set_updated_at
+    BEFORE UPDATE
+    ON dml_utils.migration_error
+    FOR EACH ROW
+EXECUTE FUNCTION dml_utils.set_updated_at();
