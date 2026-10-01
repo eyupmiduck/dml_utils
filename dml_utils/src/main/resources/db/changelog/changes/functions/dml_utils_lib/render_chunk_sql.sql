@@ -15,8 +15,14 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.render_chunk_sql(
 AS
 $$
 DECLARE
+    -- Control-character sentinels that stand in for one token each while the
+    -- other token is being replaced, so a substituted value can never be
+    -- re-scanned or rewritten.
+    l_driving_table_sentinel  constant text := pg_catalog.chr(1);
+    l_chunking_clause_sentinel constant text := pg_catalog.chr(2);
     l_driving_table   text;
     l_chunking_clause text;
+    l_rendered        text;
 BEGIN
     PERFORM dml_utils_lib.assert_chunking_template(i_sql_text => i_sql_text);
 
@@ -36,11 +42,26 @@ BEGIN
             CASE WHEN i_is_final THEN '<=' ELSE '<' END,
             i_end_id);
 
-    -- Both tokens are validated to occur exactly once; the replacements are
-    -- quoted, so a substituted value cannot reintroduce either token.
-    RETURN pg_catalog.replace(
-            pg_catalog.replace(i_sql_text, '<driving_table>', l_driving_table),
-            '<chunking_clause>', l_chunking_clause);
+    -- A quoted identifier could in principle contain a sentinel character;
+    -- reject that so the substitution below stays unambiguous.
+    IF pg_catalog.strpos(l_driving_table, l_driving_table_sentinel) > 0
+        OR pg_catalog.strpos(l_driving_table, l_chunking_clause_sentinel) > 0
+        OR pg_catalog.strpos(l_chunking_clause, l_driving_table_sentinel) > 0
+        OR pg_catalog.strpos(l_chunking_clause, l_chunking_clause_sentinel) > 0
+    THEN
+        RAISE EXCEPTION 'identifier contains a reserved substitution character'
+            USING ERRCODE = '22023';
+    END IF;
+
+    -- Replace each token with its sentinel first, then expand the sentinels.
+    -- The substituted values are inserted last and are never re-scanned, so a
+    -- value that literally contains the other token cannot mangle the output.
+    l_rendered := pg_catalog.replace(i_sql_text, '<driving_table>', l_driving_table_sentinel);
+    l_rendered := pg_catalog.replace(l_rendered, '<chunking_clause>', l_chunking_clause_sentinel);
+    l_rendered := pg_catalog.replace(l_rendered, l_driving_table_sentinel, l_driving_table);
+    l_rendered := pg_catalog.replace(l_rendered, l_chunking_clause_sentinel, l_chunking_clause);
+
+    RETURN l_rendered;
 END;
 $$;
 

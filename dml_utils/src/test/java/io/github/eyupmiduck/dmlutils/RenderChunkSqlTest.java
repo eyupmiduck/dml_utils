@@ -137,6 +137,30 @@ class RenderChunkSqlTest extends PostgresTestBase {
                 rendered);
     }
 
+    /**
+     * An identifier that literally contains a template token does not get
+     * rewritten: the substituted values are inserted after both tokens are
+     * replaced, so neither substitution can re-match the other's value.
+     */
+    @Test
+    void doesNotRewriteATokenInsideASubstitutedIdentifier() {
+        String rendered = Routines.renderChunkSql(
+                dsl.configuration(),
+                TEMPLATE,
+                "public",
+                "<chunking_clause>",
+                "t",
+                "id",
+                1L,
+                2L,
+                false);
+
+        assertEquals(
+                "UPDATE public.\"<chunking_clause>\" t SET processed = true"
+                        + " WHERE (t.id >= 1 AND t.id < 2)",
+                rendered);
+    }
+
     private String render(boolean isFinal, Long startId, Long endId) {
         return Routines.renderChunkSql(
                 dsl.configuration(), TEMPLATE, "public", "src", "t", "id", startId, endId, isFinal);
