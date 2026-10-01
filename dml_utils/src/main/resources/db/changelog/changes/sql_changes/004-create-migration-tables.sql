@@ -1,13 +1,15 @@
 CREATE TABLE dml_utils.migration_run
 (
-    run_id       bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    label        text        NOT NULL,
-    sql_text     text        NOT NULL,
-    chunk_size   integer     NOT NULL,
-    created_at   timestamptz NOT NULL DEFAULT pg_catalog.now(),
-    updated_at   timestamptz NOT NULL DEFAULT pg_catalog.now(),
-    completed_at timestamptz,
-    archived_at  timestamptz,
+    run_id                    bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    label                     text NOT NULL,
+    sql_text                  text NOT NULL,
+    chunk_size                integer NOT NULL,
+    driving_table_schema_name dml_utils.non_null_text NOT NULL,
+    driving_table_name        dml_utils.non_null_text NOT NULL,
+    created_at                timestamptz NOT NULL DEFAULT pg_catalog.now(),
+    updated_at                timestamptz NOT NULL DEFAULT pg_catalog.now(),
+    completed_at              timestamptz,
+    archived_at               timestamptz,
     CONSTRAINT migration_run_chunk_size_check CHECK (chunk_size > 0)
 );
 
@@ -21,6 +23,10 @@ COMMENT ON COLUMN dml_utils.migration_run.sql_text IS
     'The migration SQL recorded for the run; stored as given.';
 COMMENT ON COLUMN dml_utils.migration_run.chunk_size IS
     'Number of source rows per chunk used to compute the boundaries.';
+COMMENT ON COLUMN dml_utils.migration_run.driving_table_schema_name IS
+    'Schema of the driving table whose primary-key order defines the chunks.';
+COMMENT ON COLUMN dml_utils.migration_run.driving_table_name IS
+    'Driving table whose primary-key order defines the chunks.';
 COMMENT ON COLUMN dml_utils.migration_run.created_at IS
     'Row creation time.';
 COMMENT ON COLUMN dml_utils.migration_run.updated_at IS
@@ -46,7 +52,8 @@ CREATE TRIGGER migration_run_set_updated_at
     FOR EACH ROW
 EXECUTE FUNCTION dml_utils.set_updated_at();
 
--- label and chunk_size are fixed at creation; reject any attempt to change them.
+-- label, chunk_size and the driving table are fixed at creation; reject any
+-- attempt to change them.
 DROP TRIGGER IF EXISTS migration_run_immutable ON dml_utils.migration_run;
 CREATE TRIGGER migration_run_immutable
     BEFORE UPDATE

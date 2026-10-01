@@ -252,6 +252,37 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     /**
+     * A resumed run uses the driving table recorded when the run was created: a
+     * different input table is ignored, so the stored boundaries and the
+     * rendered chunk SQL always refer to the same table.
+     */
+    @Test
+    void resumeUsesTheStoredDrivingTable() {
+        createSource(1, 2, 3, 4);
+        String other = "run_chunks_other";
+        String otherQualified = PUBLIC_SCHEMA + "." + other;
+        dropTestTable(otherQualified);
+        createTestTable(otherQualified, "id bigint PRIMARY KEY, payload text");
+        for (long id = 1; id <= 4; id++) {
+            dsl.execute("INSERT INTO " + otherQualified + " (id) VALUES (?)", id);
+        }
+
+        String label = label("stored-table");
+        Routines.populateMigrationBoundaries(
+                dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label, TEMPLATE, 2);
+
+        // A resumed call naming a different driving table must be ignored.
+        Routines.runMigrationChunks(
+                dsl.configuration(), TEMPLATE, PUBLIC_SCHEMA, other, label, 2, "t");
+
+        assertEquals(4, doneCount(), "the stored driving table should be processed");
+        assertEquals(0, payloadCount(otherQualified, "done"),
+                "the input table must not be touched");
+
+        dropTestTable(otherQualified);
+    }
+
+    /**
      * On resume the stored {@code sql_text} is used and a differing input is
      * ignored; a resumed run whose stored SQL was adjusted via
      * {@code set_migration_run_sql_text} then uses the adjusted SQL.
@@ -595,8 +626,12 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     private int payloadCount(String value) {
+        return payloadCount(SOURCE_QUALIFIED, value);
+    }
+
+    private int payloadCount(String qualifiedTable, String value) {
         return dsl.fetchOne(
-                        "SELECT count(*)::int FROM " + SOURCE_QUALIFIED + " WHERE payload = ?",
+                        "SELECT count(*)::int FROM " + qualifiedTable + " WHERE payload = ?",
                         value)
                 .get(0, Integer.class);
     }

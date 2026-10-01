@@ -242,6 +242,8 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
         assertEquals(label, run.getLabel());
         assertEquals(SQL_TEXT, run.getSqlText());
         assertEquals(5, run.getChunkSize());
+        assertEquals(PUBLIC_SCHEMA, run.getDrivingTableSchemaName());
+        assertEquals(SOURCE, run.getDrivingTableName());
     }
 
     /**

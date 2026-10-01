@@ -37,8 +37,9 @@ RETURNS trigger
 
 `SECURITY INVOKER`, not callable by users (PUBLIC `EXECUTE` is revoked and it is
 granted to no one). The `BEFORE UPDATE ... FOR EACH ROW` trigger on
-`migration_run` that rejects any change to `label` or `chunk_size`, both fixed
-when the run is created.
+`migration_run` that rejects any change to `label`, `chunk_size` or the driving
+table (`driving_table_schema_name`, `driving_table_name`), all fixed when the run
+is created.
 
 ### `dml_utils.reject_migration_boundary_update()`
 
@@ -63,7 +64,8 @@ RETURNS bigint
 ```
 
 `SECURITY INVOKER`. Creates a `dml_utils.migration_run` row for the label, with
-the recorded SQL text and chunk size, then inserts one fixed-row chunk boundary
+the recorded SQL text, chunk size and driving table, then inserts one fixed-row
+chunk boundary
 per chunk plus a terminal high-water boundary at the captured maximum primary
 key; returns the new `run_id`. The source table must exist and have a single
 primary-key column of a supported type (`smallint`, `integer`, `bigint`, `text`
@@ -95,9 +97,12 @@ RETURNS void
 table, one `pg_background` worker per chunk. `i_sql_text` is a template with
 `<driving_table>` and `<chunking_clause>` (see `render_chunk_sql`). Reuses the
 active run for the label, or creates it by running `populate_migration_boundaries`
-in a worker so its boundaries commit before the chunks run. Each chunk worker
-claims its boundary and commits autonomously, so a re-run resumes at the first
-unclaimed boundary. Raises `unique_violation` (`23505`) when another active run
+in a worker so its boundaries commit before the chunks run. A resumed run uses
+the recorded SQL text, chunk size and driving table; a differing input is ignored
+with a notice, so the boundaries and the rendered chunk SQL always refer to the
+same table. Each chunk worker claims its boundary and commits autonomously, so a
+re-run resumes at the first unclaimed boundary. Raises `unique_violation`
+(`23505`) when another active run
 already exists for the label, and re-raises a chunk worker's failure with its
 original SQLSTATE. `RAISE NOTICE` and returns when the run is already complete.
 Run under `READ COMMITTED`; do not hold locks on the driving table across the

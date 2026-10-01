@@ -27,6 +27,10 @@ class MigrationTablesTest extends PostgresTestBase {
         assertTrue(hasColumn("dml_utils", "migration_run", "run_id"), "run_id should exist");
         assertTrue(hasColumn("dml_utils", "migration_run", "created_at"), "created_at should exist");
         assertTrue(hasColumn("dml_utils", "migration_run", "updated_at"), "updated_at should exist");
+        assertTrue(hasColumn("dml_utils", "migration_run", "driving_table_schema_name"),
+                "driving_table_schema_name should exist");
+        assertTrue(hasColumn("dml_utils", "migration_run", "driving_table_name"),
+                "driving_table_name should exist");
 
         assertTrue(tableExists("dml_utils", "migration_boundary"), "migration_boundary should exist");
         assertTrue(hasColumn("dml_utils", "migration_boundary", "run_id"), "run_id should exist");
@@ -75,8 +79,10 @@ class MigrationTablesTest extends PostgresTestBase {
      */
     private Long insertRun() {
         return dsl.insertInto(MIGRATION_RUN)
-                .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE)
-                .values("migration-tables-test-" + System.nanoTime(), "SELECT 1", 1)
+                .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE,
+                        MIGRATION_RUN.DRIVING_TABLE_SCHEMA_NAME, MIGRATION_RUN.DRIVING_TABLE_NAME)
+                .values("migration-tables-test-" + System.nanoTime(), "SELECT 1", 1,
+                        PUBLIC_SCHEMA, "migration_tables_source")
                 .returningResult(MIGRATION_RUN.RUN_ID)
                 .fetchOne(MIGRATION_RUN.RUN_ID);
     }
@@ -141,18 +147,19 @@ class MigrationTablesTest extends PostgresTestBase {
     @Test
     void rejectsNonPositiveChunkSize() {
         assertDomainViolation(() -> dsl.insertInto(MIGRATION_RUN)
-                .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE)
-                .values("chunk-size-check", "SELECT 1", 0)
+                .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE,
+                        MIGRATION_RUN.DRIVING_TABLE_SCHEMA_NAME, MIGRATION_RUN.DRIVING_TABLE_NAME)
+                .values("chunk-size-check", "SELECT 1", 0, PUBLIC_SCHEMA, "migration_tables_source")
                 .execute());
     }
 
     /**
-     * {@code label} and {@code chunk_size} are immutable: updating either is
-     * rejected, while updating a mutable column (for example {@code completed_at})
-     * is allowed.
+     * {@code label}, {@code chunk_size} and the driving table schema/name are
+     * immutable: updating any of them is rejected, while updating a mutable
+     * column (for example {@code completed_at}) is allowed.
      */
     @Test
-    void rejectsUpdatesToLabelAndChunkSize() {
+    void rejectsUpdatesToImmutableRunColumns() {
         Long runId = insertRun();
 
         assertSqlState("22023", () -> dsl.update(MIGRATION_RUN)
@@ -161,6 +168,14 @@ class MigrationTablesTest extends PostgresTestBase {
                 .execute());
         assertSqlState("22023", () -> dsl.update(MIGRATION_RUN)
                 .set(MIGRATION_RUN.CHUNK_SIZE, 99)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute());
+        assertSqlState("22023", () -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.DRIVING_TABLE_SCHEMA_NAME, "other")
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute());
+        assertSqlState("22023", () -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.DRIVING_TABLE_NAME, "other")
                 .where(MIGRATION_RUN.RUN_ID.eq(runId))
                 .execute());
 

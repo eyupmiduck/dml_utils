@@ -17,7 +17,11 @@ DECLARE
     l_completed_at       timestamptz;
     l_stored_sql_text    text;
     l_stored_chunk_size  integer;
+    l_stored_schema_name text;
+    l_stored_table_name  text;
     l_effective_sql_text text;
+    l_effective_schema_name text;
+    l_effective_table_name  text;
     l_key_kind           text;
     l_boundary_no        bigint;
     l_start_value        text;
@@ -30,21 +34,17 @@ DECLARE
     l_handle             public.pg_background_handle;
     l_result             public.pg_background_run_result;
 BEGIN
-    -- Validate the template and the driving table up front so a bad call fails
-    -- before any run or worker exists.
+    -- Validate the template up front so a bad call fails before any run or
+    -- worker exists.
     PERFORM dml_utils_lib.assert_chunking_template(i_sql_text => i_sql_text);
-    l_primary_key_name := dml_utils_lib.single_column_primary_key(
-            i_schema_name => i_driving_table_schema_name,
-            i_table_name => i_driving_table_name);
-    l_key_kind := dml_utils_lib.primary_key_kind(
-            i_schema_name => i_driving_table_schema_name,
-            i_table_name => i_driving_table_name);
 
     -- Reuse the active run for the label when there is one; otherwise create it
     -- by running populate_migration_boundaries in a worker so it commits
     -- autonomously and the boundaries become visible to the processing workers.
-    SELECT run_id, completed_at, sql_text, chunk_size
-    INTO l_run_id, l_completed_at, l_stored_sql_text, l_stored_chunk_size
+    SELECT run_id, completed_at, sql_text, chunk_size,
+           driving_table_schema_name::text, driving_table_name::text
+    INTO l_run_id, l_completed_at, l_stored_sql_text, l_stored_chunk_size,
+        l_stored_schema_name, l_stored_table_name
     FROM dml_utils.migration_run
     WHERE label = i_label
       AND archived_at IS NULL;
@@ -55,13 +55,15 @@ BEGIN
     END IF;
 
     IF FOUND THEN
-        -- A resumed run uses the SQL and chunk size recorded when it was
-        -- created, so an adjusted statement (for example to fix a bad execution
-        -- plan) is applied via set_migration_run_sql_text rather than a changed
-        -- call. A differing input is ignored, with a notice, so the boundaries
-        -- and their chunk SQL are never silently redefined. (The driving table
-        -- is not persisted, so it cannot be compared here.)
+        -- A resumed run uses the SQL, chunk size and driving table recorded when
+        -- it was created, so an adjusted statement (for example to fix a bad
+        -- execution plan) is applied via set_migration_run_sql_text rather than a
+        -- changed call. A differing input is ignored, with a notice, so the
+        -- boundaries and their chunk SQL are never silently redefined against a
+        -- different table.
         l_effective_sql_text := l_stored_sql_text;
+        l_effective_schema_name := l_stored_schema_name;
+        l_effective_table_name := l_stored_table_name;
         IF l_stored_sql_text IS DISTINCT FROM i_sql_text THEN
             RAISE NOTICE 'run for label % already exists; using the stored sql_text',
                 i_label;
@@ -70,8 +72,16 @@ BEGIN
             RAISE NOTICE 'run for label % already exists; using the stored chunk_size %',
                 i_label, l_stored_chunk_size;
         END IF;
+        IF l_stored_schema_name IS DISTINCT FROM i_driving_table_schema_name
+            OR l_stored_table_name IS DISTINCT FROM i_driving_table_name
+        THEN
+            RAISE NOTICE 'run for label % already exists; using the stored driving table %.%',
+                i_label, l_stored_schema_name, l_stored_table_name;
+        END IF;
     ELSE
         l_effective_sql_text := i_sql_text;
+        l_effective_schema_name := i_driving_table_schema_name;
+        l_effective_table_name := i_driving_table_name;
 
         l_handle := public.pg_background_launch(pg_catalog.format(
                 'SELECT dml_utils.populate_migration_boundaries(%L, %L, %L, %L, %s) AS run_id',
@@ -88,6 +98,15 @@ BEGIN
         INTO l_run_id
         FROM public.pg_background_result(l_handle.pid, l_handle.cookie) AS (run_id bigint);
     END IF;
+
+    -- Resolve the key from the effective driving table (the input for a new run,
+    -- the stored table for a resumed one) before any chunk worker is launched.
+    l_primary_key_name := dml_utils_lib.single_column_primary_key(
+            i_schema_name => l_effective_schema_name,
+            i_table_name => l_effective_table_name);
+    l_key_kind := dml_utils_lib.primary_key_kind(
+            i_schema_name => l_effective_schema_name,
+            i_table_name => l_effective_table_name);
 
     -- Process every unclaimed boundary in order. Each worker claims its boundary
     -- and runs its chunk SQL in its own transaction, so progress is durable and
@@ -132,8 +151,8 @@ BEGIN
 
         l_chunk_sql := dml_utils_lib.render_chunk_sql(
                 i_sql_text => l_effective_sql_text,
-                i_schema_name => i_driving_table_schema_name,
-                i_table_name => i_driving_table_name,
+                i_schema_name => l_effective_schema_name,
+                i_table_name => l_effective_table_name,
                 i_table_alias => i_driving_table_alias,
                 i_primary_key_name => l_primary_key_name,
                 i_key_kind => l_key_kind,

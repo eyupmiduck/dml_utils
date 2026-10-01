@@ -40,8 +40,9 @@ BEGIN
                                  'ROW(NULL, NULL, id::uuid)::dml_utils.migration_key'
         END;
 
-    INSERT INTO dml_utils.migration_run (label, sql_text, chunk_size)
-    VALUES (i_label, i_sql_text, i_chunk_size)
+    INSERT INTO dml_utils.migration_run (
+            label, sql_text, chunk_size, driving_table_schema_name, driving_table_name)
+    VALUES (i_label, i_sql_text, i_chunk_size, i_schema_name, i_table_name)
     RETURNING run_id
         INTO l_run_id;
 

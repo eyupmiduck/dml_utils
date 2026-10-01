@@ -90,8 +90,10 @@ class MigrationErrorTest extends PostgresTestBase {
 
     private Long insertRunWithBoundary() {
         Long runId = dsl.insertInto(MIGRATION_RUN)
-                .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE)
-                .values("migration-error-test-" + System.nanoTime(), "SELECT 1", 1)
+                .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE,
+                        MIGRATION_RUN.DRIVING_TABLE_SCHEMA_NAME, MIGRATION_RUN.DRIVING_TABLE_NAME)
+                .values("migration-error-test-" + System.nanoTime(), "SELECT 1", 1,
+                        PUBLIC_SCHEMA, "migration_error_source")
                 .returningResult(MIGRATION_RUN.RUN_ID)
                 .fetchOne(MIGRATION_RUN.RUN_ID);
         dsl.insertInto(MIGRATION_BOUNDARY)

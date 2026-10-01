@@ -54,10 +54,10 @@ above the captured maximum are outside the final chunk and are not processed.
 
 The first call for a `label` computes the boundaries (via
 `populate_migration_boundaries`) and then processes them. Re-running with the
-same `label` is safe: it resumes at the first unprocessed chunk using the SQL
-and chunk size recorded when the run was created (a differing `i_sql_text` or
-`i_chunk_size` is ignored, with a notice), and a run that is already complete is
-a no-op. To change the SQL of an existing run deliberately, use
+same `label` is safe: it resumes at the first unprocessed chunk using the SQL,
+chunk size and driving table recorded when the run was created (a differing
+`i_sql_text`, `i_chunk_size` or `i_driving_table_*` is ignored, with a notice),
+and a run that is already complete is a no-op. To change the SQL of an existing run deliberately, use
 `dml_utils.set_migration_run_sql_text`. Progress and completion are visible in
 `dml_utils.migration_run` and `dml_utils.migration_boundary`.
 
@@ -131,7 +131,8 @@ SELECT dml_utils.run_migration_chunks(
 
 ```sql
 -- Is the run done, and when did it finish?
-SELECT run_id, label, chunk_size, completed_at, archived_at
+SELECT run_id, label, driving_table_schema_name, driving_table_name,
+       chunk_size, completed_at, archived_at
 FROM dml_utils.migration_run
 WHERE label = 'events-region-backfill';
 
