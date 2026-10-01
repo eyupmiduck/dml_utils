@@ -95,15 +95,29 @@ class GrantPrivilegesTest extends PostgresTestBase {
     }
 
     /**
-     * The caller role can use the migration key type and the migration tables.
+     * The caller has an explicit {@code USAGE} grant on the migration key type
+     * (asserted on the ACL, not via {@code has_type_privilege}, which would also
+     * accept the default PUBLIC grant) and can select the migration tables.
      */
     @Test
-    void callerCanUseTheMigrationKeyTypeAndTables() {
-        assertTrue(Boolean.TRUE.equals(dsl.fetchOne(
-                        "SELECT pg_catalog.has_type_privilege('dml_utils_caller',"
-                                + " 'dml_utils.migration_key', 'USAGE')")
-                .get(0, Boolean.class)),
-                "the caller should have USAGE on dml_utils.migration_key");
+    void callerHasExplicitUsageOnTheMigrationKeyTypeAndCanSelectTables() {
+        Boolean explicitUsage = dsl.fetchOne(
+                        """
+                                SELECT EXISTS (
+                                    SELECT 1
+                                    FROM pg_type t
+                                    JOIN pg_namespace n ON n.oid = t.typnamespace
+                                    CROSS JOIN LATERAL unnest(
+                                        coalesce(t.typacl, '{}'::aclitem[])) AS a
+                                    WHERE n.nspname = 'dml_utils'
+                                      AND t.typname = 'migration_key'
+                                      AND a::text LIKE 'dml_utils_caller=U%'
+                                )
+                                """)
+                .get(0, Boolean.class);
+        assertTrue(Boolean.TRUE.equals(explicitUsage),
+                "the caller should have an explicit USAGE grant on dml_utils.migration_key");
+
         assertTrue(Boolean.TRUE.equals(dsl.fetchOne(
                         "SELECT pg_catalog.has_table_privilege('dml_utils_caller',"
                                 + " 'dml_utils.migration_boundary', 'SELECT')")
