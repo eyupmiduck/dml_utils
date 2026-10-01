@@ -5,11 +5,8 @@ import liquibase.database.Database;
 import liquibase.database.DatabaseFactory;
 import liquibase.database.jvm.JdbcConnection;
 import liquibase.resource.ClassLoaderResourceAccessor;
-import org.jooq.DSLContext;
-import org.jooq.Field;
+import org.jooq.*;
 import org.jooq.Record;
-import org.jooq.SQLDialect;
-import org.jooq.Table;
 import org.jooq.exception.DataAccessException;
 import org.jooq.impl.DSL;
 import org.junit.jupiter.api.AfterAll;
@@ -202,6 +199,31 @@ abstract class PostgresTestBase {
     }
 
     /**
+     * Returns a jOOQ table reference for a test table created at runtime (and
+     * therefore absent from the generated schema), so its rows can be read and
+     * written through the jOOQ DSL rather than raw SQL strings.
+     *
+     * @param qualifiedName the schema-qualified table name
+     * @return the table reference
+     */
+    protected static Table<?> table(String qualifiedName) {
+        return DSL.table(qualifiedName);
+    }
+
+    /**
+     * Returns a jOOQ field reference for a column of a test table created at
+     * runtime.
+     *
+     * @param name the column name
+     * @param type the column's Java type
+     * @param <T>  the column type
+     * @return the field reference
+     */
+    protected static <T> Field<T> field(String name, Class<T> type) {
+        return DSL.field(name, type);
+    }
+
+    /**
      * Evaluates a SQL expression and returns its single value as the given
      * Java type.
      *
@@ -279,31 +301,6 @@ abstract class PostgresTestBase {
      */
     protected void dropTestTable(String table) {
         dsl.execute("DROP TABLE IF EXISTS " + table);
-    }
-
-    /**
-     * Returns a jOOQ table reference for a test table created at runtime (and
-     * therefore absent from the generated schema), so its rows can be read and
-     * written through the jOOQ DSL rather than raw SQL strings.
-     *
-     * @param qualifiedName the schema-qualified table name
-     * @return the table reference
-     */
-    protected static Table<?> table(String qualifiedName) {
-        return DSL.table(qualifiedName);
-    }
-
-    /**
-     * Returns a jOOQ field reference for a column of a test table created at
-     * runtime.
-     *
-     * @param name the column name
-     * @param type the column's Java type
-     * @param <T>  the column type
-     * @return the field reference
-     */
-    protected static <T> Field<T> field(String name, Class<T> type) {
-        return DSL.field(name, type);
     }
 
     /**

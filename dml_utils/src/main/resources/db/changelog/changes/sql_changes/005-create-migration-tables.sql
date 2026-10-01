@@ -1,13 +1,13 @@
 CREATE TABLE dml_utils_data.migration_run
 (
     run_id                    bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    label                     text                    NOT NULL,
-    sql_text                  text                    NOT NULL,
-    chunk_size                integer                 NOT NULL,
+    label                     text                         NOT NULL,
+    sql_text                  text                         NOT NULL,
+    chunk_size                integer                      NOT NULL,
     driving_table_schema_name dml_utils_data.non_null_text NOT NULL,
     driving_table_name        dml_utils_data.non_null_text NOT NULL,
-    created_at                timestamptz             NOT NULL DEFAULT pg_catalog.now(),
-    updated_at                timestamptz             NOT NULL DEFAULT pg_catalog.now(),
+    created_at                timestamptz                  NOT NULL DEFAULT pg_catalog.now(),
+    updated_at                timestamptz                  NOT NULL DEFAULT pg_catalog.now(),
     completed_at              timestamptz,
     archived_at               timestamptz,
     CONSTRAINT migration_run_chunk_size_check CHECK (chunk_size > 0)
@@ -63,11 +63,13 @@ EXECUTE FUNCTION dml_utils_data.reject_migration_run_update();
 
 CREATE TABLE dml_utils_data.migration_boundary
 (
-    run_id       bigint                  NOT NULL REFERENCES dml_utils_data.migration_run (run_id) ON DELETE CASCADE,
-    boundary_no  bigint                  NOT NULL,
+    run_id       bigint                       NOT NULL REFERENCES dml_utils_data.migration_run (
+                                                                                                run_id
+        ) ON DELETE CASCADE,
+    boundary_no  bigint                       NOT NULL,
     boundary_id  dml_utils_data.migration_key NOT NULL,
-    created_at   timestamptz             NOT NULL DEFAULT pg_catalog.now(),
-    updated_at   timestamptz             NOT NULL DEFAULT pg_catalog.now(),
+    created_at   timestamptz                  NOT NULL DEFAULT pg_catalog.now(),
+    updated_at   timestamptz                  NOT NULL DEFAULT pg_catalog.now(),
     completed_at timestamptz,
     PRIMARY KEY (run_id, boundary_no),
     CONSTRAINT migration_boundary_key_check CHECK (
