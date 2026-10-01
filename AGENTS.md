@@ -33,8 +33,10 @@ jOOQ codegen and tests; `docker_java_config` is a build shim. CI: GitHub Actions
       file per routine under `changes/functions/<schema>/` and rollback bodies
       under `changes/functions-rollback/<schema>/`. `changes/functions/README.md`
       lists each routine's signature and purpose. The `dml_utils` schema holds
-      the application surface and the shared domains; `dml_utils_lib` holds the
-      generic helpers that take their parameters explicitly.
+      the application surface, the shared domains and the `migration_key`
+      composite type (the packed primary-key value stored in
+      `migration_boundary.boundary_id`); `dml_utils_lib` holds the generic
+      helpers that take their parameters explicitly.
     - jOOQ classes are generated at build time into
       `target/generated-sources/jooq` by
       `testcontainers-jooq-codegen-maven-plugin`, which starts a real
@@ -208,6 +210,18 @@ jOOQ codegen and tests; `docker_java_config` is a build shim. CI: GitHub Actions
 - Do not duplicate database schema definitions in Java.
 - Use plain SQL when PostgreSQL-specific functionality cannot be expressed
   clearly with the jOOQ DSL.
+- The generated convenience facades can trip `-Werror` or fail at class
+  initialisation:
+    - `dml_utils/pom.xml` sets `globalUDTReferences=false`: the generated `UDTs`
+      facade calls a static factory through an instance field, which `-Werror`
+      rejects. The UDT type and record are still generated (for example
+      `...jooq.dml_utils.udt.records.MigrationKeyRecord`).
+    - Do not wrap a composite type that a table in the same schema uses in a
+      domain. The generated `Domains` -> UDT -> schema class -> tables ->
+      `Domains` initialisation cycle throws during class loading.
+      `dml_utils.migration_key` is a bare composite type, and the "exactly one
+      populated attribute" rule is a table check constraint
+      (`migration_boundary_key_check`).
 
 ## Testing
 

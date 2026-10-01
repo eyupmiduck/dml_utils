@@ -66,11 +66,16 @@ RETURNS bigint
 the recorded SQL text and chunk size, then inserts one fixed-row chunk boundary
 per chunk plus a terminal high-water boundary at the captured maximum primary
 key; returns the new `run_id`. The source table must exist and have a single
-`bigint` primary key; the primary key is identified from the catalog, not
-assumed to be `id`. Raises `23505` when an active (not archived) run already
-exists for the label. Boundaries are inserted with `completed_at` null. An empty
-source produces a run with no boundaries. Later inserts above the captured
-maximum fall outside the terminal boundary and are not processed.
+primary-key column of a supported type (`smallint`, `integer`, `bigint`, `text`
+or `uuid`); the column is identified from the catalog, not assumed to be `id`.
+Each boundary is stored as `dml_utils.migration_key`, with the populated
+attribute selected by the key kind (`bigint_value` for integer keys,
+`text_value` for text, `uuid_value` for uuid); the
+`migration_boundary_key_check` constraint allows exactly one. Raises `23505`
+when an active (not archived) run already exists for the label. Boundaries are
+inserted with `completed_at` null. An empty source produces a run with no
+boundaries. Later inserts above the captured maximum fall outside the terminal
+boundary and are not processed.
 
 ###
 
@@ -230,7 +235,7 @@ once each.
 
 ###
 
-`dml_utils_lib.render_chunk_sql(i_sql_text, i_schema_name, i_table_name, i_table_alias, i_primary_key_name, i_start_id, i_end_id, i_is_final)`
+`dml_utils_lib.render_chunk_sql(i_sql_text, i_schema_name, i_table_name, i_table_alias, i_primary_key_name, i_key_kind, i_start_value, i_end_value, i_is_final)`
 
 ```sql
 i_sql_text         dml_utils.non_null_text
@@ -238,8 +243,9 @@ i_schema_name      dml_utils.non_null_text
 i_table_name       dml_utils.non_null_text
 i_table_alias      dml_utils.non_null_text
 i_primary_key_name name
-i_start_id         bigint
-i_end_id           bigint
+i_key_kind         dml_utils.non_null_text
+i_start_value      text
+i_end_value        text
 i_is_final         boolean
 RETURNS text
 ```
@@ -247,7 +253,10 @@ RETURNS text
 `STABLE`, `SECURITY INVOKER`. Validates the template (see
 `assert_chunking_template`) and returns it with `<driving_table>` replaced by
 `"<schema>"."<table>" "<alias>"` and `<chunking_clause>` replaced by the
-parenthesized range predicate `(<alias>.<pk> >= <start> AND <alias>.<pk> <op>
-<end>)`, where `<op>` is `<` normally and `<=` for the final chunk. Identifiers
-are quoted with `%I` and values with `%L`, so neither substitution can
-reintroduce a token.
+parenthesized range predicate `(<alias>.<pk> >= '<start>'::<kind> AND
+<alias>.<pk> <op> '<end>'::<kind>)`, where `<op>` is `<` normally and `<=` for
+the final chunk. `i_key_kind` must be `bigint`, `text` or `uuid`; it is
+interpolated as the literal's cast, so any other value raises `22023`. The start
+and end values are the text form of the packed boundary key. Identifiers are
+quoted with `%I` and values with `%L`, so neither substitution can reintroduce a
+token.
