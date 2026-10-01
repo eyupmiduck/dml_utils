@@ -29,6 +29,28 @@ that stamps `NEW.updated_at := now()` on every table, so no caller can bypass
 it. Attach it to each table with a trigger named `<table>_set_updated_at`; see
 `changes/sql_changes/004-create-migration-tables.sql`.
 
+### `dml_utils.reject_migration_run_update()`
+
+```sql
+RETURNS trigger
+```
+
+`SECURITY INVOKER`, not callable by users (PUBLIC `EXECUTE` is revoked and it is
+granted to no one). The `BEFORE UPDATE ... FOR EACH ROW` trigger on
+`migration_run` that rejects any change to `label` or `chunk_size`, both fixed
+when the run is created.
+
+### `dml_utils.reject_migration_boundary_update()`
+
+```sql
+RETURNS trigger
+```
+
+`SECURITY INVOKER`, not callable by users (PUBLIC `EXECUTE` is revoked and it is
+granted to no one). The `BEFORE UPDATE ... FOR EACH ROW` trigger on
+`migration_boundary` that rejects any change to `boundary_no` or `boundary_id`,
+both fixed when the boundaries are computed.
+
 ### `dml_utils.populate_migration_boundaries(i_schema_name, i_table_name, i_label, i_sql_text, i_chunk_size)`
 
 ```sql

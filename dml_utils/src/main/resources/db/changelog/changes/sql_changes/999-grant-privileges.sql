@@ -18,6 +18,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON dml_utils.migration_boundary TO dml_util
 -- Trigger functions are invoked by the trigger machinery, not by callers, so
 -- revoke PUBLIC EXECUTE and grant it to no one.
 REVOKE EXECUTE ON FUNCTION dml_utils.set_updated_at() FROM public;
+REVOKE EXECUTE ON FUNCTION dml_utils.reject_migration_run_update() FROM public;
+REVOKE EXECUTE ON FUNCTION dml_utils.reject_migration_boundary_update() FROM public;
 
 -- Functions grant EXECUTE to PUBLIC by default; revoke it and grant only to
 -- the caller role, so execution is explicit.

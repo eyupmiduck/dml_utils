@@ -1,6 +1,8 @@
 -- Rollback of the caller grants: revoke what the forward changeset granted and
 -- restore PostgreSQL's defaults.
 GRANT EXECUTE ON FUNCTION dml_utils.set_updated_at() TO public;
+GRANT EXECUTE ON FUNCTION dml_utils.reject_migration_run_update() TO public;
+GRANT EXECUTE ON FUNCTION dml_utils.reject_migration_boundary_update() TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils.populate_migration_boundaries(
     dml_utils.non_null_text,
     dml_utils.non_null_text,

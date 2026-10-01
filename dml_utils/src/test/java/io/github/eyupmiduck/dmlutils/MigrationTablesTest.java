@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.OffsetDateTime;
 
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationBoundary.MIGRATION_BOUNDARY;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationRun.MIGRATION_RUN;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -43,11 +44,7 @@ class MigrationTablesTest extends PostgresTestBase {
         assertTrue(triggerExists("dml_utils", "migration_run", "migration_run_set_updated_at"),
                 "migration_run_set_updated_at should be attached to dml_utils.migration_run");
 
-        Long runId = dsl.insertInto(MIGRATION_RUN)
-                .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE)
-                .values("migration-tables-test", "SELECT 1", 1)
-                .returningResult(MIGRATION_RUN.RUN_ID)
-                .fetchOne(MIGRATION_RUN.RUN_ID);
+        Long runId = insertRun();
 
         dsl.update(MIGRATION_RUN)
                 .set(MIGRATION_RUN.UPDATED_AT, OffsetDateTime.parse("2000-01-01T00:00:00Z"))
@@ -63,6 +60,30 @@ class MigrationTablesTest extends PostgresTestBase {
     }
 
     /**
+     * Inserts a run with a unique label, returning its {@code run_id}.
+     */
+    private Long insertRun() {
+        return dsl.insertInto(MIGRATION_RUN)
+                .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE)
+                .values("migration-tables-test-" + System.nanoTime(), "SELECT 1", 1)
+                .returningResult(MIGRATION_RUN.RUN_ID)
+                .fetchOne(MIGRATION_RUN.RUN_ID);
+    }
+
+    /**
+     * Inserts a run and one boundary row, returning the {@code run_id}.
+     */
+    private long insertRunWithBoundary() {
+        Long runId = insertRun();
+        dsl.insertInto(MIGRATION_BOUNDARY)
+                .columns(MIGRATION_BOUNDARY.RUN_ID, MIGRATION_BOUNDARY.BOUNDARY_NO,
+                        MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .values(runId, 0L, 1L)
+                .execute();
+        return runId;
+    }
+
+    /**
      * A non-positive {@code chunk_size} is rejected by the check constraint.
      */
     @Test
@@ -71,6 +92,55 @@ class MigrationTablesTest extends PostgresTestBase {
                 .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE)
                 .values("chunk-size-check", "SELECT 1", 0)
                 .execute());
+    }
+
+    /**
+     * {@code label} and {@code chunk_size} are immutable: updating either is
+     * rejected, while updating a mutable column (for example {@code completed_at})
+     * is allowed.
+     */
+    @Test
+    void rejectsUpdatesToLabelAndChunkSize() {
+        Long runId = insertRun();
+
+        assertSqlState("22023", () -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.LABEL, "changed")
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute());
+        assertSqlState("22023", () -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.CHUNK_SIZE, 99)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute());
+
+        // A mutable column can still be updated.
+        dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.COMPLETED_AT, OffsetDateTime.now())
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute();
+    }
+
+    /**
+     * {@code boundary_no} and {@code boundary_id} are immutable: updating either
+     * is rejected, while updating the mutable {@code completed_at} is allowed.
+     */
+    @Test
+    void rejectsUpdatesToBoundaryNoAndBoundaryId() {
+        long runId = insertRunWithBoundary();
+
+        assertSqlState("22023", () -> dsl.update(MIGRATION_BOUNDARY)
+                .set(MIGRATION_BOUNDARY.BOUNDARY_ID, 999L)
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .execute());
+        assertSqlState("22023", () -> dsl.update(MIGRATION_BOUNDARY)
+                .set(MIGRATION_BOUNDARY.BOUNDARY_NO, 999L)
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .execute());
+
+        // A mutable column can still be updated.
+        dsl.update(MIGRATION_BOUNDARY)
+                .set(MIGRATION_BOUNDARY.COMPLETED_AT, OffsetDateTime.now())
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .execute();
     }
 
     /**

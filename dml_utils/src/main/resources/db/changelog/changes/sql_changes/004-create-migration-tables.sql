@@ -46,6 +46,14 @@ CREATE TRIGGER migration_run_set_updated_at
     FOR EACH ROW
 EXECUTE FUNCTION dml_utils.set_updated_at();
 
+-- label and chunk_size are fixed at creation; reject any attempt to change them.
+DROP TRIGGER IF EXISTS migration_run_immutable ON dml_utils.migration_run;
+CREATE TRIGGER migration_run_immutable
+    BEFORE UPDATE
+    ON dml_utils.migration_run
+    FOR EACH ROW
+EXECUTE FUNCTION dml_utils.reject_migration_run_update();
+
 CREATE TABLE dml_utils.migration_boundary
 (
     run_id       bigint      NOT NULL REFERENCES dml_utils.migration_run (run_id) ON DELETE CASCADE,
@@ -84,3 +92,12 @@ CREATE TRIGGER migration_boundary_set_updated_at
     ON dml_utils.migration_boundary
     FOR EACH ROW
 EXECUTE FUNCTION dml_utils.set_updated_at();
+
+-- boundary_no and boundary_id are fixed when the boundaries are computed;
+-- reject any attempt to change them.
+DROP TRIGGER IF EXISTS migration_boundary_immutable ON dml_utils.migration_boundary;
+CREATE TRIGGER migration_boundary_immutable
+    BEFORE UPDATE
+    ON dml_utils.migration_boundary
+    FOR EACH ROW
+EXECUTE FUNCTION dml_utils.reject_migration_boundary_update();

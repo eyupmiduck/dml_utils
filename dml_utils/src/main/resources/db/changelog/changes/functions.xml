@@ -24,6 +24,26 @@
         </rollback>
     </changeSet>
 
+    <changeSet id="function-dml_utils.reject_migration_run_update" author="dml_utils"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils/reject_migration_run_update.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils/reject_migration_run_update-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="function-dml_utils.reject_migration_boundary_update" author="dml_utils"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils/reject_migration_boundary_update.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils/reject_migration_boundary_update-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
     <changeSet id="function-dml_utils_lib.assert_schema_exists" author="dml_utils" dbms="postgresql"
                runOnChange="true">
         <createProcedure path="functions/dml_utils_lib/assert_schema_exists.sql"
