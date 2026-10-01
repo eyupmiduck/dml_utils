@@ -10,6 +10,7 @@ import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationBound
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationRun.MIGRATION_RUN;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Verifies that {@code dml_utils.populate_migration_boundaries} rejects invalid
@@ -154,14 +155,40 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     }
 
     /**
-     * A single primary-key column that is not bigint fails with
+     * A single primary-key column that is not an integer type fails with
      * invalid_parameter_value (22023).
      */
     @Test
-    void rejectsNonBigintPrimaryKey() {
-        createTestTable(TABLE_QUALIFIED, "id integer PRIMARY KEY");
+    void rejectsNonIntegerPrimaryKey() {
+        createTestTable(TABLE_QUALIFIED, "id text PRIMARY KEY");
 
         assertSqlState("22023", () -> populate(PUBLIC_SCHEMA, TABLE, 1));
+    }
+
+    /**
+     * A single integer primary key is supported: the boundaries are computed.
+     */
+    @Test
+    void acceptsAnIntegerPrimaryKey() {
+        createTestTable(TABLE_QUALIFIED, "id integer PRIMARY KEY");
+        dsl.execute("INSERT INTO " + TABLE_QUALIFIED + " (id) VALUES (1), (2), (3)");
+
+        long runId = populate(PUBLIC_SCHEMA, TABLE, 2);
+
+        assertTrue(runId > 0, "an integer primary key should be accepted");
+    }
+
+    /**
+     * A single smallint primary key is supported.
+     */
+    @Test
+    void acceptsASmallintPrimaryKey() {
+        createTestTable(TABLE_QUALIFIED, "id smallint PRIMARY KEY");
+        dsl.execute("INSERT INTO " + TABLE_QUALIFIED + " (id) VALUES (1), (2), (3)");
+
+        long runId = populate(PUBLIC_SCHEMA, TABLE, 2);
+
+        assertTrue(runId > 0, "a smallint primary key should be accepted");
     }
 
     /**

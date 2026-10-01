@@ -109,6 +109,14 @@ GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_bigint_primary_key(
     dml_utils.non_null_text,
     dml_utils.non_null_text
     ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_supported_primary_key(
+    dml_utils.non_null_text,
+    dml_utils.non_null_text
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_supported_primary_key(
+    dml_utils.non_null_text,
+    dml_utils.non_null_text
+    ) TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.single_column_primary_key(
     dml_utils.non_null_text,
     dml_utils.non_null_text
