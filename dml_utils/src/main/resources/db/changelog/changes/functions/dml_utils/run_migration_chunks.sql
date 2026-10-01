@@ -83,24 +83,34 @@ BEGIN
     -- Process every unclaimed boundary in order. Each worker claims its boundary
     -- and runs its chunk SQL in its own transaction, so progress is durable and
     -- a re-run resumes at the first unclaimed boundary.
+    --
+    -- The chunk's end and final flag come from the run's full ordered boundary
+    -- set (boundaries are contiguous 0..N, where N is the terminal high-water
+    -- boundary), NOT from the set of still-unclaimed boundaries. Deriving them
+    -- from the unclaimed set would misclassify a chunk as final whenever a later
+    -- boundary (for example the terminal one) is already completed. The join on
+    -- boundary_no + 1 excludes the terminal boundary, so end_id is never null.
     LOOP
         SELECT b.boundary_no,
                b.boundary_id,
-               lead(b.boundary_id, 1) OVER w,
-               lead(b.boundary_id, 2) OVER w IS NULL
+               next.boundary_id,
+               next.boundary_no = last.boundary_no
         INTO l_boundary_no, l_start_id, l_end_id, l_is_final
         FROM dml_utils.migration_boundary AS b
+                 JOIN dml_utils.migration_boundary AS next
+                      ON next.run_id = b.run_id
+                          AND next.boundary_no = b.boundary_no + 1
+                 CROSS JOIN LATERAL (
+                     SELECT max(boundary_no) AS boundary_no
+                     FROM dml_utils.migration_boundary
+                     WHERE run_id = b.run_id
+                     ) AS last
         WHERE b.run_id = l_run_id
           AND b.completed_at IS NULL
-        WINDOW w AS (ORDER BY b.boundary_no)
         ORDER BY b.boundary_no
         LIMIT 1;
 
         EXIT WHEN NOT FOUND;
-
-        -- The last boundary is terminal: it has no following boundary to run as
-        -- a chunk, so end_id is null. It exists only to bound the final chunk.
-        EXIT WHEN l_end_id IS NULL;
 
         l_chunk_sql := dml_utils_lib.render_chunk_sql(
                 i_sql_text => l_effective_sql_text,

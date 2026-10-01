@@ -151,6 +151,35 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     /**
+     * The chunk/final classification comes from the run's full ordered boundary
+     * set, not from the unclaimed subset: with the terminal high-water boundary
+     * already completed, every real chunk is still processed and none is
+     * misclassified as final.
+     */
+    @Test
+    void classifiesChunksFromTheFullBoundarySetNotTheUnclaimedSet() {
+        createSource(1, 2, 3, 4, 5, 6);
+        String label = label("terminal-claimed");
+
+        // Boundaries for 6 rows at chunk size 2: 0, 1, 2, and terminal 3.
+        long runId = Routines.populateMigrationBoundaries(
+                dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label, TEMPLATE, 2);
+        // Complete the terminal boundary directly (it is not a chunk).
+        dsl.update(MIGRATION_BOUNDARY)
+                .set(MIGRATION_BOUNDARY.COMPLETED_AT, OffsetDateTime.now())
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId)
+                        .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(3L)))
+                .execute();
+
+        run(label, 2);
+
+        assertEquals(6, doneCount(), "every row must be processed; no chunk may be skipped");
+        assertEquals(4, completedBoundaries(runId),
+                "all three chunks and the terminal boundary should be complete");
+        assertTrue(runCompleted(runId), "the run should be marked complete");
+    }
+
+    /**
      * A chunk worker error propagates with its SQLSTATE and the run is left
      * incomplete so it can be retried.
      */
