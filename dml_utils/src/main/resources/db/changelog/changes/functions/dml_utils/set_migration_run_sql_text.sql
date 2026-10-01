@@ -1,5 +1,5 @@
 CREATE OR REPLACE FUNCTION dml_utils.set_migration_run_sql_text(
-    i_label    dml_utils.non_null_text,
+    i_label dml_utils.non_null_text,
     i_sql_text dml_utils.non_null_text
 )
     RETURNS void

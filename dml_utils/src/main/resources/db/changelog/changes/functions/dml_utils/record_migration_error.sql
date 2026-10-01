@@ -1,8 +1,8 @@
 CREATE OR REPLACE FUNCTION dml_utils.record_migration_error(
-    i_run_id      bigint,
+    i_run_id bigint,
     i_boundary_no bigint,
-    i_sqlstate    dml_utils.non_null_text,
-    i_message     dml_utils.non_null_text
+    i_sqlstate dml_utils.non_null_text,
+    i_message dml_utils.non_null_text
 )
     RETURNS void
     LANGUAGE plpgsql

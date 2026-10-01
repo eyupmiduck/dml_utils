@@ -25,8 +25,8 @@ DECLARE
     -- pg_background is installed in the public schema. Qualify its types and
     -- functions explicitly so this routine resolves them regardless of the
     -- caller's (or Liquibase's) search_path.
-    l_handle           public.pg_background_handle;
-    l_result           public.pg_background_run_result;
+    l_handle             public.pg_background_handle;
+    l_result             public.pg_background_run_result;
 BEGIN
     -- Validate the template and the driving table up front so a bad call fails
     -- before any run or worker exists.
