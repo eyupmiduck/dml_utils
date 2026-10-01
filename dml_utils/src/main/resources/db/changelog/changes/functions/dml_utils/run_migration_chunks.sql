@@ -16,6 +16,7 @@ DECLARE
     l_run_id             bigint;
     l_completed_at       timestamptz;
     l_stored_sql_text    text;
+    l_stored_chunk_size  integer;
     l_effective_sql_text text;
     l_boundary_no        bigint;
     l_start_id           bigint;
@@ -41,8 +42,8 @@ BEGIN
     -- Reuse the active run for the label when there is one; otherwise create it
     -- by running populate_migration_boundaries in a worker so it commits
     -- autonomously and the boundaries become visible to the processing workers.
-    SELECT run_id, completed_at, sql_text
-    INTO l_run_id, l_completed_at, l_stored_sql_text
+    SELECT run_id, completed_at, sql_text, chunk_size
+    INTO l_run_id, l_completed_at, l_stored_sql_text, l_stored_chunk_size
     FROM dml_utils.migration_run
     WHERE label = i_label
       AND archived_at IS NULL;
@@ -53,13 +54,20 @@ BEGIN
     END IF;
 
     IF FOUND THEN
-        -- A resumed run uses the SQL recorded when it was created, so an
-        -- adjusted statement (for example to fix a bad execution plan) is
-        -- applied via set_migration_run_sql_text rather than a changed call.
+        -- A resumed run uses the SQL and chunk size recorded when it was
+        -- created, so an adjusted statement (for example to fix a bad execution
+        -- plan) is applied via set_migration_run_sql_text rather than a changed
+        -- call. A differing input is ignored, with a notice, so the boundaries
+        -- and their chunk SQL are never silently redefined. (The driving table
+        -- is not persisted, so it cannot be compared here.)
         l_effective_sql_text := l_stored_sql_text;
         IF l_stored_sql_text IS DISTINCT FROM i_sql_text THEN
             RAISE NOTICE 'run for label % already exists; using the stored sql_text',
                 i_label;
+        END IF;
+        IF l_stored_chunk_size IS DISTINCT FROM i_chunk_size THEN
+            RAISE NOTICE 'run for label % already exists; using the stored chunk_size %',
+                i_label, l_stored_chunk_size;
         END IF;
     ELSE
         l_effective_sql_text := i_sql_text;

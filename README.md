@@ -51,8 +51,11 @@ are outside the final chunk and are not processed.
 
 The first call for a `label` computes the boundaries (via
 `populate_migration_boundaries`) and then processes them. Re-running with the
-same `label` is safe: it resumes at the first unprocessed chunk, and a run that
-is already complete is a no-op. Progress and completion are visible in
+same `label` is safe: it resumes at the first unprocessed chunk using the SQL
+and chunk size recorded when the run was created (a differing `i_sql_text` or
+`i_chunk_size` is ignored, with a notice), and a run that is already complete is
+a no-op. To change the SQL of an existing run deliberately, use
+`dml_utils.set_migration_run_sql_text`. Progress and completion are visible in
 `dml_utils.migration_run` and `dml_utils.migration_boundary`.
 
 ### Example: backfill a column

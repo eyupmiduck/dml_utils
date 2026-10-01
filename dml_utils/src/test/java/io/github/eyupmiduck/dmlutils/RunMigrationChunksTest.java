@@ -228,6 +228,29 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     /**
+     * A resumed run ignores a differing {@code i_chunk_size}: the boundaries (and
+     * their chunk size) are fixed when the run was created.
+     */
+    @Test
+    void resumeIgnoresADifferingChunkSize() {
+        createSource(1, 2, 3, 4, 5, 6);
+        String label = label("chunk-size-resume");
+
+        // Stored chunk size 2 gives boundaries 0,1,2 and terminal 3.
+        long existingRun = Routines.populateMigrationBoundaries(
+                dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label, TEMPLATE, 2);
+
+        run(label, 10);
+
+        assertEquals(3, dsl.fetchCount(MIGRATION_BOUNDARY,
+                        MIGRATION_BOUNDARY.RUN_ID.eq(existingRun)
+                                .and(MIGRATION_BOUNDARY.BOUNDARY_NO.lt(3L))),
+                "the stored boundaries must be used, not recomputed for chunk size 10");
+        assertEquals(6, doneCount(), "every row of the stored chunks should be processed");
+        assertTrue(runCompleted(existingRun), "the reused run should be marked complete");
+    }
+
+    /**
      * On resume the stored {@code sql_text} is used and a differing input is
      * ignored; a resumed run whose stored SQL was adjusted via
      * {@code set_migration_run_sql_text} then uses the adjusted SQL.
