@@ -153,12 +153,12 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     }
 
     /**
-     * A single primary-key column that is not an integer type fails with
-     * invalid_parameter_value (22023).
+     * A single primary-key column whose type is not supported for chunking
+     * fails with invalid_parameter_value (22023).
      */
     @Test
-    void rejectsNonIntegerPrimaryKey() {
-        createTestTable(TABLE_QUALIFIED, "id text PRIMARY KEY");
+    void rejectsUnsupportedPrimaryKeyType() {
+        createTestTable(TABLE_QUALIFIED, "id numeric PRIMARY KEY");
 
         assertSqlState("22023", () -> populate(PUBLIC_SCHEMA, TABLE, 1));
     }

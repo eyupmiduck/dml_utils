@@ -7,6 +7,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.UUID;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationBoundary.MIGRATION_BOUNDARY;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationRun.MIGRATION_RUN;
@@ -161,6 +162,51 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
     }
 
     /**
+     * A text primary key is chunked in key order: one starting boundary per
+     * chunk plus the terminal high-water boundary, all in the text attribute.
+     */
+    @Test
+    void createsBoundariesForATextPrimaryKey() {
+        dropTestTable(SOURCE_QUALIFIED);
+        createTestTable(SOURCE_QUALIFIED, "id text PRIMARY KEY, payload text");
+        dsl.execute("INSERT INTO " + SOURCE_QUALIFIED + " (id)"
+                + " SELECT 'k' || lpad(g::text, 2, '0') FROM generate_series(1, 10) g");
+
+        long runId = populate(4);
+
+        List<MigrationBoundaryRecord> actual = boundaries(runId);
+        assertEquals(4, actual.size(), "ten rows at chunk size four yield four boundaries");
+        assertEquals("k01", actual.get(0).getBoundaryId().getTextValue());
+        assertEquals("k05", actual.get(1).getBoundaryId().getTextValue());
+        assertEquals("k09", actual.get(2).getBoundaryId().getTextValue());
+        assertEquals("k10", actual.get(3).getBoundaryId().getTextValue());
+    }
+
+    /**
+     * A uuid primary key is chunked in key order, even though PostgreSQL has no
+     * {@code min}/{@code max} aggregate for uuid; the terminal boundary holds the
+     * captured maximum uuid.
+     */
+    @Test
+    void createsBoundariesForAUuidPrimaryKey() {
+        dropTestTable(SOURCE_QUALIFIED);
+        createTestTable(SOURCE_QUALIFIED, "id uuid PRIMARY KEY, payload text");
+        for (int i = 1; i <= 10; i++) {
+            dsl.execute("INSERT INTO " + SOURCE_QUALIFIED + " (id) VALUES (?::uuid)",
+                    "00000000-0000-0000-0000-" + String.format("%012d", i));
+        }
+
+        long runId = populate(4);
+
+        List<MigrationBoundaryRecord> actual = boundaries(runId);
+        assertEquals(4, actual.size(), "ten rows at chunk size four yield four boundaries");
+        assertEquals(uuid(1), actual.get(0).getBoundaryId().getUuidValue());
+        assertEquals(uuid(5), actual.get(1).getBoundaryId().getUuidValue());
+        assertEquals(uuid(9), actual.get(2).getBoundaryId().getUuidValue());
+        assertEquals(uuid(10), actual.get(3).getBoundaryId().getUuidValue());
+    }
+
+    /**
      * The run records the supplied label, SQL text and chunk size.
      */
     @Test
@@ -241,6 +287,13 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
         createSource(1, 2);
 
         assertNull(Routines.archiveMigrationRun(dsl.configuration(), "no-such-label"));
+    }
+
+    /**
+     * Builds the ordered uuid used for source key {@code n}.
+     */
+    private UUID uuid(int n) {
+        return UUID.fromString("00000000-0000-0000-0000-" + String.format("%012d", n));
     }
 
     private void createSource(long... ids) {
