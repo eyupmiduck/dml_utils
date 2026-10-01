@@ -8,9 +8,9 @@ the Liquibase CLI, without building anything or running Docker (see
 
 Liquibase loads two application schemas:
 
-- **`dml_utils`** — the application surface. It holds the shared domains (`non_null_text`, `non_negative_integer`,
-  `positive_integer`, and the array
-  domains) and the fixed-row chunk migration tables `migration_run` /
+- **`dml_utils`** — the application surface. It holds the shared domains
+  (`non_null_text`, `positive_integer`) and the fixed-row chunk migration tables
+  `migration_run` /
   `migration_boundary` (`migration_error` records failed chunks), populated by
   `dml_utils.populate_migration_boundaries`, plus
   `dml_utils.run_migration_chunks`, which processes those chunks one

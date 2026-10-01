@@ -150,13 +150,6 @@
                                 <generator>
                                     <database>
                                         <includes>.*</includes>
-                                        <!-- jOOQ cannot model domains over arrays:
-                                             it generates a Domain<String[]> backed
-                                             by SQLDataType.OTHER, which does not
-                                             compile. Exclude the array domains;
-                                             routines that take them fall back to
-                                             Object parameters. -->
-                                        <excludes>.*non_empty.*array.*</excludes>
                                         <!-- jOOQ cannot combine several
                                              schemata in one <inputSchema>;
                                              each schema maps to its own

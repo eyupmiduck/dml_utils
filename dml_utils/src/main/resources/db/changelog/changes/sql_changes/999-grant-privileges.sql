@@ -2,12 +2,7 @@
 -- keep the statements idempotent.
 GRANT USAGE ON SCHEMA dml_utils TO dml_utils_caller;
 GRANT USAGE ON SCHEMA dml_utils_lib TO dml_utils_caller;
-GRANT USAGE ON DOMAIN dml_utils.non_negative_integer TO dml_utils_caller;
 GRANT USAGE ON DOMAIN dml_utils.non_null_text TO dml_utils_caller;
-GRANT USAGE ON DOMAIN dml_utils.non_null_boolean TO dml_utils_caller;
-GRANT USAGE ON DOMAIN dml_utils.non_empty_text_array TO dml_utils_caller;
-GRANT USAGE ON DOMAIN dml_utils.non_empty_non_null_text_array TO dml_utils_caller;
-GRANT USAGE ON DOMAIN dml_utils.non_empty_non_null_boolean_array TO dml_utils_caller;
 GRANT USAGE ON DOMAIN dml_utils.positive_integer TO dml_utils_caller;
 
 REVOKE ALL ON dml_utils.migration_run FROM public;
