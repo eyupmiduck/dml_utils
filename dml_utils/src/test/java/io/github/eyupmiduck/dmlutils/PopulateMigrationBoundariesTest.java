@@ -207,6 +207,26 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
     }
 
     /**
+     * An {@code integer} (non-bigint) primary key is packed into the bigint
+     * attribute.
+     */
+    @Test
+    void createsBoundariesForAnIntegerPrimaryKey() {
+        dropTestTable(SOURCE_QUALIFIED);
+        createTestTable(SOURCE_QUALIFIED, "id integer PRIMARY KEY, payload text");
+        dsl.execute("INSERT INTO " + SOURCE_QUALIFIED + " (id) SELECT generate_series(1, 10)");
+
+        long runId = populate(4);
+
+        List<MigrationBoundaryRecord> actual = boundaries(runId);
+        assertEquals(4, actual.size(), "ten rows at chunk size four yield four boundaries");
+        assertEquals(1L, actual.get(0).getBoundaryId().getBigintValue());
+        assertEquals(5L, actual.get(1).getBoundaryId().getBigintValue());
+        assertEquals(9L, actual.get(2).getBoundaryId().getBigintValue());
+        assertEquals(10L, actual.get(3).getBoundaryId().getBigintValue());
+    }
+
+    /**
      * The run records the supplied label, SQL text and chunk size.
      */
     @Test

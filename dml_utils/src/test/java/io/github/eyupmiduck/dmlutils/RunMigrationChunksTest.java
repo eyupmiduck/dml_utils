@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.UUID;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationBoundary.MIGRATION_BOUNDARY;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationError.MIGRATION_ERROR;
@@ -425,8 +426,11 @@ class RunMigrationChunksTest extends PostgresTestBase {
 
         run(label, 2);
 
+        long runId = runId(label);
         assertEquals(4, doneCount(), "every row of a text-keyed table should be processed");
-        assertTrue(runCompleted(runId(label)), "the run should be marked complete");
+        assertTrue(runCompleted(runId), "the run should be marked complete");
+        assertEquals(List.of("a", "o'brien", "z"), textBoundaryValues(runId),
+                "the stored boundaries should hold the chunk start keys and the high-water key");
     }
 
     /**
@@ -445,8 +449,48 @@ class RunMigrationChunksTest extends PostgresTestBase {
 
         run(label, 2);
 
+        long runId = runId(label);
         assertEquals(6, doneCount(), "every row of a uuid-keyed table should be processed");
-        assertTrue(runCompleted(runId(label)), "the run should be marked complete");
+        assertTrue(runCompleted(runId), "the run should be marked complete");
+        assertEquals(
+                List.of(uuid(1), uuid(3), uuid(5), uuid(6)),
+                uuidBoundaryValues(runId),
+                "the stored boundaries should hold the chunk start keys and the high-water key");
+    }
+
+    /**
+     * Builds the ordered uuid used for source key {@code n}.
+     */
+    private static UUID uuid(int n) {
+        return UUID.fromString("00000000-0000-0000-0000-" + String.format("%012d", n));
+    }
+
+    /**
+     * Returns the run's boundary keys in order as their text attribute.
+     */
+    private List<String> textBoundaryValues(long runId) {
+        return dsl.select(MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .from(MIGRATION_BOUNDARY)
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .orderBy(MIGRATION_BOUNDARY.BOUNDARY_NO)
+                .fetch(MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .stream()
+                .map(key -> key.getTextValue())
+                .toList();
+    }
+
+    /**
+     * Returns the run's boundary keys in order as their uuid attribute.
+     */
+    private List<UUID> uuidBoundaryValues(long runId) {
+        return dsl.select(MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .from(MIGRATION_BOUNDARY)
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .orderBy(MIGRATION_BOUNDARY.BOUNDARY_NO)
+                .fetch(MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .stream()
+                .map(key -> key.getUuidValue())
+                .toList();
     }
 
     /**
