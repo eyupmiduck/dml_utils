@@ -27,6 +27,32 @@ REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_no_active_run_for_label(
 GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_no_active_run_for_label(
     dml_utils.non_null_text
     ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_chunking_template(
+    dml_utils.non_null_text
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_chunking_template(
+    dml_utils.non_null_text
+    ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.render_chunk_sql(
+    dml_utils.non_null_text,
+    dml_utils.non_null_text,
+    dml_utils.non_null_text,
+    dml_utils.non_null_text,
+    name,
+    bigint,
+    bigint,
+    boolean
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.render_chunk_sql(
+    dml_utils.non_null_text,
+    dml_utils.non_null_text,
+    dml_utils.non_null_text,
+    dml_utils.non_null_text,
+    name,
+    bigint,
+    bigint,
+    boolean
+    ) TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_bigint_primary_key(
     dml_utils.non_null_text,
     dml_utils.non_null_text

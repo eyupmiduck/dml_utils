@@ -118,3 +118,36 @@ RETURNS void
 
 `SECURITY INVOKER`. Raises `unique_violation` (`23505`) when a not-archived
 migration run already exists for the label.
+
+### `dml_utils_lib.assert_chunking_template(i_sql_text)`
+
+```sql
+i_sql_text dml_utils.non_null_text
+RETURNS void
+```
+
+`IMMUTABLE`, `SECURITY INVOKER`. Raises `invalid_parameter_value` (`22023`)
+unless `i_sql_text` contains `<driving_table>` and `<chunking_clause>` exactly
+once each.
+
+### `dml_utils_lib.render_chunk_sql(i_sql_text, i_schema_name, i_table_name, i_table_alias, i_primary_key_name, i_start_id, i_end_id, i_is_final)`
+
+```sql
+i_sql_text         dml_utils.non_null_text
+i_schema_name      dml_utils.non_null_text
+i_table_name       dml_utils.non_null_text
+i_table_alias      dml_utils.non_null_text
+i_primary_key_name name
+i_start_id         bigint
+i_end_id           bigint
+i_is_final         boolean
+RETURNS text
+```
+
+`STABLE`, `SECURITY INVOKER`. Validates the template (see
+`assert_chunking_template`) and returns it with `<driving_table>` replaced by
+`"<schema>"."<table>" "<alias>"` and `<chunking_clause>` replaced by the
+parenthesized range predicate `(<alias>.<pk> >= <start> AND <alias>.<pk> <op>
+<end>)`, where `<op>` is `<` normally and `<=` for the final chunk. Identifiers
+are quoted with `%I` and values with `%L`, so neither substitution can
+reintroduce a token.

@@ -64,6 +64,26 @@
         </rollback>
     </changeSet>
 
+    <changeSet id="function-dml_utils_lib.assert_chunking_template" author="dml_utils"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils_lib/assert_chunking_template.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils_lib/assert_chunking_template-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="function-dml_utils_lib.render_chunk_sql" author="dml_utils"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils_lib/render_chunk_sql.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils_lib/render_chunk_sql-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
     <changeSet id="function-dml_utils_lib.assert_no_active_run_for_label" author="dml_utils"
                dbms="postgresql" runOnChange="true">
         <createProcedure path="functions/dml_utils_lib/assert_no_active_run_for_label.sql"
