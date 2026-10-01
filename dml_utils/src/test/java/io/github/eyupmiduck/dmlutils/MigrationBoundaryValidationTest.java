@@ -4,6 +4,10 @@ import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.OffsetDateTime;
+
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationBoundary.MIGRATION_BOUNDARY;
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationRun.MIGRATION_RUN;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
@@ -218,8 +222,10 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
 
         String label = uniqueLabel();
         long firstRun = populate(label);
-        dsl.execute("UPDATE dml_utils.migration_run"
-                + " SET archived_at = pg_catalog.now() WHERE run_id = ?", firstRun);
+        dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.ARCHIVED_AT, OffsetDateTime.now())
+                .where(MIGRATION_RUN.RUN_ID.eq(firstRun))
+                .execute();
 
         long secondRun = populate(label);
 
@@ -242,16 +248,11 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     }
 
     private int runCount(String label) {
-        return dsl.fetchOne(
-                        "SELECT count(*)::int FROM dml_utils.migration_run WHERE label = ?", label)
-                .get(0, Integer.class);
+        return dsl.fetchCount(MIGRATION_RUN, MIGRATION_RUN.LABEL.eq(label));
     }
 
     private Integer boundaries(long runId) {
-        return dsl.fetchOne(
-                        "SELECT count(*)::int FROM dml_utils.migration_boundary WHERE run_id = ?",
-                        runId)
-                .get(0, Integer.class);
+        return dsl.fetchCount(MIGRATION_BOUNDARY, MIGRATION_BOUNDARY.RUN_ID.eq(runId));
     }
 
     private int countRows(String qualifiedTable) {

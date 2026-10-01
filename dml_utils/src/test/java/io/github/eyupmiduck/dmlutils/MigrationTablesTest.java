@@ -2,6 +2,9 @@ package io.github.eyupmiduck.dmlutils;
 
 import org.junit.jupiter.api.Test;
 
+import java.time.OffsetDateTime;
+
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationRun.MIGRATION_RUN;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -40,19 +43,21 @@ class MigrationTablesTest extends PostgresTestBase {
         assertTrue(triggerExists("dml_utils", "migration_run", "migration_run_set_updated_at"),
                 "migration_run_set_updated_at should be attached to dml_utils.migration_run");
 
-        Long runId = dsl.fetchOne(
-                        "INSERT INTO dml_utils.migration_run (label, sql_text, chunk_size)"
-                                + " VALUES ('migration-tables-test', 'SELECT 1', 1)"
-                                + " RETURNING run_id")
-                .get(0, Long.class);
+        Long runId = dsl.insertInto(MIGRATION_RUN)
+                .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE)
+                .values("migration-tables-test", "SELECT 1", 1)
+                .returningResult(MIGRATION_RUN.RUN_ID)
+                .fetchOne(MIGRATION_RUN.RUN_ID);
 
-        dsl.execute("UPDATE dml_utils.migration_run"
-                + " SET updated_at = timestamptz '2000-01-01 00:00:00+00'"
-                + " WHERE run_id = ?", runId);
+        dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.UPDATED_AT, OffsetDateTime.parse("2000-01-01T00:00:00Z"))
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute();
 
-        Object recent = dsl.fetchValue(
-                "SELECT updated_at > timestamptz '2020-01-01 00:00:00+00'"
-                        + " FROM dml_utils.migration_run WHERE run_id = ?", runId);
+        Boolean recent = dsl.select(MIGRATION_RUN.UPDATED_AT.gt(OffsetDateTime.parse("2020-01-01T00:00:00Z")))
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne(0, Boolean.class);
         assertTrue(Boolean.TRUE.equals(recent),
                 "the trigger should overwrite updated_at with the transaction timestamp");
     }

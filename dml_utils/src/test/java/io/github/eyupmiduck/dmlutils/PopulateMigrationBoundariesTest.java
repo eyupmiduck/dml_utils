@@ -1,12 +1,15 @@
 package io.github.eyupmiduck.dmlutils;
 
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
-import org.jooq.Record;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.MigrationBoundaryRecord;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.MigrationRunRecord;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationBoundary.MIGRATION_BOUNDARY;
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationRun.MIGRATION_RUN;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -167,12 +170,12 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
         String label = "records-columns-run";
         long runId = populate(label, 5);
 
-        Record run = dsl.fetchOne(
-                "SELECT label, sql_text, chunk_size"
-                        + " FROM dml_utils.migration_run WHERE run_id = ?", runId);
-        assertEquals(label, run.get("label", String.class));
-        assertEquals(SQL_TEXT, run.get("sql_text", String.class));
-        assertEquals(5, run.get("chunk_size", Integer.class));
+        MigrationRunRecord run = dsl.selectFrom(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne();
+        assertEquals(label, run.getLabel());
+        assertEquals(SQL_TEXT, run.getSqlText());
+        assertEquals(5, run.getChunkSize());
     }
 
     /**
@@ -184,10 +187,8 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
 
         long runId = populate(2);
 
-        Integer completed = dsl.fetchOne(
-                        "SELECT count(*)::int FROM dml_utils.migration_boundary"
-                                + " WHERE run_id = ? AND completed_at IS NOT NULL", runId)
-                .get(0, Integer.class);
+        int completed = dsl.fetchCount(MIGRATION_BOUNDARY,
+                MIGRATION_BOUNDARY.RUN_ID.eq(runId).and(MIGRATION_BOUNDARY.COMPLETED_AT.isNotNull()));
         assertEquals(0, completed, "completed_at should be null for a fresh run");
     }
 
@@ -251,9 +252,10 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
     }
 
     private boolean archived(long runId) {
-        return Boolean.TRUE.equals(dsl.fetchValue(
-                "SELECT archived_at IS NOT NULL FROM dml_utils.migration_run WHERE run_id = ?",
-                runId));
+        return Boolean.TRUE.equals(dsl.select(MIGRATION_RUN.ARCHIVED_AT.isNotNull())
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_RUN.ARCHIVED_AT.isNotNull()));
     }
 
     private long populate(int chunkSize) {
@@ -265,29 +267,25 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
                 dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label, SQL_TEXT, chunkSize);
     }
 
-    private List<Record> boundaries(long runId) {
-        return dsl.fetch(
-                "SELECT boundary_no, boundary_id"
-                        + " FROM dml_utils.migration_boundary"
-                        + " WHERE run_id = ?"
-                        + " ORDER BY boundary_no",
-                runId);
+    private List<MigrationBoundaryRecord> boundaries(long runId) {
+        return dsl.selectFrom(MIGRATION_BOUNDARY)
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .orderBy(MIGRATION_BOUNDARY.BOUNDARY_NO)
+                .fetch();
     }
 
     private void assertBoundaries(long runId, long[][] expected) {
-        List<Record> actual = boundaries(runId);
+        List<MigrationBoundaryRecord> actual = boundaries(runId);
         assertEquals(expected.length, actual.size(), "boundary count");
         for (int i = 0; i < expected.length; i++) {
-            assertEquals(expected[i][0],
-                    actual.get(i).get("boundary_no", Long.class).longValue(), "boundary_no " + i);
-            assertEquals(expected[i][1],
-                    actual.get(i).get("boundary_id", Long.class).longValue(), "boundary_id " + i);
+            assertEquals(expected[i][0], actual.get(i).getBoundaryNo().longValue(),
+                    "boundary_no " + i);
+            assertEquals(expected[i][1], actual.get(i).getBoundaryId().longValue(),
+                    "boundary_id " + i);
         }
     }
 
     private int runCount(long runId) {
-        return dsl.fetchOne(
-                        "SELECT count(*)::int FROM dml_utils.migration_run WHERE run_id = ?", runId)
-                .get(0, Integer.class);
+        return dsl.fetchCount(MIGRATION_RUN, MIGRATION_RUN.RUN_ID.eq(runId));
     }
 }

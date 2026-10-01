@@ -4,6 +4,7 @@ import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationBoundary.MIGRATION_BOUNDARY;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -85,9 +86,11 @@ class ProcessMigrationChunkTest extends PostgresTestBase {
     }
 
     private boolean boundaryCompleted(long runId, long boundaryNo) {
-        return Boolean.TRUE.equals(dsl.fetchValue(
-                "SELECT completed_at IS NOT NULL FROM dml_utils.migration_boundary"
-                        + " WHERE run_id = ? AND boundary_no = ?", runId, boundaryNo));
+        return Boolean.TRUE.equals(dsl.select(MIGRATION_BOUNDARY.COMPLETED_AT.isNotNull())
+                .from(MIGRATION_BOUNDARY)
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId)
+                        .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(boundaryNo)))
+                .fetchOne(MIGRATION_BOUNDARY.COMPLETED_AT.isNotNull()));
     }
 
     private int payloadCount() {
