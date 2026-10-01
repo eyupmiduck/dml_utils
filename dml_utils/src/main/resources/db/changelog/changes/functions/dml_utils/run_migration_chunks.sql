@@ -108,6 +108,15 @@ BEGIN
             i_schema_name => l_effective_schema_name,
             i_table_name => l_effective_table_name);
 
+    -- The key extraction below has one arm per known kind. Fail loudly here if
+    -- primary_key_kind ever returns a kind this routine does not understand,
+    -- rather than letting the extraction fall through to NULL and rendering a
+    -- predicate that matches no rows.
+    IF l_key_kind NOT IN ('bigint', 'text', 'uuid') THEN
+        RAISE EXCEPTION 'unsupported key kind %', l_key_kind
+            USING ERRCODE = '22023';
+    END IF;
+
     -- Process every unclaimed boundary in order. Each worker claims its boundary
     -- and runs its chunk SQL in its own transaction, so progress is durable and
     -- a re-run resumes at the first unclaimed boundary.
@@ -124,12 +133,12 @@ BEGIN
                CASE l_key_kind
                    WHEN 'bigint' THEN (b.boundary_id).bigint_value::text
                    WHEN 'text' THEN (b.boundary_id).text_value
-                   ELSE (b.boundary_id).uuid_value::text
+                   WHEN 'uuid' THEN (b.boundary_id).uuid_value::text
                END,
                CASE l_key_kind
                    WHEN 'bigint' THEN (next.boundary_id).bigint_value::text
                    WHEN 'text' THEN (next.boundary_id).text_value
-                   ELSE (next.boundary_id).uuid_value::text
+                   WHEN 'uuid' THEN (next.boundary_id).uuid_value::text
                END,
                next.boundary_no = last.boundary_no
         INTO l_boundary_no, l_start_value, l_end_value, l_is_final
