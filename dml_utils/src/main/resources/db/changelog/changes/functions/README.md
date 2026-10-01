@@ -50,6 +50,30 @@ exists for the label. Boundaries are inserted with `completed_at` null. An empty
 source produces a run with no boundaries. Later inserts above the captured
 maximum fall outside the terminal boundary and are not processed.
 
+### `dml_utils.run_migration_chunks(i_sql_text, i_driving_table_schema_name, i_driving_table_name, i_label, i_chunk_size [, i_driving_table_alias])`
+
+```sql
+i_sql_text                  dml_utils.non_null_text
+i_driving_table_schema_name dml_utils.non_null_text
+i_driving_table_name        dml_utils.non_null_text
+i_label                     dml_utils.non_null_text
+i_chunk_size                dml_utils.positive_integer
+i_driving_table_alias       dml_utils.non_null_text DEFAULT 't'
+RETURNS void
+```
+
+`VOLATILE`, `SECURITY INVOKER`. Processes every fixed-row chunk of the driving
+table, one `pg_background` worker per chunk. `i_sql_text` is a template with
+`<driving_table>` and `<chunking_clause>` (see `render_chunk_sql`). Reuses the
+active run for the label, or creates it by running `populate_migration_boundaries`
+in a worker so its boundaries commit before the chunks run. Each chunk worker
+claims its boundary and commits autonomously, so a re-run resumes at the first
+unclaimed boundary. Raises `unique_violation` (`23505`) when another active run
+already exists for the label, and re-raises a chunk worker's failure with its
+original SQLSTATE. `RAISE NOTICE` and returns when the run is already complete.
+Run under `READ COMMITTED`; do not hold locks on the driving table across the
+call. Bounded worker waits are not part of this first version.
+
 ### `dml_utils.process_migration_chunk(i_run_id, i_boundary_no, i_sql_text)`
 
 ```sql

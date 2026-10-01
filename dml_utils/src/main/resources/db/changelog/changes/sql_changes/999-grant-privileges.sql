@@ -113,3 +113,19 @@ GRANT EXECUTE ON FUNCTION dml_utils.process_migration_chunk(
     bigint,
     dml_utils.non_null_text
     ) TO dml_utils_caller;
+REVOKE EXECUTE ON FUNCTION dml_utils.run_migration_chunks(
+    dml_utils.non_null_text,
+    dml_utils.non_null_text,
+    dml_utils.non_null_text,
+    dml_utils.non_null_text,
+    dml_utils.positive_integer,
+    dml_utils.non_null_text
+    ) FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils.run_migration_chunks(
+    dml_utils.non_null_text,
+    dml_utils.non_null_text,
+    dml_utils.non_null_text,
+    dml_utils.non_null_text,
+    dml_utils.positive_integer,
+    dml_utils.non_null_text
+    ) TO dml_utils_caller;
