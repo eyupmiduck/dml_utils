@@ -98,9 +98,6 @@ COMMENT ON COLUMN dml_utils.migration_boundary.updated_at IS
 COMMENT ON COLUMN dml_utils.migration_boundary.completed_at IS
     'Set when the chunk for this boundary is processed; NULL until then.';
 
-CREATE INDEX migration_boundary_id_idx
-    ON dml_utils.migration_boundary (run_id, boundary_id);
-
 DROP TRIGGER IF EXISTS migration_boundary_set_updated_at ON dml_utils.migration_boundary;
 CREATE TRIGGER migration_boundary_set_updated_at
     BEFORE UPDATE
