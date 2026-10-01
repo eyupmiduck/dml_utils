@@ -140,7 +140,7 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
 
         assertBoundaries(runId, new long[][]{{0, 1}, {1, 3}, {2, 5}, {3, 5}});
 
-        dsl.execute("INSERT INTO " + SOURCE_QUALIFIED + " (id) VALUES (100)");
+        dsl.insertInto(table(SOURCE_QUALIFIED)).columns(field("id", Long.class)).values(100L).execute();
 
         assertBoundaries(runId, new long[][]{{0, 1}, {1, 3}, {2, 5}, {3, 5}});
     }
@@ -192,8 +192,9 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
         dropTestTable(SOURCE_QUALIFIED);
         createTestTable(SOURCE_QUALIFIED, "id uuid PRIMARY KEY, payload text");
         for (int i = 1; i <= 10; i++) {
-            dsl.execute("INSERT INTO " + SOURCE_QUALIFIED + " (id) VALUES (?::uuid)",
-                    "00000000-0000-0000-0000-" + String.format("%012d", i));
+            dsl.insertInto(table(SOURCE_QUALIFIED)).columns(field("id", UUID.class))
+                    .values(uuid(i))
+                    .execute();
         }
 
         long runId = populate(4);
@@ -268,9 +269,8 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
     void resolvesThePrimaryKeyColumnNameFromTheCatalog() {
         dropTestTable(SOURCE_QUALIFIED);
         createTestTable(SOURCE_QUALIFIED, "key bigint PRIMARY KEY, payload text");
-        dsl.execute("INSERT INTO " + SOURCE_QUALIFIED + " (key) VALUES (1)");
-        dsl.execute("INSERT INTO " + SOURCE_QUALIFIED + " (key) VALUES (2)");
-        dsl.execute("INSERT INTO " + SOURCE_QUALIFIED + " (key) VALUES (3)");
+        dsl.insertInto(table(SOURCE_QUALIFIED)).columns(field("key", Long.class))
+                .values(1L).values(2L).values(3L).execute();
 
         long runId = populate(2);
 
@@ -322,7 +322,7 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
         dropTestTable(SOURCE_QUALIFIED);
         createTestTable(SOURCE_QUALIFIED, "id bigint PRIMARY KEY, payload text");
         for (long id : ids) {
-            dsl.execute("INSERT INTO " + SOURCE_QUALIFIED + " (id) VALUES (?)", id);
+            dsl.insertInto(table(SOURCE_QUALIFIED)).columns(field("id", Long.class)).values(id).execute();
         }
     }
 

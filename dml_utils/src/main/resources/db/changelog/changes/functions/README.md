@@ -31,7 +31,7 @@ i_sql_text                  dml_utils_data.non_null_text
 i_driving_table_schema_name dml_utils_data.non_null_text
 i_driving_table_name        dml_utils_data.non_null_text
 i_label                     dml_utils_data.non_null_text
-i_chunk_size                dml_utils_data.positive_integer
+i_chunk_size                dml_utils_data.positive_integer DEFAULT 1000
 i_driving_table_alias       dml_utils_data.non_null_text DEFAULT 't'
 RETURNS void
 ```

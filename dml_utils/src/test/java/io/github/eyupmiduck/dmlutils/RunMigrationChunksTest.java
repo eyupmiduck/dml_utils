@@ -1,6 +1,7 @@
 package io.github.eyupmiduck.dmlutils;
 
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils.routines.RunMigrationChunks;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.records.MigrationBoundaryRecord;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.records.MigrationErrorRecord;
 import org.junit.jupiter.api.AfterEach;
@@ -123,7 +124,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
         String label = label("noop");
 
         run(label, 2);
-        dsl.execute("UPDATE " + SOURCE_QUALIFIED + " SET payload = 'touched'");
+        dsl.update(table(SOURCE_QUALIFIED)).set(field("payload", String.class), "touched").execute();
 
         run(label, 2);
 
@@ -271,7 +272,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
         dropTestTable(otherQualified);
         createTestTable(otherQualified, "id bigint PRIMARY KEY, payload text");
         for (long id = 1; id <= 4; id++) {
-            dsl.execute("INSERT INTO " + otherQualified + " (id) VALUES (?)", id);
+            dsl.insertInto(table(otherQualified)).columns(field("id", Long.class)).values(id).execute();
         }
 
         String label = label("stored-table");
@@ -403,7 +404,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
         dropTestTable(SOURCE_QUALIFIED);
         createTestTable(SOURCE_QUALIFIED, "key bigint PRIMARY KEY, payload text");
         for (long id = 1; id <= 6; id++) {
-            dsl.execute("INSERT INTO " + SOURCE_QUALIFIED + " (key) VALUES (?)", id);
+            dsl.insertInto(table(SOURCE_QUALIFIED)).columns(field("key", Long.class)).values(id).execute();
         }
         String label = label("catalog-pk");
 
@@ -421,7 +422,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
         dropTestTable(SOURCE_QUALIFIED);
         createTestTable(SOURCE_QUALIFIED, "id integer PRIMARY KEY, payload text");
         for (int id = 1; id <= 6; id++) {
-            dsl.execute("INSERT INTO " + SOURCE_QUALIFIED + " (id) VALUES (?)", id);
+            dsl.insertInto(table(SOURCE_QUALIFIED)).columns(field("id", Integer.class)).values(id).execute();
         }
         String label = label("integer-pk");
 
@@ -439,7 +440,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
         dropTestTable(SOURCE_QUALIFIED);
         createTestTable(SOURCE_QUALIFIED, "id smallint PRIMARY KEY, payload text");
         for (int id = 1; id <= 6; id++) {
-            dsl.execute("INSERT INTO " + SOURCE_QUALIFIED + " (id) VALUES (?)", id);
+            dsl.insertInto(table(SOURCE_QUALIFIED)).columns(field("id", Short.class)).values((short) id).execute();
         }
         String label = label("smallint-pk");
 
@@ -458,7 +459,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
         dropTestTable(SOURCE_QUALIFIED);
         createTestTable(SOURCE_QUALIFIED, "id text PRIMARY KEY, payload text");
         for (String id : new String[]{"a", "b", "o'brien", "z"}) {
-            dsl.execute("INSERT INTO " + SOURCE_QUALIFIED + " (id) VALUES (?)", id);
+            dsl.insertInto(table(SOURCE_QUALIFIED)).columns(field("id", String.class)).values(id).execute();
         }
         String label = label("text-pk");
 
@@ -480,8 +481,9 @@ class RunMigrationChunksTest extends PostgresTestBase {
         dropTestTable(SOURCE_QUALIFIED);
         createTestTable(SOURCE_QUALIFIED, "id uuid PRIMARY KEY, payload text");
         for (int i = 1; i <= 6; i++) {
-            dsl.execute("INSERT INTO " + SOURCE_QUALIFIED + " (id) VALUES (?::uuid)",
-                    "00000000-0000-0000-0000-" + String.format("%012d", i));
+            dsl.insertInto(table(SOURCE_QUALIFIED)).columns(field("id", UUID.class))
+                    .values(UUID.fromString("00000000-0000-0000-0000-" + String.format("%012d", i)))
+                    .execute();
         }
         String label = label("uuid-pk");
 
@@ -532,22 +534,46 @@ class RunMigrationChunksTest extends PostgresTestBase {
         createSource(1, 2, 3, 4);
         String label = label("default-alias");
 
-        dsl.execute(
-                "SELECT dml_utils.run_migration_chunks("
-                        + "?::dml_utils_data.non_null_text, ?::dml_utils_data.non_null_text,"
-                        + " ?::dml_utils_data.non_null_text, ?::dml_utils_data.non_null_text,"
-                        + " ?::dml_utils_data.positive_integer)",
-                TEMPLATE, PUBLIC_SCHEMA, SOURCE, label, 2);
+        RunMigrationChunks routine = runRoutine(label);
+        routine.setIChunkSize(2);
+        routine.execute(dsl.configuration());
 
         assertEquals(4, doneCount(), "the default alias t should be used");
         assertTrue(runCompleted(runId(label)), "the run should be marked complete");
+    }
+
+    /**
+     * The chunk-size argument defaults to 1000 at the SQL level when omitted.
+     */
+    @Test
+    void usesTheDefaultChunkSizeWhenOmitted() {
+        createSource(1, 2, 3, 4);
+        String label = label("default-chunk-size");
+
+        runRoutine(label).execute(dsl.configuration());
+
+        assertEquals(4, doneCount(), "every row should be processed with the default chunk size");
+        assertTrue(runCompleted(runId(label)), "the run should be marked complete");
+    }
+
+    /**
+     * Builds a {@code run_migration_chunks} call with the required arguments
+     * set, leaving the defaulted ones for jOOQ to omit.
+     */
+    private RunMigrationChunks runRoutine(String label) {
+        RunMigrationChunks routine = new RunMigrationChunks();
+        routine.setISqlText(TEMPLATE);
+        routine.setIDrivingTableSchemaName(PUBLIC_SCHEMA);
+        routine.setIDrivingTableName(SOURCE);
+        routine.setILabel(label);
+        return routine;
     }
 
     private void createSource(long... ids) {
         dropTestTable(SOURCE_QUALIFIED);
         createTestTable(SOURCE_QUALIFIED, "id bigint PRIMARY KEY, payload text");
         for (long id : ids) {
-            dsl.execute("INSERT INTO " + SOURCE_QUALIFIED + " (id) VALUES (?)", id);
+            dsl.insertInto(table(SOURCE_QUALIFIED)).columns(field("id", Long.class)).values(id).execute();
         }
     }
 
@@ -630,9 +656,9 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     private int payloadCount(String qualifiedTable, String value) {
-        return dsl.fetchOne(
-                        "SELECT count(*)::int FROM " + qualifiedTable + " WHERE payload = ?",
-                        value)
-                .get(0, Integer.class);
+        return dsl.selectCount()
+                .from(table(qualifiedTable))
+                .where(field("payload", String.class).eq(value))
+                .fetchOne(0, Integer.class);
     }
 }
