@@ -194,16 +194,18 @@ RETURNS name
 `invalid_parameter_value` (`22023`) when the table has no primary key or a
 composite primary key.
 
-### `dml_utils_lib.assert_bigint_primary_key(i_schema_name, i_table_name)`
+### `dml_utils_lib.primary_key_kind(i_schema_name, i_table_name)`
 
 ```sql
 i_schema_name dml_utils.non_null_text
 i_table_name  dml_utils.non_null_text
-RETURNS void
+RETURNS text
 ```
 
-`SECURITY INVOKER`. Raises `invalid_parameter_value` (`22023`) when the single
-primary-key column is not `bigint`.
+`STABLE`, `SECURITY INVOKER`. Returns the boundary key kind of the table's single
+primary-key column: `bigint` for `smallint`/`integer`/`bigint`, `text` for a
+`text` key, and `uuid` for a `uuid` key. Raises `invalid_parameter_value`
+(`22023`) for any other type.
 
 ### `dml_utils_lib.assert_supported_primary_key(i_schema_name, i_table_name)`
 

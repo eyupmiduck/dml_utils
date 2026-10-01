@@ -42,11 +42,11 @@ GRANT EXECUTE ON FUNCTION dml_utils_lib.single_column_primary_key(
     dml_utils.non_null_text,
     dml_utils.non_null_text
     ) TO dml_utils_caller;
-REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_bigint_primary_key(
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.primary_key_kind(
     dml_utils.non_null_text,
     dml_utils.non_null_text
     ) FROM public;
-GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_bigint_primary_key(
+GRANT EXECUTE ON FUNCTION dml_utils_lib.primary_key_kind(
     dml_utils.non_null_text,
     dml_utils.non_null_text
     ) TO dml_utils_caller;

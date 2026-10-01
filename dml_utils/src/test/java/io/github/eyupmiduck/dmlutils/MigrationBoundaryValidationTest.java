@@ -203,6 +203,52 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     }
 
     /**
+     * The key-kind helper reports {@code bigint} for every supported integer
+     * primary-key type.
+     */
+    @Test
+    void primaryKeyKindIsBigintForIntegerTypes() {
+        for (String type : new String[]{"smallint", "integer", "bigint"}) {
+            dropTestTable(TABLE_QUALIFIED);
+            createTestTable(TABLE_QUALIFIED, "id " + type + " PRIMARY KEY");
+
+            assertEquals("bigint", primaryKeyKind(),
+                    () -> "expected bigint for " + type);
+        }
+    }
+
+    /**
+     * The key-kind helper reports {@code text} for a text primary key.
+     */
+    @Test
+    void primaryKeyKindIsTextForText() {
+        createTestTable(TABLE_QUALIFIED, "id text PRIMARY KEY");
+
+        assertEquals("text", primaryKeyKind());
+    }
+
+    /**
+     * The key-kind helper reports {@code uuid} for a uuid primary key.
+     */
+    @Test
+    void primaryKeyKindIsUuidForUuid() {
+        createTestTable(TABLE_QUALIFIED, "id uuid PRIMARY KEY");
+
+        assertEquals("uuid", primaryKeyKind());
+    }
+
+    /**
+     * The key-kind helper rejects a primary-key type that cannot be chunked
+     * with {@code 22023}.
+     */
+    @Test
+    void primaryKeyKindRejectsUnsupportedType() {
+        createTestTable(TABLE_QUALIFIED, "id numeric PRIMARY KEY");
+
+        assertSqlState("22023", this::primaryKeyKind);
+    }
+
+    /**
      * A failed validation leaves the migration tables untouched.
      */
     @Test
@@ -256,6 +302,14 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
 
         assertNotEquals(firstRun, secondRun, "a new run should be created");
         assertEquals(2, runCount(label), "both runs for the label should exist");
+    }
+
+    /**
+     * Calls {@code dml_utils_lib.primary_key_kind} for the test table.
+     */
+    private String primaryKeyKind() {
+        return io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines
+                .primaryKeyKind(dsl.configuration(), PUBLIC_SCHEMA, TABLE);
     }
 
     private long populate(String schema, String table, Integer chunkSize) {
