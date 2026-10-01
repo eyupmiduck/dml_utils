@@ -3,13 +3,16 @@ package io.github.eyupmiduck.dmlutils;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines;
 import org.junit.jupiter.api.Test;
 
+import java.util.UUID;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * Verifies {@code dml_utils_lib.assert_chunking_template} and
  * {@code dml_utils_lib.render_chunk_sql}: the template tokens must appear
  * exactly once, and substitution produces the expected driving-table reference
- * and half-open (or inclusive, for the final chunk) range predicate.
+ * and half-open (or inclusive, for the final chunk) range predicate with an
+ * explicitly cast key literal.
  */
 class RenderChunkSqlTest extends PostgresTestBase {
 
@@ -57,15 +60,15 @@ class RenderChunkSqlTest extends PostgresTestBase {
 
     /**
      * Substitution produces the qualified, aliased driving-table reference and
-     * a non-final (half-open) range predicate.
+     * a non-final (half-open) range predicate with an explicit bigint cast.
      */
     @Test
     void rendersNonFinalChunk() {
-        String rendered = render(false, 10L, 20L);
+        String rendered = render(false, "bigint", "10", "20");
 
         assertEquals(
                 "UPDATE public.src t SET processed = true"
-                        + " WHERE (t.id >= 10 AND t.id < 20)",
+                        + " WHERE (t.id >= '10'::bigint AND t.id < '20'::bigint)",
                 rendered);
     }
 
@@ -74,12 +77,65 @@ class RenderChunkSqlTest extends PostgresTestBase {
      */
     @Test
     void rendersFinalChunk() {
-        String rendered = render(true, 30L, 40L);
+        String rendered = render(true, "bigint", "30", "40");
 
         assertEquals(
                 "UPDATE public.src t SET processed = true"
-                        + " WHERE (t.id >= 30 AND t.id <= 40)",
+                        + " WHERE (t.id >= '30'::bigint AND t.id <= '40'::bigint)",
                 rendered);
+    }
+
+    /**
+     * A text key is rendered as a quoted literal cast to text.
+     */
+    @Test
+    void rendersTextKeyWithAnExplicitCast() {
+        String rendered = render(false, "text", "abc", "def");
+
+        assertEquals(
+                "UPDATE public.src t SET processed = true"
+                        + " WHERE (t.id >= 'abc'::text AND t.id < 'def'::text)",
+                rendered);
+    }
+
+    /**
+     * A uuid key is rendered as a quoted literal cast to uuid.
+     */
+    @Test
+    void rendersUuidKeyWithAnExplicitCast() {
+        String start = new UUID(0x1122334455667788L, 0x99aabbccddeeff00L).toString();
+        String end = new UUID(0x1122334455667788L, 0x99aabbccddeeff01L).toString();
+
+        String rendered = render(false, "uuid", start, end);
+
+        assertEquals(
+                "UPDATE public.src t SET processed = true"
+                        + " WHERE (t.id >= '11223344-5566-7788-99aa-bbccddeeff00'::uuid"
+                        + " AND t.id < '11223344-5566-7788-99aa-bbccddeeff01'::uuid)",
+                rendered);
+    }
+
+    /**
+     * A quote inside a text key is escaped by the literal, so it cannot break
+     * out of the generated SQL.
+     */
+    @Test
+    void escapesQuotesInTextKeys() {
+        String rendered = render(false, "text", "O'Brien", "O'Dad");
+
+        assertEquals(
+                "UPDATE public.src t SET processed = true"
+                        + " WHERE (t.id >= 'O''Brien'::text AND t.id < 'O''Dad'::text)",
+                rendered);
+    }
+
+    /**
+     * A key kind outside the whitelist is rejected, since the kind is
+     * interpolated into the generated SQL.
+     */
+    @Test
+    void rejectsAnUnknownKeyKind() {
+        assertSqlState("22023", () -> render(false, "int; DROP TABLE src", "1", "2"));
     }
 
     /**
@@ -89,11 +145,12 @@ class RenderChunkSqlTest extends PostgresTestBase {
     @Test
     void usesTheGivenPrimaryKeyName() {
         String rendered = Routines.renderChunkSql(
-                dsl.configuration(), TEMPLATE, "public", "src", "s", "pk", 5L, 15L, false);
+                dsl.configuration(), TEMPLATE, "public", "src", "s", "pk",
+                "bigint", "5", "15", false);
 
         assertEquals(
                 "UPDATE public.src s SET processed = true"
-                        + " WHERE (s.pk >= 5 AND s.pk < 15)",
+                        + " WHERE (s.pk >= '5'::bigint AND s.pk < '15'::bigint)",
                 rendered);
     }
 
@@ -104,11 +161,12 @@ class RenderChunkSqlTest extends PostgresTestBase {
     @Test
     void usesTheGivenAlias() {
         String rendered = Routines.renderChunkSql(
-                dsl.configuration(), TEMPLATE, "public", "src", "src_row", "id", 1L, 2L, false);
+                dsl.configuration(), TEMPLATE, "public", "src", "src_row", "id",
+                "bigint", "1", "2", false);
 
         assertEquals(
                 "UPDATE public.src src_row SET processed = true"
-                        + " WHERE (src_row.id >= 1 AND src_row.id < 2)",
+                        + " WHERE (src_row.id >= '1'::bigint AND src_row.id < '2'::bigint)",
                 rendered);
     }
 
@@ -126,14 +184,15 @@ class RenderChunkSqlTest extends PostgresTestBase {
                 "my table",
                 "x\"y",
                 "pk\"col",
-                1L,
-                2L,
+                "bigint",
+                "1",
+                "2",
                 false);
 
         assertEquals(
                 "UPDATE \"my schema\".\"my table\" \"x\"\"y\" SET processed = true"
-                        + " WHERE (\"x\"\"y\".\"pk\"\"col\" >= 1"
-                        + " AND \"x\"\"y\".\"pk\"\"col\" < 2)",
+                        + " WHERE (\"x\"\"y\".\"pk\"\"col\" >= '1'::bigint"
+                        + " AND \"x\"\"y\".\"pk\"\"col\" < '2'::bigint)",
                 rendered);
     }
 
@@ -151,18 +210,20 @@ class RenderChunkSqlTest extends PostgresTestBase {
                 "<chunking_clause>",
                 "t",
                 "id",
-                1L,
-                2L,
+                "bigint",
+                "1",
+                "2",
                 false);
 
         assertEquals(
                 "UPDATE public.\"<chunking_clause>\" t SET processed = true"
-                        + " WHERE (t.id >= 1 AND t.id < 2)",
+                        + " WHERE (t.id >= '1'::bigint AND t.id < '2'::bigint)",
                 rendered);
     }
 
-    private String render(boolean isFinal, Long startId, Long endId) {
+    private String render(boolean isFinal, String keyKind, String startValue, String endValue) {
         return Routines.renderChunkSql(
-                dsl.configuration(), TEMPLATE, "public", "src", "t", "id", startId, endId, isFinal);
+                dsl.configuration(), TEMPLATE, "public", "src", "t", "id",
+                keyKind, startValue, endValue, isFinal);
     }
 }

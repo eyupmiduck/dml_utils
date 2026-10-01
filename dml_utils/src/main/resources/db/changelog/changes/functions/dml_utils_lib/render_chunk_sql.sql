@@ -4,8 +4,9 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.render_chunk_sql(
     i_table_name dml_utils.non_null_text,
     i_table_alias dml_utils.non_null_text,
     i_primary_key_name name,
-    i_start_id bigint,
-    i_end_id bigint,
+    i_key_kind dml_utils.non_null_text,
+    i_start_value text,
+    i_end_value text,
     i_is_final boolean
 )
     RETURNS text
@@ -26,6 +27,14 @@ DECLARE
 BEGIN
     PERFORM dml_utils_lib.assert_chunking_template(i_sql_text => i_sql_text);
 
+    -- The kind selects the explicit cast and is interpolated into the SQL, so
+    -- it must be one of the known kinds (never caller SQL). The values are the
+    -- text form of the packed key's populated attribute.
+    IF i_key_kind NOT IN ('bigint', 'text', 'uuid') THEN
+        RAISE EXCEPTION 'unsupported key kind %', i_key_kind
+            USING ERRCODE = '22023';
+    END IF;
+
     -- The driving table is referenced as "<schema>.<table> <alias>" so the
     -- template's column references can use the alias.
     l_driving_table := pg_catalog.format('%I.%I %I',
@@ -33,14 +42,14 @@ BEGIN
 
     -- The range predicate is parenthesized so it drops into a template clause
     -- verbatim. The final chunk uses an inclusive upper bound so the captured
-    -- maximum row is processed; every other chunk is half-open. The ids are
-    -- typed bigint, so %s emits them as bare integer literals safely.
+    -- maximum row is processed; every other chunk is half-open. %L quotes the
+    -- value and %s appends the whitelisted cast.
     l_chunking_clause := pg_catalog.format(
-            '(%I.%I >= %s AND %I.%I %s %s)',
-            i_table_alias, i_primary_key_name, i_start_id,
+            '(%I.%I >= %L::%s AND %I.%I %s %L::%s)',
+            i_table_alias, i_primary_key_name, i_start_value, i_key_kind,
             i_table_alias, i_primary_key_name,
             CASE WHEN i_is_final THEN '<=' ELSE '<' END,
-            i_end_id);
+            i_end_value, i_key_kind);
 
     -- A quoted identifier could in principle contain a sentinel character;
     -- reject that so the substitution below stays unambiguous.
@@ -68,4 +77,5 @@ $$;
 COMMENT ON FUNCTION dml_utils_lib.render_chunk_sql IS
     'Returns the SQL template with <driving_table> and <chunking_clause> '
         'substituted for the given table, alias, primary key and chunk range; '
-        'the final chunk uses an inclusive upper bound.';
+        'the key kind (bigint, text or uuid) selects the explicit cast. The final '
+        'chunk uses an inclusive upper bound.';

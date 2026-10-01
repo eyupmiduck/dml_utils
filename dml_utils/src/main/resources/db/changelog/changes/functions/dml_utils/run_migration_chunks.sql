@@ -18,9 +18,10 @@ DECLARE
     l_stored_sql_text    text;
     l_stored_chunk_size  integer;
     l_effective_sql_text text;
+    l_key_kind           text;
     l_boundary_no        bigint;
-    l_start_id           bigint;
-    l_end_id             bigint;
+    l_start_value        text;
+    l_end_value          text;
     l_is_final           boolean;
     l_chunk_sql          text;
     -- pg_background is installed in the public schema. Qualify its types and
@@ -35,7 +36,7 @@ BEGIN
     l_primary_key_name := dml_utils_lib.single_column_primary_key(
             i_schema_name => i_driving_table_schema_name,
             i_table_name => i_driving_table_name);
-    PERFORM dml_utils_lib.primary_key_kind(
+    l_key_kind := dml_utils_lib.primary_key_kind(
             i_schema_name => i_driving_table_schema_name,
             i_table_name => i_driving_table_name);
 
@@ -97,13 +98,22 @@ BEGIN
     -- boundary), NOT from the set of still-unclaimed boundaries. Deriving them
     -- from the unclaimed set would misclassify a chunk as final whenever a later
     -- boundary (for example the terminal one) is already completed. The join on
-    -- boundary_no + 1 excludes the terminal boundary, so end_id is never null.
+    -- boundary_no + 1 excludes the terminal boundary, so the end key is never
+    -- null.
     LOOP
         SELECT b.boundary_no,
-               (b.boundary_id).bigint_value,
-               (next.boundary_id).bigint_value,
+               CASE l_key_kind
+                   WHEN 'bigint' THEN (b.boundary_id).bigint_value::text
+                   WHEN 'text' THEN (b.boundary_id).text_value
+                   ELSE (b.boundary_id).uuid_value::text
+               END,
+               CASE l_key_kind
+                   WHEN 'bigint' THEN (next.boundary_id).bigint_value::text
+                   WHEN 'text' THEN (next.boundary_id).text_value
+                   ELSE (next.boundary_id).uuid_value::text
+               END,
                next.boundary_no = last.boundary_no
-        INTO l_boundary_no, l_start_id, l_end_id, l_is_final
+        INTO l_boundary_no, l_start_value, l_end_value, l_is_final
         FROM dml_utils.migration_boundary AS b
                  JOIN dml_utils.migration_boundary AS next
                       ON next.run_id = b.run_id
@@ -126,8 +136,9 @@ BEGIN
                 i_table_name => i_driving_table_name,
                 i_table_alias => i_driving_table_alias,
                 i_primary_key_name => l_primary_key_name,
-                i_start_id => l_start_id,
-                i_end_id => l_end_id,
+                i_key_kind => l_key_kind,
+                i_start_value => l_start_value,
+                i_end_value => l_end_value,
                 i_is_final => l_is_final);
 
         -- One-shot run: launch + wait + outcome + detach. The worker SQL is

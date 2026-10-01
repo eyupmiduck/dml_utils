@@ -28,16 +28,16 @@ BEGIN
             i_table_name => i_table_name);
     PERFORM dml_utils_lib.assert_no_active_run_for_label(i_label => i_label);
 
-    -- Pack the row's own key into migration_key_value; each kind populates a
+    -- Pack the row's own key into migration_key; each kind populates a
     -- different attribute. The expression is built from a whitelisted kind, so
     -- interpolating it into the dynamic SQL is safe.
     l_pack_expression := CASE l_key_kind
                              WHEN 'bigint' THEN
-                                 'ROW(id::bigint, NULL, NULL)::dml_utils.migration_key_value'
+                                 'ROW(id::bigint, NULL, NULL)::dml_utils.migration_key'
                              WHEN 'text' THEN
-                                 'ROW(NULL, id::text, NULL)::dml_utils.migration_key_value'
+                                 'ROW(NULL, id::text, NULL)::dml_utils.migration_key'
                              WHEN 'uuid' THEN
-                                 'ROW(NULL, NULL, id::uuid)::dml_utils.migration_key_value'
+                                 'ROW(NULL, NULL, id::uuid)::dml_utils.migration_key'
         END;
 
     INSERT INTO dml_utils.migration_run (label, sql_text, chunk_size)

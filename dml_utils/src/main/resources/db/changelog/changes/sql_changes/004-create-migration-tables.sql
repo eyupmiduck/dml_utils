@@ -58,11 +58,18 @@ CREATE TABLE dml_utils.migration_boundary
 (
     run_id       bigint NOT NULL REFERENCES dml_utils.migration_run (run_id) ON DELETE CASCADE,
     boundary_no  bigint NOT NULL,
-    boundary_id  dml_utils.migration_key_value NOT NULL,
+    boundary_id  dml_utils.migration_key NOT NULL,
     created_at   timestamptz NOT NULL DEFAULT pg_catalog.now(),
     updated_at   timestamptz NOT NULL DEFAULT pg_catalog.now(),
     completed_at timestamptz,
-    PRIMARY KEY (run_id, boundary_no)
+    PRIMARY KEY (run_id, boundary_no),
+    CONSTRAINT migration_boundary_key_check CHECK (
+        pg_catalog.num_nonnulls(
+            (boundary_id).bigint_value,
+            (boundary_id).text_value,
+            (boundary_id).uuid_value
+            ) = 1
+        )
 );
 
 COMMENT ON TABLE dml_utils.migration_boundary IS
@@ -75,8 +82,8 @@ COMMENT ON COLUMN dml_utils.migration_boundary.boundary_no IS
     'Boundary order within the run; 0 is the first chunk start.';
 COMMENT ON COLUMN dml_utils.migration_boundary.boundary_id IS
     'Packed primary-key value (one of bigint_value, text_value or uuid_value in '
-        'migration_key_value) of the first row in the chunk, or the captured '
-        'maximum for the final high-water boundary.';
+        'migration_key) of the first row in the chunk, or the captured maximum '
+        'for the final high-water boundary.';
 COMMENT ON COLUMN dml_utils.migration_boundary.created_at IS
     'Row creation time.';
 COMMENT ON COLUMN dml_utils.migration_boundary.updated_at IS

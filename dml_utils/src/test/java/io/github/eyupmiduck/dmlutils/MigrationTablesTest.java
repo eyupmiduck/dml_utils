@@ -7,6 +7,7 @@ import java.time.OffsetDateTime;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationBoundary.MIGRATION_BOUNDARY;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationRun.MIGRATION_RUN;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -91,6 +92,47 @@ class MigrationTablesTest extends PostgresTestBase {
                 .values(runId, 0L, new MigrationKeyRecord(1L, null, null))
                 .execute();
         return runId;
+    }
+
+    /**
+     * The boundary key check constraint accepts a key with exactly one
+     * populated attribute.
+     */
+    @Test
+    void acceptsASingleAttributeBoundaryKey() {
+        Long runId = insertRun();
+
+        dsl.insertInto(MIGRATION_BOUNDARY)
+                .columns(MIGRATION_BOUNDARY.RUN_ID, MIGRATION_BOUNDARY.BOUNDARY_NO,
+                        MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .values(runId, 0L, new MigrationKeyRecord(null, "abc", null))
+                .execute();
+
+        assertEquals("abc", dsl.select(MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .from(MIGRATION_BOUNDARY)
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .getTextValue());
+    }
+
+    /**
+     * A boundary key with no populated attribute or more than one populated
+     * attribute violates the check constraint.
+     */
+    @Test
+    void rejectsBoundaryKeysWithZeroOrMultipleAttributes() {
+        Long runId = insertRun();
+
+        assertDomainViolation(() -> dsl.insertInto(MIGRATION_BOUNDARY)
+                .columns(MIGRATION_BOUNDARY.RUN_ID, MIGRATION_BOUNDARY.BOUNDARY_NO,
+                        MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .values(runId, 0L, new MigrationKeyRecord(null, null, null))
+                .execute());
+        assertDomainViolation(() -> dsl.insertInto(MIGRATION_BOUNDARY)
+                .columns(MIGRATION_BOUNDARY.RUN_ID, MIGRATION_BOUNDARY.BOUNDARY_NO,
+                        MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .values(runId, 0L, new MigrationKeyRecord(1L, "abc", null))
+                .execute());
     }
 
     /**

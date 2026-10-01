@@ -411,6 +411,45 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     /**
+     * A table with a text primary key is chunked end to end, including a key
+     * that contains a quote (the rendered literal must escape it).
+     */
+    @Test
+    void processesATableWithATextPrimaryKey() {
+        dropTestTable(SOURCE_QUALIFIED);
+        createTestTable(SOURCE_QUALIFIED, "id text PRIMARY KEY, payload text");
+        for (String id : new String[]{"a", "b", "o'brien", "z"}) {
+            dsl.execute("INSERT INTO " + SOURCE_QUALIFIED + " (id) VALUES (?)", id);
+        }
+        String label = label("text-pk");
+
+        run(label, 2);
+
+        assertEquals(4, doneCount(), "every row of a text-keyed table should be processed");
+        assertTrue(runCompleted(runId(label)), "the run should be marked complete");
+    }
+
+    /**
+     * A table with a uuid primary key is chunked end to end, even though
+     * PostgreSQL has no {@code min}/{@code max} aggregate for uuid.
+     */
+    @Test
+    void processesATableWithAUuidPrimaryKey() {
+        dropTestTable(SOURCE_QUALIFIED);
+        createTestTable(SOURCE_QUALIFIED, "id uuid PRIMARY KEY, payload text");
+        for (int i = 1; i <= 6; i++) {
+            dsl.execute("INSERT INTO " + SOURCE_QUALIFIED + " (id) VALUES (?::uuid)",
+                    "00000000-0000-0000-0000-" + String.format("%012d", i));
+        }
+        String label = label("uuid-pk");
+
+        run(label, 2);
+
+        assertEquals(6, doneCount(), "every row of a uuid-keyed table should be processed");
+        assertTrue(runCompleted(runId(label)), "the run should be marked complete");
+    }
+
+    /**
      * The alias argument defaults to {@code t} at the SQL level when omitted.
      */
     @Test
