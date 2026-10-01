@@ -8,11 +8,12 @@ the Liquibase CLI, without building anything or running Docker (see
 
 Liquibase loads two application schemas:
 
-- **`dml_utils`** — the application surface. It holds the shared domains (`non_null_text`, `non_negative_integer`,
-  `positive_integer`, and the array
-  domains) and the fixed-row chunk migration tables
-  `migration_run` / `migration_boundary` populated by
-  `dml_utils.populate_migration_boundaries`.
+- **`dml_utils`** — the application surface. It holds the shared domains
+  (`non_null_text`, `non_negative_integer`, `positive_integer`, and the array
+  domains) and the fixed-row chunk migration tables `migration_run` /
+  `migration_boundary` populated by `dml_utils.populate_migration_boundaries`,
+  plus `dml_utils.run_migration_chunks`, which processes those chunks one
+  `pg_background` worker at a time.
 - **`dml_utils_lib`** — generic helpers that take their parameters explicitly,
   such as the catalog validation routines used before a migration run.
 
@@ -23,6 +24,121 @@ dedicated `liquibase` schema as `liquibase.dml_utils_databasechangelog` and
 Every table carries `created_at`/`updated_at` (both `timestamptz NOT NULL
 DEFAULT now()`), and the shared `dml_utils.set_updated_at()` trigger keeps
 `updated_at` current on every `UPDATE`, so a caller cannot bypass it.
+
+## Processing a table in chunks
+
+`dml_utils.run_migration_chunks` runs a DML statement over a large table in
+fixed-row chunks, one `pg_background` worker per chunk, so a long-running
+backfill does not hold one giant statement (and one long transaction) on the
+table. Each worker commits its own chunk, so progress is durable and a re-run
+resumes where it stopped.
+
+### How it works
+
+You supply a SQL **template** with two placeholders that must each appear
+exactly once:
+
+- `<driving_table>` — replaced by `"<schema>"."<table>" "<alias>"`.
+- `<chunking_clause>` — replaced by the chunk's primary-key range,
+  `(<alias>.<pk> >= <start> AND <alias>.<pk> < <end>)` for every chunk except
+  the last, which uses `<= <end>` so the captured maximum row is included.
+
+The driving table must have a **single `bigint` primary key**; the column name
+is read from the catalog, so it need not be `id`. Chunks are cut by row number
+over `ORDER BY <pk>`; rows inserted later with keys above the captured maximum
+are outside the final chunk and are not processed.
+
+The first call for a `label` computes the boundaries (via
+`populate_migration_boundaries`) and then processes them. Re-running with the
+same `label` is safe: it resumes at the first unprocessed chunk, and a run that
+is already complete is a no-op. Progress and completion are visible in
+`dml_utils.migration_run` and `dml_utils.migration_boundary`.
+
+### Example: backfill a column
+
+Given a table with a single `bigint` primary key:
+
+```sql
+CREATE TABLE app.events (
+    id      bigint PRIMARY KEY,
+    payload jsonb,
+    region  text
+);
+```
+
+Backfill `region` in chunks of 10,000 rows:
+
+```sql
+SELECT dml_utils.run_migration_chunks(
+    i_sql_text                  =>
+        'UPDATE <driving_table> SET region = ''unknown'' WHERE <chunking_clause>',
+    i_driving_table_schema_name => 'app',
+    i_driving_table_name        => 'events',
+    i_label                     => 'events-region-backfill',
+    i_chunk_size                => 10000);
+```
+
+The worker SQL for the first chunk is:
+
+```sql
+UPDATE "app"."events" "t" SET region = 'unknown'
+ WHERE (t.id >= 1 AND t.id < 10001)
+```
+
+and the final chunk uses `t.id <= <max>`.
+
+### Example: a custom alias
+
+If the template refers to the driving table more than once, give it an alias so
+every reference resolves:
+
+```sql
+SELECT dml_utils.run_migration_chunks(
+    i_sql_text                  =>
+        'UPDATE <driving_table> SET payload = payload || ''{"migrated":true}'''
+        ' WHERE <chunking_clause>',
+    i_driving_table_schema_name => 'app',
+    i_driving_table_name        => 'events',
+    i_label                     => 'events-payload-migrate',
+    i_chunk_size                => 5000,
+    i_driving_table_alias       => 'e');
+```
+
+### Requirements and behavior
+
+- `pg_background` must be installed and the caller must hold
+  `pgbackground_role` (the custom image's init script grants it to
+  `dml_utils_caller`).
+- The routine is `SECURITY INVOKER`: the caller needs whatever privileges the
+  chunk SQL needs on the driving table (typically `UPDATE`).
+- Run under `READ COMMITTED`, and do not hold locks (or uncommitted writes) on
+  the driving table across the call: a worker that needs a row the caller holds
+  cannot make progress.
+- The chunk SQL should be idempotent: a chunk whose worker failed is retried on
+  the next run, and a chunk that committed is not run again.
+
+### Inspecting and restarting a run
+
+```sql
+-- Is the run done, and when did it finish?
+SELECT run_id, label, chunk_size, completed_at, archived_at
+FROM dml_utils.migration_run
+WHERE label = 'events-region-backfill';
+
+-- Per-chunk progress (completed_at IS NULL means still to do).
+SELECT boundary_no, boundary_id, completed_at
+FROM dml_utils.migration_boundary
+WHERE run_id = (SELECT run_id FROM dml_utils.migration_run
+                WHERE label = 'events-region-backfill' AND archived_at IS NULL)
+ORDER BY boundary_no;
+```
+
+To re-run a label from scratch (for example after changing the chunk size),
+archive the current run first; then the label is free again:
+
+```sql
+SELECT dml_utils.archive_migration_run(i_label => 'events-region-backfill');
+```
 
 ## Requirements
 
