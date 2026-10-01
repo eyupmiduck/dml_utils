@@ -36,6 +36,7 @@
         <testcontainers-jooq-codegen.version>0.0.4</testcontainers-jooq-codegen.version>
         <liquibase-validation.version>1.1.1</liquibase-validation.version>
         <flatten.version>1.8.0</flatten.version>
+        <build-helper.version>3.6.0</build-helper.version>
         <skip.sqlfluff>false</skip.sqlfluff>
         <sqlfluff.executable>sqlfluff</sqlfluff.executable>
         <skip.liquibase-linter>false</skip.liquibase-linter>
@@ -175,6 +176,11 @@
                     <groupId>org.codehaus.mojo</groupId>
                     <artifactId>flatten-maven-plugin</artifactId>
                     <version>${flatten.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>build-helper-maven-plugin</artifactId>
+                    <version>${build-helper.version}</version>
                 </plugin>
             </plugins>
         </pluginManagement>

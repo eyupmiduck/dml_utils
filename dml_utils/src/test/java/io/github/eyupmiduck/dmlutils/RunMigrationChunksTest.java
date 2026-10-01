@@ -4,7 +4,8 @@ import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.routines.RunMigrationChunks;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.records.MigrationBoundaryRecord;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.records.MigrationErrorRecord;
-import org.junit.jupiter.api.AfterEach;
+import org.jooq.Table;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.OffsetDateTime;
@@ -14,6 +15,13 @@ import java.util.UUID;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationError.MIGRATION_ERROR;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestInteger.TEST_INTEGER;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestKey.TEST_KEY;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestOther.TEST_OTHER;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestSmallint.TEST_SMALLINT;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestText.TEST_TEXT;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestUuid.TEST_UUID;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -24,21 +32,19 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class RunMigrationChunksTest extends PostgresTestBase {
 
-    private static final String SOURCE = "run_chunks_source";
-    private static final String SOURCE_QUALIFIED = PUBLIC_SCHEMA + "." + SOURCE;
     private static final String TEMPLATE =
             "UPDATE <driving_table> SET payload = 'done' WHERE <chunking_clause>";
 
     /**
-     * Builds the ordered uuid used for source key {@code n}.
+     * Clears the fixture tables this class drives a run over, so each test
+     * starts from a known state.
      */
-    private static UUID uuid(int n) {
-        return UUID.fromString("00000000-0000-0000-0000-" + String.format("%012d", n));
-    }
-
-    @AfterEach
-    void dropSource() {
-        dropTestTable(SOURCE_QUALIFIED);
+    @BeforeEach
+    void resetFixtures() {
+        for (Table<?> table : List.of(TEST_BIGINT, TEST_OTHER, TEST_INTEGER, TEST_SMALLINT,
+                TEST_TEXT, TEST_UUID, TEST_KEY)) {
+            dsl.truncate(table).execute();
+        }
     }
 
     /**
@@ -50,9 +56,9 @@ class RunMigrationChunksTest extends PostgresTestBase {
         createSource(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
         String label = label("all");
 
-        run(label, 4);
+        run(label, 4, TEST_BIGINT);
 
-        assertEquals(10, doneCount(), "all rows should be updated");
+        assertEquals(10, doneCount(TEST_BIGINT), "all rows should be updated");
         long runId = runId(label);
 
         // chunk starts at 1, 5, 9 and the terminal high-water boundary at 10.
@@ -75,9 +81,9 @@ class RunMigrationChunksTest extends PostgresTestBase {
         createSource(1, 2, 3, 4, 5);
         String label = label("partial");
 
-        run(label, 2);
+        run(label, 2, TEST_BIGINT);
 
-        assertEquals(5, doneCount(), "all five rows should be updated");
+        assertEquals(5, doneCount(TEST_BIGINT), "all five rows should be updated");
         long runId = runId(label);
         // chunks start at 1, 3, 5; terminal boundary at 5.
         assertBoundaries(runId, new long[][]{{0, 1}, {1, 3}, {2, 5}, {3, 5}});
@@ -95,9 +101,9 @@ class RunMigrationChunksTest extends PostgresTestBase {
         createSource(1, 2, 3, 4);
         String label = label("exact");
 
-        run(label, 2);
+        run(label, 2, TEST_BIGINT);
 
-        assertEquals(4, doneCount(), "the maximum row must be in the final chunk");
+        assertEquals(4, doneCount(TEST_BIGINT), "the maximum row must be in the final chunk");
     }
 
     /**
@@ -105,10 +111,9 @@ class RunMigrationChunksTest extends PostgresTestBase {
      */
     @Test
     void emptyDrivingTableCompletesImmediately() {
-        createTestTable(SOURCE_QUALIFIED, "id bigint PRIMARY KEY, payload text");
         String label = label("empty");
 
-        run(label, 4);
+        run(label, 4, TEST_BIGINT);
 
         long runId = runId(label);
         assertTrue(runCompleted(runId), "an empty run should be complete");
@@ -123,14 +128,14 @@ class RunMigrationChunksTest extends PostgresTestBase {
         createSource(1, 2, 3, 4);
         String label = label("noop");
 
-        run(label, 2);
-        dsl.update(table(SOURCE_QUALIFIED)).set(field("payload", String.class), "touched").execute();
+        run(label, 2, TEST_BIGINT);
+        dsl.update(TEST_BIGINT).set(TEST_BIGINT.PAYLOAD, "touched").execute();
 
-        run(label, 2);
+        run(label, 2, TEST_BIGINT);
 
-        assertEquals(4, touchedCount(),
+        assertEquals(4, payloadCount(TEST_BIGINT, "touched"),
                 "a completed run must not revert the rows (the chunk SQL must not run again)");
-        assertEquals(0, doneCount(), "the chunk SQL must not run again on a completed run");
+        assertEquals(0, doneCount(TEST_BIGINT), "the chunk SQL must not run again on a completed run");
     }
 
     /**
@@ -144,17 +149,16 @@ class RunMigrationChunksTest extends PostgresTestBase {
 
         // Create the run and boundaries, then mark the first chunk complete by
         // hand to simulate a partially processed run.
-        long runId = io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
-                dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label, TEMPLATE, 2);
+        long runId = populate(TEST_BIGINT, label, TEMPLATE, 2);
         dsl.update(MIGRATION_BOUNDARY)
                 .set(MIGRATION_BOUNDARY.COMPLETED_AT, OffsetDateTime.now())
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId)
                         .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(0L)))
                 .execute();
 
-        run(label, 2);
+        run(label, 2, TEST_BIGINT);
 
-        assertEquals(2, doneCount(), "only the unclaimed chunk's rows should be processed");
+        assertEquals(2, doneCount(TEST_BIGINT), "only the unclaimed chunk's rows should be processed");
         assertEquals(2, completedBoundaries(runId), "both chunk boundaries should be complete");
         assertTrue(runCompleted(runId), "the run should be marked complete");
     }
@@ -171,8 +175,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
         String label = label("terminal-claimed");
 
         // Boundaries for 6 rows at chunk size 2: 0, 1, 2, and terminal 3.
-        long runId = io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
-                dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label, TEMPLATE, 2);
+        long runId = populate(TEST_BIGINT, label, TEMPLATE, 2);
         // Complete the terminal boundary directly (it is not a chunk).
         dsl.update(MIGRATION_BOUNDARY)
                 .set(MIGRATION_BOUNDARY.COMPLETED_AT, OffsetDateTime.now())
@@ -180,9 +183,9 @@ class RunMigrationChunksTest extends PostgresTestBase {
                         .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(3L)))
                 .execute();
 
-        run(label, 2);
+        run(label, 2, TEST_BIGINT);
 
-        assertEquals(6, doneCount(), "every row must be processed; no chunk may be skipped");
+        assertEquals(6, doneCount(TEST_BIGINT), "every row must be processed; no chunk may be skipped");
         assertEquals(4, completedBoundaries(runId),
                 "all three chunks and the terminal boundary should be complete");
         assertTrue(runCompleted(runId), "the run should be marked complete");
@@ -200,7 +203,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
         assertSqlState("22012", () -> Routines.runMigrationChunks(
                 dsl.configuration(),
                 "UPDATE <driving_table> SET payload = (1 / 0)::text WHERE <chunking_clause>",
-                PUBLIC_SCHEMA, SOURCE, label, 2, "t"));
+                schema(TEST_BIGINT), name(TEST_BIGINT), label, 2, "t"));
 
         long runId = runId(label);
         assertTrue(!runCompleted(runId), "a failed run must not be marked complete");
@@ -226,12 +229,11 @@ class RunMigrationChunksTest extends PostgresTestBase {
         createSource(1, 2, 3, 4, 5, 6);
         String label = label("active");
 
-        long existingRun = io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
-                dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label, TEMPLATE, 2);
+        long existingRun = populate(TEST_BIGINT, label, TEMPLATE, 2);
 
-        run(label, 2);
+        run(label, 2, TEST_BIGINT);
 
-        assertEquals(6, doneCount(), "every chunk of the existing run should be processed");
+        assertEquals(6, doneCount(TEST_BIGINT), "every chunk of the existing run should be processed");
         assertEquals(existingRun, runId(label), "the existing run should be reused");
         assertTrue(runCompleted(existingRun), "the reused run should be marked complete");
     }
@@ -246,16 +248,15 @@ class RunMigrationChunksTest extends PostgresTestBase {
         String label = label("chunk-size-resume");
 
         // Stored chunk size 2 gives boundaries 0,1,2 and terminal 3.
-        long existingRun = io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
-                dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label, TEMPLATE, 2);
+        long existingRun = populate(TEST_BIGINT, label, TEMPLATE, 2);
 
-        run(label, 10);
+        run(label, 10, TEST_BIGINT);
 
         assertEquals(3, dsl.fetchCount(MIGRATION_BOUNDARY,
                         MIGRATION_BOUNDARY.RUN_ID.eq(existingRun)
                                 .and(MIGRATION_BOUNDARY.BOUNDARY_NO.lt(3L))),
                 "the stored boundaries must be used, not recomputed for chunk size 10");
-        assertEquals(6, doneCount(), "every row of the stored chunks should be processed");
+        assertEquals(6, doneCount(TEST_BIGINT), "every row of the stored chunks should be processed");
         assertTrue(runCompleted(existingRun), "the reused run should be marked complete");
     }
 
@@ -267,27 +268,16 @@ class RunMigrationChunksTest extends PostgresTestBase {
     @Test
     void resumeUsesTheStoredDrivingTable() {
         createSource(1, 2, 3, 4);
-        String other = "run_chunks_other";
-        String otherQualified = PUBLIC_SCHEMA + "." + other;
-        dropTestTable(otherQualified);
-        createTestTable(otherQualified, "id bigint PRIMARY KEY, payload text");
-        for (long id = 1; id <= 4; id++) {
-            dsl.insertInto(table(otherQualified)).columns(field("id", Long.class)).values(id).execute();
-        }
-
+        createSource(TEST_OTHER, 1, 2, 3, 4);
         String label = label("stored-table");
-        io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
-                dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label, TEMPLATE, 2);
+        populate(TEST_BIGINT, label, TEMPLATE, 2);
 
         // A resumed call naming a different driving table must be ignored.
-        Routines.runMigrationChunks(
-                dsl.configuration(), TEMPLATE, PUBLIC_SCHEMA, other, label, 2, "t");
+        run(label, 2, TEST_OTHER);
 
-        assertEquals(4, doneCount(), "the stored driving table should be processed");
-        assertEquals(0, payloadCount(otherQualified, "done"),
+        assertEquals(4, doneCount(TEST_BIGINT), "the stored driving table should be processed");
+        assertEquals(0, payloadCount(TEST_OTHER, "done"),
                 "the input table must not be touched");
-
-        dropTestTable(otherQualified);
     }
 
     /**
@@ -301,15 +291,16 @@ class RunMigrationChunksTest extends PostgresTestBase {
         String label = label("stored");
 
         // An unfinished run whose stored SQL writes 'first'.
-        io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
-                dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label,
+        populate(TEST_BIGINT, label,
                 "UPDATE <driving_table> SET payload = 'first' WHERE <chunking_clause>", 2);
 
         // A resumed call with a different input must ignore the input.
-        runWith(label, "UPDATE <driving_table> SET payload = 'ignored' WHERE <chunking_clause>", 2);
+        runWith(label, "UPDATE <driving_table> SET payload = 'ignored' WHERE <chunking_clause>",
+                2, TEST_BIGINT);
 
-        assertEquals(4, firstCount(), "the stored SQL should be used on resume");
-        assertEquals(0, ignoredCount(), "the caller's differing SQL should be ignored");
+        assertEquals(4, payloadCount(TEST_BIGINT, "first"), "the stored SQL should be used on resume");
+        assertEquals(0, payloadCount(TEST_BIGINT, "ignored"),
+                "the caller's differing SQL should be ignored");
     }
 
     /**
@@ -322,16 +313,16 @@ class RunMigrationChunksTest extends PostgresTestBase {
         String label = label("set-sql");
 
         // Create an unfinished run (populate only), then adjust its SQL.
-        io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
-                dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label,
+        populate(TEST_BIGINT, label,
                 "UPDATE <driving_table> SET payload = 'first' WHERE <chunking_clause>", 2);
         Routines.setMigrationRunSqlText(dsl.configuration(), label,
                 "UPDATE <driving_table> SET payload = 'second' WHERE <chunking_clause>");
 
-        runWith(label, "UPDATE <driving_table> SET payload = 'ignored' WHERE <chunking_clause>", 2);
+        runWith(label, "UPDATE <driving_table> SET payload = 'ignored' WHERE <chunking_clause>",
+                2, TEST_BIGINT);
 
-        assertEquals(4, secondCount(), "the adjusted (stored) SQL should be used");
-        assertEquals(0, firstCount(), "the original stored SQL should not be used");
+        assertEquals(4, payloadCount(TEST_BIGINT, "second"), "the adjusted (stored) SQL should be used");
+        assertEquals(0, payloadCount(TEST_BIGINT, "first"), "the original stored SQL should not be used");
     }
 
     /**
@@ -352,8 +343,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     void setMigrationRunSqlTextRejectsAnInvalidTemplate() {
         createSource(1, 2, 3, 4);
         String label = label("invalid-template");
-        io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
-                dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label, TEMPLATE, 2);
+        populate(TEST_BIGINT, label, TEMPLATE, 2);
 
         assertSqlState("22023", () -> Routines.setMigrationRunSqlText(
                 dsl.configuration(), label, "UPDATE <driving_table> SET x = 1"));
@@ -365,7 +355,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     @Test
     void rejectsNullSqlText() {
         assertDomainViolation(() -> Routines.runMigrationChunks(
-                dsl.configuration(), null, PUBLIC_SCHEMA, SOURCE, "l", 2, "t"));
+                dsl.configuration(), null, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, "t"));
     }
 
     /**
@@ -374,7 +364,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     @Test
     void rejectsBlankLabel() {
         assertDomainViolation(() -> Routines.runMigrationChunks(
-                dsl.configuration(), TEMPLATE, PUBLIC_SCHEMA, SOURCE, "   ", 2, "t"));
+                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "   ", 2, "t"));
     }
 
     /**
@@ -383,7 +373,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     @Test
     void rejectsNonPositiveChunkSize() {
         assertDomainViolation(() -> Routines.runMigrationChunks(
-                dsl.configuration(), TEMPLATE, PUBLIC_SCHEMA, SOURCE, "l", 0, "t"));
+                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 0, "t"));
     }
 
     /**
@@ -392,7 +382,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     @Test
     void rejectsNullAlias() {
         assertDomainViolation(() -> Routines.runMigrationChunks(
-                dsl.configuration(), TEMPLATE, PUBLIC_SCHEMA, SOURCE, "l", 2, null));
+                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, null));
     }
 
     /**
@@ -401,16 +391,14 @@ class RunMigrationChunksTest extends PostgresTestBase {
      */
     @Test
     void resolvesThePrimaryKeyColumnNameFromTheCatalog() {
-        dropTestTable(SOURCE_QUALIFIED);
-        createTestTable(SOURCE_QUALIFIED, "key bigint PRIMARY KEY, payload text");
         for (long id = 1; id <= 6; id++) {
-            dsl.insertInto(table(SOURCE_QUALIFIED)).columns(field("key", Long.class)).values(id).execute();
+            dsl.insertInto(TEST_KEY, TEST_KEY.KEY).values(id).execute();
         }
         String label = label("catalog-pk");
 
-        run(label, 2);
+        run(label, 2, TEST_KEY);
 
-        assertEquals(6, doneCount(), "all rows should be processed using the catalog key");
+        assertEquals(6, doneCount(TEST_KEY), "all rows should be processed using the catalog key");
         assertTrue(runCompleted(runId(label)), "the run should be marked complete");
     }
 
@@ -419,16 +407,14 @@ class RunMigrationChunksTest extends PostgresTestBase {
      */
     @Test
     void processesATableWithAnIntegerPrimaryKey() {
-        dropTestTable(SOURCE_QUALIFIED);
-        createTestTable(SOURCE_QUALIFIED, "id integer PRIMARY KEY, payload text");
         for (int id = 1; id <= 6; id++) {
-            dsl.insertInto(table(SOURCE_QUALIFIED)).columns(field("id", Integer.class)).values(id).execute();
+            dsl.insertInto(TEST_INTEGER, TEST_INTEGER.ID).values(id).execute();
         }
         String label = label("integer-pk");
 
-        run(label, 2);
+        run(label, 2, TEST_INTEGER);
 
-        assertEquals(6, doneCount(), "every row of an integer-keyed table should be processed");
+        assertEquals(6, doneCount(TEST_INTEGER), "every row of an integer-keyed table should be processed");
         assertTrue(runCompleted(runId(label)), "the run should be marked complete");
     }
 
@@ -437,16 +423,14 @@ class RunMigrationChunksTest extends PostgresTestBase {
      */
     @Test
     void processesATableWithASmallintPrimaryKey() {
-        dropTestTable(SOURCE_QUALIFIED);
-        createTestTable(SOURCE_QUALIFIED, "id smallint PRIMARY KEY, payload text");
         for (int id = 1; id <= 6; id++) {
-            dsl.insertInto(table(SOURCE_QUALIFIED)).columns(field("id", Short.class)).values((short) id).execute();
+            dsl.insertInto(TEST_SMALLINT, TEST_SMALLINT.ID).values((short) id).execute();
         }
         String label = label("smallint-pk");
 
-        run(label, 2);
+        run(label, 2, TEST_SMALLINT);
 
-        assertEquals(6, doneCount(), "every row of a smallint-keyed table should be processed");
+        assertEquals(6, doneCount(TEST_SMALLINT), "every row of a smallint-keyed table should be processed");
         assertTrue(runCompleted(runId(label)), "the run should be marked complete");
     }
 
@@ -456,17 +440,15 @@ class RunMigrationChunksTest extends PostgresTestBase {
      */
     @Test
     void processesATableWithATextPrimaryKey() {
-        dropTestTable(SOURCE_QUALIFIED);
-        createTestTable(SOURCE_QUALIFIED, "id text PRIMARY KEY, payload text");
         for (String id : new String[]{"a", "b", "o'brien", "z"}) {
-            dsl.insertInto(table(SOURCE_QUALIFIED)).columns(field("id", String.class)).values(id).execute();
+            dsl.insertInto(TEST_TEXT, TEST_TEXT.ID).values(id).execute();
         }
         String label = label("text-pk");
 
-        run(label, 2);
+        run(label, 2, TEST_TEXT);
 
         long runId = runId(label);
-        assertEquals(4, doneCount(), "every row of a text-keyed table should be processed");
+        assertEquals(4, doneCount(TEST_TEXT), "every row of a text-keyed table should be processed");
         assertTrue(runCompleted(runId), "the run should be marked complete");
         assertEquals(List.of("a", "o'brien", "z"), textBoundaryValues(runId),
                 "the stored boundaries should hold the chunk start keys and the high-water key");
@@ -478,24 +460,63 @@ class RunMigrationChunksTest extends PostgresTestBase {
      */
     @Test
     void processesATableWithAUuidPrimaryKey() {
-        dropTestTable(SOURCE_QUALIFIED);
-        createTestTable(SOURCE_QUALIFIED, "id uuid PRIMARY KEY, payload text");
         for (int i = 1; i <= 6; i++) {
-            dsl.insertInto(table(SOURCE_QUALIFIED)).columns(field("id", UUID.class))
-                    .values(UUID.fromString("00000000-0000-0000-0000-" + String.format("%012d", i)))
-                    .execute();
+            dsl.insertInto(TEST_UUID, TEST_UUID.ID).values(uuid(i)).execute();
         }
         String label = label("uuid-pk");
 
-        run(label, 2);
+        run(label, 2, TEST_UUID);
 
         long runId = runId(label);
-        assertEquals(6, doneCount(), "every row of a uuid-keyed table should be processed");
+        assertEquals(6, doneCount(TEST_UUID), "every row of a uuid-keyed table should be processed");
         assertTrue(runCompleted(runId), "the run should be marked complete");
         assertEquals(
                 List.of(uuid(1), uuid(3), uuid(5), uuid(6)),
                 uuidBoundaryValues(runId),
                 "the stored boundaries should hold the chunk start keys and the high-water key");
+    }
+
+    /**
+     * The alias argument defaults to {@code t} at the SQL level when omitted.
+     */
+    @Test
+    void usesTheDefaultAliasWhenOmitted() {
+        createSource(1, 2, 3, 4);
+        String label = label("default-alias");
+
+        RunMigrationChunks routine = runRoutine(label);
+        routine.setIChunkSize(2);
+        routine.execute(dsl.configuration());
+
+        assertEquals(4, doneCount(TEST_BIGINT), "the default alias t should be used");
+        assertTrue(runCompleted(runId(label)), "the run should be marked complete");
+    }
+
+    /**
+     * The chunk-size argument defaults to 1000 at the SQL level when omitted.
+     */
+    @Test
+    void usesTheDefaultChunkSizeWhenOmitted() {
+        createSource(1, 2, 3, 4);
+        String label = label("default-chunk-size");
+
+        runRoutine(label).execute(dsl.configuration());
+
+        assertEquals(4, doneCount(TEST_BIGINT), "every row should be processed with the default chunk size");
+        assertTrue(runCompleted(runId(label)), "the run should be marked complete");
+    }
+
+    /**
+     * Builds a {@code run_migration_chunks} call with the required arguments
+     * set, leaving the defaulted ones for jOOQ to omit.
+     */
+    private RunMigrationChunks runRoutine(String label) {
+        RunMigrationChunks routine = new RunMigrationChunks();
+        routine.setISqlText(TEMPLATE);
+        routine.setIDrivingTableSchemaName(schema(TEST_BIGINT));
+        routine.setIDrivingTableName(name(TEST_BIGINT));
+        routine.setILabel(label);
+        return routine;
     }
 
     /**
@@ -527,67 +548,46 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     /**
-     * The alias argument defaults to {@code t} at the SQL level when omitted.
+     * Builds the ordered uuid used for source key {@code n}.
      */
-    @Test
-    void usesTheDefaultAliasWhenOmitted() {
-        createSource(1, 2, 3, 4);
-        String label = label("default-alias");
-
-        RunMigrationChunks routine = runRoutine(label);
-        routine.setIChunkSize(2);
-        routine.execute(dsl.configuration());
-
-        assertEquals(4, doneCount(), "the default alias t should be used");
-        assertTrue(runCompleted(runId(label)), "the run should be marked complete");
-    }
-
-    /**
-     * The chunk-size argument defaults to 1000 at the SQL level when omitted.
-     */
-    @Test
-    void usesTheDefaultChunkSizeWhenOmitted() {
-        createSource(1, 2, 3, 4);
-        String label = label("default-chunk-size");
-
-        runRoutine(label).execute(dsl.configuration());
-
-        assertEquals(4, doneCount(), "every row should be processed with the default chunk size");
-        assertTrue(runCompleted(runId(label)), "the run should be marked complete");
-    }
-
-    /**
-     * Builds a {@code run_migration_chunks} call with the required arguments
-     * set, leaving the defaulted ones for jOOQ to omit.
-     */
-    private RunMigrationChunks runRoutine(String label) {
-        RunMigrationChunks routine = new RunMigrationChunks();
-        routine.setISqlText(TEMPLATE);
-        routine.setIDrivingTableSchemaName(PUBLIC_SCHEMA);
-        routine.setIDrivingTableName(SOURCE);
-        routine.setILabel(label);
-        return routine;
+    private static UUID uuid(int n) {
+        return UUID.fromString("00000000-0000-0000-0000-" + String.format("%012d", n));
     }
 
     private void createSource(long... ids) {
-        dropTestTable(SOURCE_QUALIFIED);
-        createTestTable(SOURCE_QUALIFIED, "id bigint PRIMARY KEY, payload text");
+        createSource(TEST_BIGINT, ids);
+    }
+
+    private void createSource(Table<?> table, long... ids) {
         for (long id : ids) {
-            dsl.insertInto(table(SOURCE_QUALIFIED)).columns(field("id", Long.class)).values(id).execute();
+            dsl.insertInto(table, field("id", Long.class)).values(id).execute();
         }
+    }
+
+    private long populate(Table<?> table, String label, String template, int chunkSize) {
+        return io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
+                dsl.configuration(), schema(table), name(table), label, template, chunkSize);
     }
 
     private String label(String suffix) {
         return "run-chunks-" + suffix + "-" + System.nanoTime();
     }
 
-    private void run(String label, int chunkSize) {
-        runWith(label, TEMPLATE, chunkSize);
+    private void run(String label, int chunkSize, Table<?> table) {
+        runWith(label, TEMPLATE, chunkSize, table);
     }
 
-    private void runWith(String label, String template, int chunkSize) {
+    private void runWith(String label, String template, int chunkSize, Table<?> table) {
         Routines.runMigrationChunks(
-                dsl.configuration(), template, PUBLIC_SCHEMA, SOURCE, label, chunkSize, "t");
+                dsl.configuration(), template, schema(table), name(table), label, chunkSize, "t");
+    }
+
+    private static String schema(Table<?> table) {
+        return table.getSchema().getName();
+    }
+
+    private static String name(Table<?> table) {
+        return table.getName();
     }
 
     private long runId(String label) {
@@ -631,33 +631,13 @@ class RunMigrationChunksTest extends PostgresTestBase {
         }
     }
 
-    private int doneCount() {
-        return payloadCount("done");
+    private int doneCount(Table<?> table) {
+        return payloadCount(table, "done");
     }
 
-    private int touchedCount() {
-        return payloadCount("touched");
-    }
-
-    private int firstCount() {
-        return payloadCount("first");
-    }
-
-    private int secondCount() {
-        return payloadCount("second");
-    }
-
-    private int ignoredCount() {
-        return payloadCount("ignored");
-    }
-
-    private int payloadCount(String value) {
-        return payloadCount(SOURCE_QUALIFIED, value);
-    }
-
-    private int payloadCount(String qualifiedTable, String value) {
+    private int payloadCount(Table<?> table, String value) {
         return dsl.selectCount()
-                .from(table(qualifiedTable))
+                .from(table)
                 .where(field("payload", String.class).eq(value))
                 .fetchOne(0, Integer.class);
     }
