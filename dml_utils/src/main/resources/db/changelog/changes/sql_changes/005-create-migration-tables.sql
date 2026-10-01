@@ -63,15 +63,17 @@ EXECUTE FUNCTION dml_utils_data.reject_migration_run_update();
 
 CREATE TABLE dml_utils_data.migration_boundary
 (
-    run_id       bigint                       NOT NULL REFERENCES dml_utils_data.migration_run (
-                                                                                                run_id
-        ) ON DELETE CASCADE,
+    run_id       bigint                       NOT NULL,
     boundary_no  bigint                       NOT NULL,
     boundary_id  dml_utils_data.migration_key NOT NULL,
     created_at   timestamptz                  NOT NULL DEFAULT pg_catalog.now(),
     updated_at   timestamptz                  NOT NULL DEFAULT pg_catalog.now(),
     completed_at timestamptz,
     PRIMARY KEY (run_id, boundary_no),
+    CONSTRAINT migration_boundary_run_fk
+        FOREIGN KEY (run_id)
+            REFERENCES dml_utils_data.migration_run (run_id)
+            ON DELETE CASCADE,
     CONSTRAINT migration_boundary_key_check CHECK (
         pg_catalog.num_nonnulls(
                 (boundary_id).bigint_value,
