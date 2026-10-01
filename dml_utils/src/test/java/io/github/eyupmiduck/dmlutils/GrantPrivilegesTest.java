@@ -44,6 +44,36 @@ class GrantPrivilegesTest extends PostgresTestBase {
     }
 
     /**
+     * The application's types and domains do not retain PostgreSQL's default
+     * {@code PUBLIC} usage privilege.
+     */
+    @Test
+    void applicationTypesAreNotUsableByPublic() {
+        Integer usableByPublic = dsl.fetchOne(
+                """
+                        SELECT count(*)::int
+                        FROM pg_type t
+                        JOIN pg_namespace n ON n.oid = t.typnamespace
+                        WHERE (n.nspname, t.typname) IN (
+                            ('dml_utils', 'migration_key'),
+                            ('dml_utils', 'non_null_text'),
+                            ('dml_utils', 'positive_integer'))
+                          AND (
+                              t.typacl IS NULL
+                              OR EXISTS (
+                                  SELECT 1
+                                  FROM unnest(t.typacl) AS a
+                                  WHERE a::text LIKE '=U/%'
+                              )
+                          )
+                        """)
+                .get(0, Integer.class);
+
+        assertEquals(0, usableByPublic,
+                "application types should have an explicit ACL without PUBLIC usage");
+    }
+
+    /**
      * The caller role can execute every non-trigger routine.
      */
     @Test

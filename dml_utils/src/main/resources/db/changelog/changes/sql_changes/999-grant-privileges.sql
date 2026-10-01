@@ -2,8 +2,15 @@
 -- keep the statements idempotent.
 GRANT USAGE ON SCHEMA dml_utils TO dml_utils_caller;
 GRANT USAGE ON SCHEMA dml_utils_lib TO dml_utils_caller;
+
+-- PostgreSQL grants USAGE on types and domains to PUBLIC by default. Revoke
+-- that and grant it only to the caller, so the application's types follow the
+-- same least-privilege rule as its tables and routines.
+REVOKE USAGE ON DOMAIN dml_utils.non_null_text FROM public;
 GRANT USAGE ON DOMAIN dml_utils.non_null_text TO dml_utils_caller;
+REVOKE USAGE ON DOMAIN dml_utils.positive_integer FROM public;
 GRANT USAGE ON DOMAIN dml_utils.positive_integer TO dml_utils_caller;
+REVOKE USAGE ON TYPE dml_utils.migration_key FROM public;
 GRANT USAGE ON TYPE dml_utils.migration_key TO dml_utils_caller;
 
 REVOKE ALL ON dml_utils.migration_run FROM public;

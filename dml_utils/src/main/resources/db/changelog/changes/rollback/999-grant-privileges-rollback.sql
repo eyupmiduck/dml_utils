@@ -3,6 +3,7 @@
 GRANT EXECUTE ON FUNCTION dml_utils.set_updated_at() TO public;
 GRANT EXECUTE ON FUNCTION dml_utils.reject_migration_run_update() TO public;
 GRANT EXECUTE ON FUNCTION dml_utils.reject_migration_boundary_update() TO public;
+GRANT USAGE ON TYPE dml_utils.migration_key TO public;
 REVOKE USAGE ON TYPE dml_utils.migration_key FROM dml_utils_caller;
 REVOKE EXECUTE ON FUNCTION dml_utils.populate_migration_boundaries(
     dml_utils.non_null_text,
@@ -137,7 +138,9 @@ GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_schema_exists(
 REVOKE SELECT, INSERT, UPDATE, DELETE ON dml_utils.migration_boundary FROM dml_utils_caller;
 REVOKE SELECT, INSERT, UPDATE, DELETE ON dml_utils.migration_error FROM dml_utils_caller;
 REVOKE SELECT, INSERT, UPDATE, DELETE ON dml_utils.migration_run FROM dml_utils_caller;
+GRANT USAGE ON DOMAIN dml_utils.positive_integer TO public;
 REVOKE USAGE ON DOMAIN dml_utils.positive_integer FROM dml_utils_caller;
+GRANT USAGE ON DOMAIN dml_utils.non_null_text TO public;
 REVOKE USAGE ON DOMAIN dml_utils.non_null_text FROM dml_utils_caller;
 REVOKE USAGE ON SCHEMA dml_utils_lib FROM dml_utils_caller;
 REVOKE USAGE ON SCHEMA dml_utils FROM dml_utils_caller;
