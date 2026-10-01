@@ -2,6 +2,7 @@ package io.github.eyupmiduck.dmlutils;
 
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.MigrationErrorRecord;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils.udt.records.MigrationKeyRecord;
 import org.junit.jupiter.api.Test;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationBoundary.MIGRATION_BOUNDARY;
@@ -96,7 +97,7 @@ class MigrationErrorTest extends PostgresTestBase {
         dsl.insertInto(MIGRATION_BOUNDARY)
                 .columns(MIGRATION_BOUNDARY.RUN_ID, MIGRATION_BOUNDARY.BOUNDARY_NO,
                         MIGRATION_BOUNDARY.BOUNDARY_ID)
-                .values(runId, 0L, 1L)
+                .values(runId, 0L, new MigrationKeyRecord(1L, null, null))
                 .execute();
         return runId;
     }

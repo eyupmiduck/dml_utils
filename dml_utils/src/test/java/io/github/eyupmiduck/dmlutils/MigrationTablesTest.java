@@ -1,5 +1,6 @@
 package io.github.eyupmiduck.dmlutils;
 
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils.udt.records.MigrationKeyRecord;
 import org.junit.jupiter.api.Test;
 
 import java.time.OffsetDateTime;
@@ -87,7 +88,7 @@ class MigrationTablesTest extends PostgresTestBase {
         dsl.insertInto(MIGRATION_BOUNDARY)
                 .columns(MIGRATION_BOUNDARY.RUN_ID, MIGRATION_BOUNDARY.BOUNDARY_NO,
                         MIGRATION_BOUNDARY.BOUNDARY_ID)
-                .values(runId, 0L, 1L)
+                .values(runId, 0L, new MigrationKeyRecord(1L, null, null))
                 .execute();
         return runId;
     }
@@ -137,7 +138,7 @@ class MigrationTablesTest extends PostgresTestBase {
         long runId = insertRunWithBoundary();
 
         assertSqlState("22023", () -> dsl.update(MIGRATION_BOUNDARY)
-                .set(MIGRATION_BOUNDARY.BOUNDARY_ID, 999L)
+                .set(MIGRATION_BOUNDARY.BOUNDARY_ID, new MigrationKeyRecord(999L, null, null))
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
                 .execute());
         assertSqlState("22023", () -> dsl.update(MIGRATION_BOUNDARY)

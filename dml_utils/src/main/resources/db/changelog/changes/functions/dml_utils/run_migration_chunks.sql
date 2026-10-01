@@ -100,8 +100,8 @@ BEGIN
     -- boundary_no + 1 excludes the terminal boundary, so end_id is never null.
     LOOP
         SELECT b.boundary_no,
-               b.boundary_id,
-               next.boundary_id,
+               (b.boundary_id).bigint_value,
+               (next.boundary_id).bigint_value,
                next.boundary_no = last.boundary_no
         INTO l_boundary_no, l_start_id, l_end_id, l_is_final
         FROM dml_utils.migration_boundary AS b

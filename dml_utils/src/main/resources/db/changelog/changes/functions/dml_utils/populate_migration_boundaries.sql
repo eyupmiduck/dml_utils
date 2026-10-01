@@ -59,8 +59,8 @@ BEGIN
             END AS boundary_no,
             CASE
                 WHEN GROUPING(chunk_no) = 1
-                    THEN max(id)
-                ELSE min(id)
+                    THEN ROW(max(id)::bigint, NULL, NULL)::dml_utils.migration_key_value
+                ELSE ROW(min(id)::bigint, NULL, NULL)::dml_utils.migration_key_value
             END AS boundary_id,
             NULL AS completed_at
         FROM chunked

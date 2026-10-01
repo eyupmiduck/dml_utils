@@ -486,7 +486,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
         for (int i = 0; i < expected.length; i++) {
             assertEquals(expected[i][0], actual.get(i).getBoundaryNo().longValue(),
                     "boundary_no " + i);
-            assertEquals(expected[i][1], actual.get(i).getBoundaryId().longValue(),
+            assertEquals(expected[i][1], actual.get(i).getBoundaryId().getBigintValue().longValue(),
                     "boundary_id " + i);
         }
     }
