@@ -18,10 +18,11 @@ COMMENT ON DOMAIN dml_utils.non_null_text IS
 -- "exactly one attribute" invariant is enforced by the migration_boundary
 -- check constraint; the type is not wrapped in a domain because a domain over
 -- a UDT makes jOOQ generate a static-init cycle for the schema class.
-CREATE TYPE dml_utils.migration_key AS (
+CREATE TYPE dml_utils.migration_key AS
+(
     bigint_value bigint,
-    text_value text,
-    uuid_value uuid
+    text_value   text,
+    uuid_value   uuid
 );
 
 COMMENT ON TYPE dml_utils.migration_key IS

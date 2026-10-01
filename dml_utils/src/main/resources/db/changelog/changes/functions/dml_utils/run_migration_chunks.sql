@@ -12,27 +12,27 @@ CREATE OR REPLACE FUNCTION dml_utils.run_migration_chunks(
 AS
 $$
 DECLARE
-    l_primary_key_name   name;
-    l_run_id             bigint;
-    l_completed_at       timestamptz;
-    l_stored_sql_text    text;
-    l_stored_chunk_size  integer;
-    l_stored_schema_name text;
-    l_stored_table_name  text;
-    l_effective_sql_text text;
+    l_primary_key_name      name;
+    l_run_id                bigint;
+    l_completed_at          timestamptz;
+    l_stored_sql_text       text;
+    l_stored_chunk_size     integer;
+    l_stored_schema_name    text;
+    l_stored_table_name     text;
+    l_effective_sql_text    text;
     l_effective_schema_name text;
     l_effective_table_name  text;
-    l_key_kind           text;
-    l_boundary_no        bigint;
-    l_start_value        text;
-    l_end_value          text;
-    l_is_final           boolean;
-    l_chunk_sql          text;
+    l_key_kind              text;
+    l_boundary_no           bigint;
+    l_start_value           text;
+    l_end_value             text;
+    l_is_final              boolean;
+    l_chunk_sql             text;
     -- pg_background is installed in the public schema. Qualify its types and
     -- functions explicitly so this routine resolves them regardless of the
     -- caller's (or Liquibase's) search_path.
-    l_handle             public.pg_background_handle;
-    l_result             public.pg_background_run_result;
+    l_handle                public.pg_background_handle;
+    l_result                public.pg_background_run_result;
 BEGIN
     -- Validate the template up front so a bad call fails before any run or
     -- worker exists.
@@ -41,8 +41,12 @@ BEGIN
     -- Reuse the active run for the label when there is one; otherwise create it
     -- by running populate_migration_boundaries in a worker so it commits
     -- autonomously and the boundaries become visible to the processing workers.
-    SELECT run_id, completed_at, sql_text, chunk_size,
-           driving_table_schema_name::text, driving_table_name::text
+    SELECT run_id,
+           completed_at,
+           sql_text,
+           chunk_size,
+           driving_table_schema_name::text,
+           driving_table_name::text
     INTO l_run_id, l_completed_at, l_stored_sql_text, l_stored_chunk_size,
         l_stored_schema_name, l_stored_table_name
     FROM dml_utils.migration_run
@@ -134,12 +138,12 @@ BEGIN
                    WHEN 'bigint' THEN (b.boundary_id).bigint_value::text
                    WHEN 'text' THEN (b.boundary_id).text_value
                    WHEN 'uuid' THEN (b.boundary_id).uuid_value::text
-               END,
+                   END,
                CASE l_key_kind
                    WHEN 'bigint' THEN (next.boundary_id).bigint_value::text
                    WHEN 'text' THEN (next.boundary_id).text_value
                    WHEN 'uuid' THEN (next.boundary_id).uuid_value::text
-               END,
+                   END,
                next.boundary_no = last.boundary_no
         INTO l_boundary_no, l_start_value, l_end_value, l_is_final
         FROM dml_utils.migration_boundary AS b

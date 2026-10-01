@@ -28,6 +28,13 @@ class RunMigrationChunksTest extends PostgresTestBase {
     private static final String TEMPLATE =
             "UPDATE <driving_table> SET payload = 'done' WHERE <chunking_clause>";
 
+    /**
+     * Builds the ordered uuid used for source key {@code n}.
+     */
+    private static UUID uuid(int n) {
+        return UUID.fromString("00000000-0000-0000-0000-" + String.format("%012d", n));
+    }
+
     @AfterEach
     void dropSource() {
         dropTestTable(SOURCE_QUALIFIED);
@@ -487,13 +494,6 @@ class RunMigrationChunksTest extends PostgresTestBase {
                 List.of(uuid(1), uuid(3), uuid(5), uuid(6)),
                 uuidBoundaryValues(runId),
                 "the stored boundaries should hold the chunk start keys and the high-water key");
-    }
-
-    /**
-     * Builds the ordered uuid used for source key {@code n}.
-     */
-    private static UUID uuid(int n) {
-        return UUID.fromString("00000000-0000-0000-0000-" + String.format("%012d", n));
     }
 
     /**

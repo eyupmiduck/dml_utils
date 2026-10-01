@@ -2,9 +2,7 @@ package io.github.eyupmiduck.dmlutils;
 
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Verifies the caller grants: {@code dml_utils_caller} can execute every
@@ -20,23 +18,23 @@ class GrantPrivilegesTest extends PostgresTestBase {
     @Test
     void noRoutineIsExecutableByPublic() {
         Boolean anyExecutableByPublic = dsl.fetchOne(
-                """
-                        SELECT EXISTS (
-                            SELECT 1
-                            FROM pg_proc p
-                            JOIN pg_namespace n ON n.oid = p.pronamespace
-                            WHERE n.nspname IN ('dml_utils', 'dml_utils_lib')
-                              AND p.prokind = 'f'
-                              AND (
-                                  p.proacl IS NULL
-                                  OR EXISTS (
-                                      SELECT 1
-                                      FROM unnest(p.proacl) AS a
-                                      WHERE a::text LIKE '=X/%'
-                                  )
-                              )
-                        )
-                        """)
+                        """
+                                SELECT EXISTS (
+                                    SELECT 1
+                                    FROM pg_proc p
+                                    JOIN pg_namespace n ON n.oid = p.pronamespace
+                                    WHERE n.nspname IN ('dml_utils', 'dml_utils_lib')
+                                      AND p.prokind = 'f'
+                                      AND (
+                                          p.proacl IS NULL
+                                          OR EXISTS (
+                                              SELECT 1
+                                              FROM unnest(p.proacl) AS a
+                                              WHERE a::text LIKE '=X/%'
+                                          )
+                                      )
+                                )
+                                """)
                 .get(0, Boolean.class);
 
         assertFalse(Boolean.TRUE.equals(anyExecutableByPublic),
@@ -50,23 +48,23 @@ class GrantPrivilegesTest extends PostgresTestBase {
     @Test
     void applicationTypesAreNotUsableByPublic() {
         Integer usableByPublic = dsl.fetchOne(
-                """
-                        SELECT count(*)::int
-                        FROM pg_type t
-                        JOIN pg_namespace n ON n.oid = t.typnamespace
-                        WHERE (n.nspname, t.typname) IN (
-                            ('dml_utils', 'migration_key'),
-                            ('dml_utils', 'non_null_text'),
-                            ('dml_utils', 'positive_integer'))
-                          AND (
-                              t.typacl IS NULL
-                              OR EXISTS (
-                                  SELECT 1
-                                  FROM unnest(t.typacl) AS a
-                                  WHERE a::text LIKE '=U/%'
-                              )
-                          )
-                        """)
+                        """
+                                SELECT count(*)::int
+                                FROM pg_type t
+                                JOIN pg_namespace n ON n.oid = t.typnamespace
+                                WHERE (n.nspname, t.typname) IN (
+                                    ('dml_utils', 'migration_key'),
+                                    ('dml_utils', 'non_null_text'),
+                                    ('dml_utils', 'positive_integer'))
+                                  AND (
+                                      t.typacl IS NULL
+                                      OR EXISTS (
+                                          SELECT 1
+                                          FROM unnest(t.typacl) AS a
+                                          WHERE a::text LIKE '=U/%'
+                                      )
+                                  )
+                                """)
                 .get(0, Integer.class);
 
         assertEquals(0, usableByPublic,
@@ -79,16 +77,16 @@ class GrantPrivilegesTest extends PostgresTestBase {
     @Test
     void callerCanExecuteEveryCallableRoutine() {
         Integer notExecutable = dsl.fetchOne(
-                """
-                        SELECT count(*)::int
-                        FROM pg_proc p
-                        JOIN pg_namespace n ON n.oid = p.pronamespace
-                        WHERE n.nspname IN ('dml_utils', 'dml_utils_lib')
-                          AND p.prokind = 'f'
-                          AND p.prorettype <> 'trigger'::regtype
-                          AND NOT pg_catalog.has_function_privilege(
-                              'dml_utils_caller', p.oid, 'EXECUTE')
-                        """)
+                        """
+                                SELECT count(*)::int
+                                FROM pg_proc p
+                                JOIN pg_namespace n ON n.oid = p.pronamespace
+                                WHERE n.nspname IN ('dml_utils', 'dml_utils_lib')
+                                  AND p.prokind = 'f'
+                                  AND p.prorettype <> 'trigger'::regtype
+                                  AND NOT pg_catalog.has_function_privilege(
+                                      'dml_utils_caller', p.oid, 'EXECUTE')
+                                """)
                 .get(0, Integer.class);
 
         assertEquals(0, notExecutable, "the caller should be able to execute every callable routine");
@@ -119,9 +117,9 @@ class GrantPrivilegesTest extends PostgresTestBase {
                 "the caller should have an explicit USAGE grant on dml_utils.migration_key");
 
         assertTrue(Boolean.TRUE.equals(dsl.fetchOne(
-                        "SELECT pg_catalog.has_table_privilege('dml_utils_caller',"
-                                + " 'dml_utils.migration_boundary', 'SELECT')")
-                .get(0, Boolean.class)),
+                                "SELECT pg_catalog.has_table_privilege('dml_utils_caller',"
+                                        + " 'dml_utils.migration_boundary', 'SELECT')")
+                        .get(0, Boolean.class)),
                 "the caller should be able to select migration_boundary");
     }
 }

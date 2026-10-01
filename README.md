@@ -131,8 +131,13 @@ SELECT dml_utils.run_migration_chunks(
 
 ```sql
 -- Is the run done, and when did it finish?
-SELECT run_id, label, driving_table_schema_name, driving_table_name,
-       chunk_size, completed_at, archived_at
+SELECT run_id,
+       label,
+       driving_table_schema_name,
+       driving_table_name,
+       chunk_size,
+       completed_at,
+       archived_at
 FROM dml_utils.migration_run
 WHERE label = 'events-region-backfill';
 

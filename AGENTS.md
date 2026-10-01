@@ -220,8 +220,7 @@ jOOQ codegen and tests; `docker_java_config` is a build shim. CI: GitHub Actions
       domain. The generated `Domains` -> UDT -> schema class -> tables ->
       `Domains` initialisation cycle throws during class loading.
       `dml_utils.migration_key` is a bare composite type, and the "exactly one
-      populated attribute" rule is a table check constraint
-      (`migration_boundary_key_check`).
+      populated attribute" rule is a table check constraint (`migration_boundary_key_check`).
 
 ## Testing
 
