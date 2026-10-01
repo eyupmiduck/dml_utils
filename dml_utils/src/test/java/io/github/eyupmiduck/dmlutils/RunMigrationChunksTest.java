@@ -158,6 +158,61 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     /**
+     * A pre-existing active run for the label is resumed rather than recreated:
+     * no 23505 is raised and every chunk is processed against that run.
+     */
+    @Test
+    void resumesAPreExistingActiveRun() {
+        createSource(1, 2, 3, 4, 5, 6);
+        String label = label("active");
+
+        long existingRun = Routines.populateMigrationBoundaries(
+                dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label, "SELECT 1", 2);
+
+        run(label, 2);
+
+        assertEquals(6, doneCount(), "every chunk of the existing run should be processed");
+        assertEquals(existingRun, runId(label), "the existing run should be reused");
+        assertTrue(runCompleted(existingRun), "the reused run should be marked complete");
+    }
+
+    /**
+     * A null SQL text is rejected by the non-null text domain.
+     */
+    @Test
+    void rejectsNullSqlText() {
+        assertDomainViolation(() -> Routines.runMigrationChunks(
+                dsl.configuration(), null, PUBLIC_SCHEMA, SOURCE, "l", 2, "t"));
+    }
+
+    /**
+     * A blank label is rejected by the non-null text domain.
+     */
+    @Test
+    void rejectsBlankLabel() {
+        assertDomainViolation(() -> Routines.runMigrationChunks(
+                dsl.configuration(), TEMPLATE, PUBLIC_SCHEMA, SOURCE, "   ", 2, "t"));
+    }
+
+    /**
+     * A non-positive chunk size is rejected by the positive-integer domain.
+     */
+    @Test
+    void rejectsNonPositiveChunkSize() {
+        assertDomainViolation(() -> Routines.runMigrationChunks(
+                dsl.configuration(), TEMPLATE, PUBLIC_SCHEMA, SOURCE, "l", 0, "t"));
+    }
+
+    /**
+     * A null alias is rejected by the non-null text domain.
+     */
+    @Test
+    void rejectsNullAlias() {
+        assertDomainViolation(() -> Routines.runMigrationChunks(
+                dsl.configuration(), TEMPLATE, PUBLIC_SCHEMA, SOURCE, "l", 2, null));
+    }
+
+    /**
      * The primary-key column is resolved from the catalog, not assumed to be
      * named {@code id}: a table whose key is {@code key} still chunks correctly.
      */
