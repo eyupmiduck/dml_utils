@@ -38,8 +38,35 @@ class RunMigrationChunksTest extends PostgresTestBase {
 
         assertEquals(10, doneCount(), "all rows should be updated");
         long runId = runId(label);
+
+        // chunk starts at 1, 5, 9 and the terminal high-water boundary at 10.
+        assertBoundaries(runId, new long[][]{{0, 1}, {1, 5}, {2, 9}, {3, 10}});
+        assertTrue(boundaryCompleted(runId, 0), "chunk 0 should be completed");
+        assertTrue(boundaryCompleted(runId, 1), "chunk 1 should be completed");
+        assertTrue(boundaryCompleted(runId, 2), "chunk 2 should be completed");
+        assertTrue(!boundaryCompleted(runId, 3),
+                "the terminal boundary is not a chunk and stays unclaimed");
+        assertTrue(runCompleted(runId), "the run should be marked complete");
+    }
+
+    /**
+     * A row count that is not a multiple of the chunk size still processes every
+     * row: the last (partial) chunk is bounded inclusively by the high-water
+     * boundary.
+     */
+    @Test
+    void processesAPartialLastChunk() {
+        createSource(1, 2, 3, 4, 5);
+        String label = label("partial");
+
+        run(label, 2);
+
+        assertEquals(5, doneCount(), "all five rows should be updated");
+        long runId = runId(label);
+        // chunks start at 1, 3, 5; terminal boundary at 5.
+        assertBoundaries(runId, new long[][]{{0, 1}, {1, 3}, {2, 5}, {3, 5}});
         assertEquals(3, completedBoundaries(runId),
-                "the three chunk boundaries should be completed (not the terminal one)");
+                "the three chunk boundaries should be completed");
         assertTrue(runCompleted(runId), "the run should be marked complete");
     }
 
@@ -201,6 +228,25 @@ class RunMigrationChunksTest extends PostgresTestBase {
                         "SELECT count(*)::int FROM dml_utils.migration_boundary"
                                 + " WHERE run_id = ? AND completed_at IS NOT NULL", runId)
                 .get(0, Integer.class);
+    }
+
+    private boolean boundaryCompleted(long runId, long boundaryNo) {
+        return Boolean.TRUE.equals(dsl.fetchValue(
+                "SELECT completed_at IS NOT NULL FROM dml_utils.migration_boundary"
+                        + " WHERE run_id = ? AND boundary_no = ?", runId, boundaryNo));
+    }
+
+    private void assertBoundaries(long runId, long[][] expected) {
+        var actual = dsl.fetch(
+                "SELECT boundary_no, boundary_id FROM dml_utils.migration_boundary"
+                        + " WHERE run_id = ? ORDER BY boundary_no", runId);
+        assertEquals(expected.length, actual.size(), "boundary count");
+        for (int i = 0; i < expected.length; i++) {
+            assertEquals(expected[i][0],
+                    actual.get(i).get("boundary_no", Long.class), "boundary_no " + i);
+            assertEquals(expected[i][1],
+                    actual.get(i).get("boundary_id", Long.class), "boundary_id " + i);
+        }
     }
 
     private int doneCount() {
