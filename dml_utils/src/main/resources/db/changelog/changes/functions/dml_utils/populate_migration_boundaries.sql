@@ -28,6 +28,15 @@ BEGIN
             i_table_name => i_table_name);
     PERFORM dml_utils_lib.assert_no_active_run_for_label(i_label => i_label);
 
+    -- The pack expression below has one arm per known kind and is interpolated
+    -- into the dynamic SQL. Fail loudly if primary_key_kind ever returns a kind
+    -- this routine does not understand, rather than letting the CASE fall
+    -- through to NULL and rendering a malformed statement.
+    IF l_key_kind NOT IN ('bigint', 'text', 'uuid') THEN
+        RAISE EXCEPTION 'unsupported key kind %', l_key_kind
+            USING ERRCODE = '22023';
+    END IF;
+
     -- Pack the row's own key into migration_key; each kind populates a
     -- different attribute. The expression is built from a whitelisted kind, so
     -- interpolating it into the dynamic SQL is safe.
