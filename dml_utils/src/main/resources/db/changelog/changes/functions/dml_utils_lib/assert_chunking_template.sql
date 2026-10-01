@@ -1,5 +1,5 @@
 CREATE OR REPLACE FUNCTION dml_utils_lib.assert_chunking_template(
-    i_sql_text dml_utils.non_null_text
+    i_sql_text dml_utils_data.non_null_text
 )
     RETURNS void
     LANGUAGE plpgsql

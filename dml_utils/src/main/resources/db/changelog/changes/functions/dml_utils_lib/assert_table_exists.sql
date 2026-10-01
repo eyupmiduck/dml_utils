@@ -1,6 +1,6 @@
 CREATE OR REPLACE FUNCTION dml_utils_lib.assert_table_exists(
-    i_schema_name dml_utils.non_null_text,
-    i_table_name dml_utils.non_null_text
+    i_schema_name dml_utils_data.non_null_text,
+    i_table_name dml_utils_data.non_null_text
 )
     RETURNS void
     LANGUAGE plpgsql

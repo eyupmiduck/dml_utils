@@ -162,6 +162,9 @@
                                             <schema>
                                                 <inputSchema>dml_utils_lib</inputSchema>
                                             </schema>
+                                            <schema>
+                                                <inputSchema>dml_utils_data</inputSchema>
+                                            </schema>
                                         </schemata>
                                     </database>
                                     <target>

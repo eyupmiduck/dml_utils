@@ -1,6 +1,6 @@
 CREATE OR REPLACE FUNCTION dml_utils_lib.primary_key_kind(
-    i_schema_name dml_utils.non_null_text,
-    i_table_name dml_utils.non_null_text
+    i_schema_name dml_utils_data.non_null_text,
+    i_table_name dml_utils_data.non_null_text
 )
     RETURNS text
     LANGUAGE plpgsql

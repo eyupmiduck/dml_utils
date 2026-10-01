@@ -1,11 +1,11 @@
 # Accepted plpgsql_check findings.
 #
 # PlpgsqlCheckTest runs plpgsql_check_function_tb(..., all_warnings => true)
-# over every routine in dml_utils / dml_utils_lib and matches each finding
+# over every routine in dml_utils / dml_utils_lib / dml_utils_data and matches each finding
 # against one of these entries (field by field; omit a field to match any
 # value). A finding with no match fails the test, and an entry that matches no
 # finding is reported as stale and also fails.
-- schema: dml_utils
+- schema: dml_utils_lib
   function: process_migration_chunk
   level: security
   statement: EXECUTE

@@ -1,8 +1,8 @@
 package io.github.eyupmiduck.dmlutils;
 
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
-import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.MigrationBoundaryRecord;
-import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.MigrationErrorRecord;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.records.MigrationBoundaryRecord;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.records.MigrationErrorRecord;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -10,9 +10,9 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
-import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationBoundary.MIGRATION_BOUNDARY;
-import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationError.MIGRATION_ERROR;
-import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationRun.MIGRATION_RUN;
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationError.MIGRATION_ERROR;
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -143,7 +143,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
 
         // Create the run and boundaries, then mark the first chunk complete by
         // hand to simulate a partially processed run.
-        long runId = Routines.populateMigrationBoundaries(
+        long runId = io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
                 dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label, TEMPLATE, 2);
         dsl.update(MIGRATION_BOUNDARY)
                 .set(MIGRATION_BOUNDARY.COMPLETED_AT, OffsetDateTime.now())
@@ -170,7 +170,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
         String label = label("terminal-claimed");
 
         // Boundaries for 6 rows at chunk size 2: 0, 1, 2, and terminal 3.
-        long runId = Routines.populateMigrationBoundaries(
+        long runId = io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
                 dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label, TEMPLATE, 2);
         // Complete the terminal boundary directly (it is not a chunk).
         dsl.update(MIGRATION_BOUNDARY)
@@ -225,7 +225,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
         createSource(1, 2, 3, 4, 5, 6);
         String label = label("active");
 
-        long existingRun = Routines.populateMigrationBoundaries(
+        long existingRun = io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
                 dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label, TEMPLATE, 2);
 
         run(label, 2);
@@ -245,7 +245,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
         String label = label("chunk-size-resume");
 
         // Stored chunk size 2 gives boundaries 0,1,2 and terminal 3.
-        long existingRun = Routines.populateMigrationBoundaries(
+        long existingRun = io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
                 dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label, TEMPLATE, 2);
 
         run(label, 10);
@@ -275,7 +275,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
         }
 
         String label = label("stored-table");
-        Routines.populateMigrationBoundaries(
+        io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
                 dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label, TEMPLATE, 2);
 
         // A resumed call naming a different driving table must be ignored.
@@ -300,7 +300,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
         String label = label("stored");
 
         // An unfinished run whose stored SQL writes 'first'.
-        Routines.populateMigrationBoundaries(
+        io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
                 dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label,
                 "UPDATE <driving_table> SET payload = 'first' WHERE <chunking_clause>", 2);
 
@@ -321,7 +321,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
         String label = label("set-sql");
 
         // Create an unfinished run (populate only), then adjust its SQL.
-        Routines.populateMigrationBoundaries(
+        io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
                 dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label,
                 "UPDATE <driving_table> SET payload = 'first' WHERE <chunking_clause>", 2);
         Routines.setMigrationRunSqlText(dsl.configuration(), label,
@@ -351,7 +351,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     void setMigrationRunSqlTextRejectsAnInvalidTemplate() {
         createSource(1, 2, 3, 4);
         String label = label("invalid-template");
-        Routines.populateMigrationBoundaries(
+        io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
                 dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label, TEMPLATE, 2);
 
         assertSqlState("22023", () -> Routines.setMigrationRunSqlText(
@@ -534,9 +534,9 @@ class RunMigrationChunksTest extends PostgresTestBase {
 
         dsl.execute(
                 "SELECT dml_utils.run_migration_chunks("
-                        + "?::dml_utils.non_null_text, ?::dml_utils.non_null_text,"
-                        + " ?::dml_utils.non_null_text, ?::dml_utils.non_null_text,"
-                        + " ?::dml_utils.positive_integer)",
+                        + "?::dml_utils_data.non_null_text, ?::dml_utils_data.non_null_text,"
+                        + " ?::dml_utils_data.non_null_text, ?::dml_utils_data.non_null_text,"
+                        + " ?::dml_utils_data.positive_integer)",
                 TEMPLATE, PUBLIC_SCHEMA, SOURCE, label, 2);
 
         assertEquals(4, doneCount(), "the default alias t should be used");

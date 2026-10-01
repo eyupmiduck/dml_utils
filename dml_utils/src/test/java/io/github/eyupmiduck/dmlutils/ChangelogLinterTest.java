@@ -39,7 +39,7 @@ class ChangelogLinterTest {
                 SqlSource.Kind.INLINE_SQL,
                 null,
                 "CREATE INDEX CONCURRENTLY migration_run_created_at_idx"
-                        + " ON dml_utils.migration_run (created_at);",
+                        + " ON dml_utils_data.migration_run (created_at);",
                 true,
                 ";",
                 false,

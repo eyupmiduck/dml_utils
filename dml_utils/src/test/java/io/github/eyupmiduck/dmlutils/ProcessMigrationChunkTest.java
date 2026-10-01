@@ -1,15 +1,15 @@
 package io.github.eyupmiduck.dmlutils;
 
-import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
-import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationBoundary.MIGRATION_BOUNDARY;
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Verifies {@code dml_utils.process_migration_chunk}: it claims a boundary,
+ * Verifies {@code dml_utils_lib.process_migration_chunk}: it claims a boundary,
  * runs the supplied chunk SQL, and records completion, and raises
  * {@code P0002} for a missing or already-completed boundary.
  */

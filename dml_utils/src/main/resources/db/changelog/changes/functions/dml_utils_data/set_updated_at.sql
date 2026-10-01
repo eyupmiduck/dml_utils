@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION dml_utils.set_updated_at()
+CREATE OR REPLACE FUNCTION dml_utils_data.set_updated_at()
     RETURNS trigger
     LANGUAGE plpgsql
     SECURITY INVOKER
@@ -12,5 +12,5 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION dml_utils.set_updated_at IS
+COMMENT ON FUNCTION dml_utils_data.set_updated_at IS
     'BEFORE UPDATE trigger that stamps NEW.updated_at with the transaction timestamp.';
