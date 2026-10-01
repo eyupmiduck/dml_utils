@@ -7,7 +7,8 @@ CREATE TABLE dml_utils.migration_run
     created_at   timestamptz NOT NULL DEFAULT pg_catalog.now(),
     updated_at   timestamptz NOT NULL DEFAULT pg_catalog.now(),
     completed_at timestamptz,
-    archived_at  timestamptz
+    archived_at  timestamptz,
+    CONSTRAINT migration_run_chunk_size_check CHECK (chunk_size > 0)
 );
 
 COMMENT ON TABLE dml_utils.migration_run IS

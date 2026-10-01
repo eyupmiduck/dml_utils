@@ -63,6 +63,17 @@ class MigrationTablesTest extends PostgresTestBase {
     }
 
     /**
+     * A non-positive {@code chunk_size} is rejected by the check constraint.
+     */
+    @Test
+    void rejectsNonPositiveChunkSize() {
+        assertDomainViolation(() -> dsl.insertInto(MIGRATION_RUN)
+                .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE)
+                .values("chunk-size-check", "SELECT 1", 0)
+                .execute());
+    }
+
+    /**
      * The {@code updated_at} trigger is attached to {@code migration_boundary}.
      */
     @Test
