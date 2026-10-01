@@ -24,6 +24,26 @@
         </rollback>
     </changeSet>
 
+    <changeSet id="function-dml_utils.reject_migration_run_update" author="dml_utils"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils/reject_migration_run_update.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils/reject_migration_run_update-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="function-dml_utils.reject_migration_boundary_update" author="dml_utils"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils/reject_migration_boundary_update.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils/reject_migration_boundary_update-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
     <changeSet id="function-dml_utils_lib.assert_schema_exists" author="dml_utils" dbms="postgresql"
                runOnChange="true">
         <createProcedure path="functions/dml_utils_lib/assert_schema_exists.sql"
@@ -64,12 +84,92 @@
         </rollback>
     </changeSet>
 
+    <changeSet id="function-dml_utils_lib.assert_chunking_template" author="dml_utils"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils_lib/assert_chunking_template.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils_lib/assert_chunking_template-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="function-dml_utils_lib.render_chunk_sql" author="dml_utils"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils_lib/render_chunk_sql.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils_lib/render_chunk_sql-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="function-dml_utils_lib.assert_no_active_run_for_label" author="dml_utils"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils_lib/assert_no_active_run_for_label.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils_lib/assert_no_active_run_for_label-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
     <changeSet id="function-dml_utils.populate_migration_boundaries" author="dml_utils"
                dbms="postgresql" runOnChange="true">
         <createProcedure path="functions/dml_utils/populate_migration_boundaries.sql"
                          relativeToChangelogFile="true"/>
         <rollback>
             <sqlFile path="functions-rollback/dml_utils/populate_migration_boundaries-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="function-dml_utils.run_migration_chunks" author="dml_utils"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils/run_migration_chunks.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils/run_migration_chunks-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="function-dml_utils.process_migration_chunk" author="dml_utils"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils/process_migration_chunk.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils/process_migration_chunk-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="function-dml_utils.record_migration_error" author="dml_utils"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils/record_migration_error.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils/record_migration_error-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="function-dml_utils.set_migration_run_sql_text" author="dml_utils"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils/set_migration_run_sql_text.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils/set_migration_run_sql_text-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="function-dml_utils.archive_migration_run" author="dml_utils"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils/archive_migration_run.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils/archive_migration_run-rollback.sql"
                      relativeToChangelogFile="true"/>
         </rollback>
     </changeSet>

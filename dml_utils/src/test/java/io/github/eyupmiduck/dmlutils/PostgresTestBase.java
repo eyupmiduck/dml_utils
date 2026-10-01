@@ -110,6 +110,20 @@ abstract class PostgresTestBase {
                 // ownership can be exercised.
                 statement.execute("GRANT CREATE ON SCHEMA public TO " + TEST_USER);
             }
+            // Install the extensions compiled into the custom image before the
+            // changelog runs: plpgsql_check for static analysis and pg_background
+            // for the chunking routines. The chunking routines declare
+            // pg_background types, so the extension must exist when Liquibase
+            // creates them.
+            try (Connection admin = openConnection(TEMPLATE_DATABASE, POSTGRES.getUsername(), POSTGRES.getPassword());
+                 Statement statement = admin.createStatement()) {
+                statement.execute("CREATE EXTENSION IF NOT EXISTS plpgsql_check");
+                statement.execute("CREATE EXTENSION IF NOT EXISTS pg_background");
+                // pg_background grants no access to PUBLIC; grant its role to
+                // the caller and test roles (membership is cluster-wide).
+                statement.execute("GRANT pgbackground_role TO " + OWNER_USER);
+                statement.execute("GRANT pgbackground_role TO " + TEST_USER);
+            }
             try (Connection connection = openConnection(TEMPLATE_DATABASE, OWNER_USER, OWNER_PASSWORD)) {
                 // Liquibase keeps its tracking tables in a dedicated schema and
                 // does not create the schema itself, so create it as the owner
@@ -127,18 +141,6 @@ abstract class PostgresTestBase {
                         new ClassLoaderResourceAccessor(),
                         database);
                 liquibase.update();
-            }
-            // Install the extensions compiled into the custom image so every
-            // cloned test database has them: plpgsql_check for static analysis
-            // and pg_background for the chunking routines.
-            try (Connection admin = openConnection(TEMPLATE_DATABASE, POSTGRES.getUsername(), POSTGRES.getPassword());
-                 Statement statement = admin.createStatement()) {
-                statement.execute("CREATE EXTENSION IF NOT EXISTS plpgsql_check");
-                statement.execute("CREATE EXTENSION IF NOT EXISTS pg_background");
-                // pg_background grants no access to PUBLIC; grant its role to
-                // the caller and test roles (membership is cluster-wide).
-                statement.execute("GRANT pgbackground_role TO " + OWNER_USER);
-                statement.execute("GRANT pgbackground_role TO " + TEST_USER);
             }
             // Mark as a real template so nothing can connect to it, which
             // keeps CREATE DATABASE ... TEMPLATE always safe.

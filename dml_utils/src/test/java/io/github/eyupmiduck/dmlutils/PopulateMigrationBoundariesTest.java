@@ -1,12 +1,15 @@
 package io.github.eyupmiduck.dmlutils;
 
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
-import org.jooq.Record;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.MigrationBoundaryRecord;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.MigrationRunRecord;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationBoundary.MIGRATION_BOUNDARY;
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationRun.MIGRATION_RUN;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -18,6 +21,14 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
 
     private static final String SOURCE = "migration_boundary_source";
     private static final String SOURCE_QUALIFIED = PUBLIC_SCHEMA + "." + SOURCE;
+    private static final String LABEL = "boundary-test-run";
+    private static final String SQL_TEXT = "SELECT 1";
+
+    /**
+     * Each test gets a distinct label so the one-active-run-per-label rule does
+     * not couple tests that populate in the same database.
+     */
+    private int labelCounter;
 
     @AfterEach
     void dropSource() {
@@ -142,11 +153,43 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
         createSource(1, 2, 3, 4);
 
         long firstRun = populate(2);
-        long secondRun = populate(3);
+        long secondRun = populate(LABEL + "-" + ++labelCounter, 3);
 
         assertNotEquals(firstRun, secondRun, "each call creates a new run");
         assertBoundaries(firstRun, new long[][]{{0, 1}, {1, 3}, {2, 4}});
         assertBoundaries(secondRun, new long[][]{{0, 1}, {1, 4}, {2, 4}});
+    }
+
+    /**
+     * The run records the supplied label, SQL text and chunk size.
+     */
+    @Test
+    void recordsLabelSqlTextAndChunkSize() {
+        createSource(1, 2, 3, 4, 5);
+
+        String label = "records-columns-run";
+        long runId = populate(label, 5);
+
+        MigrationRunRecord run = dsl.selectFrom(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne();
+        assertEquals(label, run.getLabel());
+        assertEquals(SQL_TEXT, run.getSqlText());
+        assertEquals(5, run.getChunkSize());
+    }
+
+    /**
+     * Boundaries are inserted with {@code completed_at} left null.
+     */
+    @Test
+    void boundariesHaveNullCompletedAt() {
+        createSource(1, 2, 3, 4);
+
+        long runId = populate(2);
+
+        int completed = dsl.fetchCount(MIGRATION_BOUNDARY,
+                MIGRATION_BOUNDARY.RUN_ID.eq(runId).and(MIGRATION_BOUNDARY.COMPLETED_AT.isNotNull()));
+        assertEquals(0, completed, "completed_at should be null for a fresh run");
     }
 
     /**
@@ -166,6 +209,40 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
         assertBoundaries(runId, new long[][]{{0, 1}, {1, 3}, {2, 3}});
     }
 
+    /**
+     * A label can be reused by archiving its active run: populate, archive,
+     * then populate with the same label again. The first run keeps its
+     * boundaries and gets an {@code archived_at}; the second is a new row.
+     */
+    @Test
+    void labelCanBeReusedAfterArchiving() {
+        createSource(1, 2, 3, 4);
+
+        String label = LABEL + "-" + ++labelCounter;
+        long firstRun = populate(label, 2);
+
+        Long archivedId = Routines.archiveMigrationRun(dsl.configuration(), label);
+
+        long secondRun = populate(label, 2);
+
+        assertEquals(firstRun, archivedId, "archive should return the archived run id");
+        assertNotEquals(firstRun, secondRun, "a new run should be created");
+        assertTrue(archived(firstRun), "the first run should be archived");
+        assertFalse(archived(secondRun), "the second run should be active");
+        assertBoundaries(firstRun, new long[][]{{0, 1}, {1, 3}, {2, 4}});
+        assertBoundaries(secondRun, new long[][]{{0, 1}, {1, 3}, {2, 4}});
+    }
+
+    /**
+     * Archiving a label with no active run returns null.
+     */
+    @Test
+    void archivingAnUnknownLabelReturnsNull() {
+        createSource(1, 2);
+
+        assertNull(Routines.archiveMigrationRun(dsl.configuration(), "no-such-label"));
+    }
+
     private void createSource(long... ids) {
         dropTestTable(SOURCE_QUALIFIED);
         createTestTable(SOURCE_QUALIFIED, "id bigint PRIMARY KEY, payload text");
@@ -174,34 +251,41 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
         }
     }
 
-    private long populate(int chunkSize) {
-        return Routines.populateMigrationBoundaries(
-                dsl.configuration(), PUBLIC_SCHEMA, SOURCE, chunkSize);
+    private boolean archived(long runId) {
+        return Boolean.TRUE.equals(dsl.select(MIGRATION_RUN.ARCHIVED_AT.isNotNull())
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_RUN.ARCHIVED_AT.isNotNull()));
     }
 
-    private List<Record> boundaries(long runId) {
-        return dsl.fetch(
-                "SELECT boundary_no, boundary_id"
-                        + " FROM dml_utils.migration_boundary"
-                        + " WHERE run_id = ?"
-                        + " ORDER BY boundary_no",
-                runId);
+    private long populate(int chunkSize) {
+        return populate(LABEL + "-" + ++labelCounter, chunkSize);
+    }
+
+    private long populate(String label, int chunkSize) {
+        return Routines.populateMigrationBoundaries(
+                dsl.configuration(), PUBLIC_SCHEMA, SOURCE, label, SQL_TEXT, chunkSize);
+    }
+
+    private List<MigrationBoundaryRecord> boundaries(long runId) {
+        return dsl.selectFrom(MIGRATION_BOUNDARY)
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .orderBy(MIGRATION_BOUNDARY.BOUNDARY_NO)
+                .fetch();
     }
 
     private void assertBoundaries(long runId, long[][] expected) {
-        List<Record> actual = boundaries(runId);
+        List<MigrationBoundaryRecord> actual = boundaries(runId);
         assertEquals(expected.length, actual.size(), "boundary count");
         for (int i = 0; i < expected.length; i++) {
-            assertEquals(expected[i][0],
-                    actual.get(i).get("boundary_no", Long.class).longValue(), "boundary_no " + i);
-            assertEquals(expected[i][1],
-                    actual.get(i).get("boundary_id", Long.class).longValue(), "boundary_id " + i);
+            assertEquals(expected[i][0], actual.get(i).getBoundaryNo().longValue(),
+                    "boundary_no " + i);
+            assertEquals(expected[i][1], actual.get(i).getBoundaryId().longValue(),
+                    "boundary_id " + i);
         }
     }
 
     private int runCount(long runId) {
-        return dsl.fetchOne(
-                        "SELECT count(*)::int FROM dml_utils.migration_run WHERE run_id = ?", runId)
-                .get(0, Integer.class);
+        return dsl.fetchCount(MIGRATION_RUN, MIGRATION_RUN.RUN_ID.eq(runId));
     }
 }

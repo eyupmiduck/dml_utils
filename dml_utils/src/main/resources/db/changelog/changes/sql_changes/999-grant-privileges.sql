@@ -14,10 +14,14 @@ REVOKE ALL ON dml_utils.migration_run FROM public;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dml_utils.migration_run TO dml_utils_caller;
 REVOKE ALL ON dml_utils.migration_boundary FROM public;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dml_utils.migration_boundary TO dml_utils_caller;
+REVOKE ALL ON dml_utils.migration_error FROM public;
+GRANT SELECT, INSERT, UPDATE, DELETE ON dml_utils.migration_error TO dml_utils_caller;
 
 -- Trigger functions are invoked by the trigger machinery, not by callers, so
 -- revoke PUBLIC EXECUTE and grant it to no one.
 REVOKE EXECUTE ON FUNCTION dml_utils.set_updated_at() FROM public;
+REVOKE EXECUTE ON FUNCTION dml_utils.reject_migration_run_update() FROM public;
+REVOKE EXECUTE ON FUNCTION dml_utils.reject_migration_boundary_update() FROM public;
 
 -- Functions grant EXECUTE to PUBLIC by default; revoke it and grant only to
 -- the caller role, so execution is explicit.
@@ -51,7 +55,41 @@ GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_bigint_primary_key(
     dml_utils.non_null_text,
     dml_utils.non_null_text
     ) TO dml_utils_caller;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_no_active_run_for_label(
+    dml_utils.non_null_text
+    ) FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_no_active_run_for_label(
+    dml_utils.non_null_text
+    ) TO dml_utils_caller;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_chunking_template(
+    dml_utils.non_null_text
+    ) FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_chunking_template(
+    dml_utils.non_null_text
+    ) TO dml_utils_caller;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.render_chunk_sql(
+    dml_utils.non_null_text,
+    dml_utils.non_null_text,
+    dml_utils.non_null_text,
+    dml_utils.non_null_text,
+    name,
+    bigint,
+    bigint,
+    boolean
+    ) FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.render_chunk_sql(
+    dml_utils.non_null_text,
+    dml_utils.non_null_text,
+    dml_utils.non_null_text,
+    dml_utils.non_null_text,
+    name,
+    bigint,
+    bigint,
+    boolean
+    ) TO dml_utils_caller;
 REVOKE EXECUTE ON FUNCTION dml_utils.populate_migration_boundaries(
+    dml_utils.non_null_text,
+    dml_utils.non_null_text,
     dml_utils.non_null_text,
     dml_utils.non_null_text,
     dml_utils.positive_integer
@@ -59,5 +97,59 @@ REVOKE EXECUTE ON FUNCTION dml_utils.populate_migration_boundaries(
 GRANT EXECUTE ON FUNCTION dml_utils.populate_migration_boundaries(
     dml_utils.non_null_text,
     dml_utils.non_null_text,
+    dml_utils.non_null_text,
+    dml_utils.non_null_text,
     dml_utils.positive_integer
+    ) TO dml_utils_caller;
+REVOKE EXECUTE ON FUNCTION dml_utils.archive_migration_run(
+    dml_utils.non_null_text
+    ) FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils.archive_migration_run(
+    dml_utils.non_null_text
+    ) TO dml_utils_caller;
+REVOKE EXECUTE ON FUNCTION dml_utils.set_migration_run_sql_text(
+    dml_utils.non_null_text,
+    dml_utils.non_null_text
+    ) FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils.set_migration_run_sql_text(
+    dml_utils.non_null_text,
+    dml_utils.non_null_text
+    ) TO dml_utils_caller;
+REVOKE EXECUTE ON FUNCTION dml_utils.process_migration_chunk(
+    bigint,
+    bigint,
+    dml_utils.non_null_text
+    ) FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils.process_migration_chunk(
+    bigint,
+    bigint,
+    dml_utils.non_null_text
+    ) TO dml_utils_caller;
+REVOKE EXECUTE ON FUNCTION dml_utils.run_migration_chunks(
+    dml_utils.non_null_text,
+    dml_utils.non_null_text,
+    dml_utils.non_null_text,
+    dml_utils.non_null_text,
+    dml_utils.positive_integer,
+    dml_utils.non_null_text
+    ) FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils.run_migration_chunks(
+    dml_utils.non_null_text,
+    dml_utils.non_null_text,
+    dml_utils.non_null_text,
+    dml_utils.non_null_text,
+    dml_utils.positive_integer,
+    dml_utils.non_null_text
+    ) TO dml_utils_caller;
+REVOKE EXECUTE ON FUNCTION dml_utils.record_migration_error(
+    bigint,
+    bigint,
+    dml_utils.non_null_text,
+    dml_utils.non_null_text
+    ) FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils.record_migration_error(
+    bigint,
+    bigint,
+    dml_utils.non_null_text,
+    dml_utils.non_null_text
     ) TO dml_utils_caller;
