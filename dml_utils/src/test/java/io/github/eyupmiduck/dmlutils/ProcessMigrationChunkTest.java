@@ -16,6 +16,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class ProcessMigrationChunkTest extends PostgresTestBase {
 
+    private static String qualified(org.jooq.Table<?> table) {
+        return table.getSchema().getName() + "." + table.getName();
+    }
+
     @BeforeEach
     void resetFixtures() {
         dsl.truncate(TEST_BIGINT).execute();
@@ -94,9 +98,5 @@ class ProcessMigrationChunkTest extends PostgresTestBase {
                 .from(TEST_BIGINT)
                 .where(TEST_BIGINT.PAYLOAD.eq("done"))
                 .fetchOne(0, Integer.class);
-    }
-
-    private static String qualified(org.jooq.Table<?> table) {
-        return table.getSchema().getName() + "." + table.getName();
     }
 }

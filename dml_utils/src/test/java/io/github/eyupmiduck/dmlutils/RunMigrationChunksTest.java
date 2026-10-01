@@ -36,6 +36,21 @@ class RunMigrationChunksTest extends PostgresTestBase {
             "UPDATE <driving_table> SET payload = 'done' WHERE <chunking_clause>";
 
     /**
+     * Builds the ordered uuid used for source key {@code n}.
+     */
+    private static UUID uuid(int n) {
+        return UUID.fromString("00000000-0000-0000-0000-" + String.format("%012d", n));
+    }
+
+    private static String schema(Table<?> table) {
+        return table.getSchema().getName();
+    }
+
+    private static String name(Table<?> table) {
+        return table.getName();
+    }
+
+    /**
      * Clears the fixture tables this class drives a run over, so each test
      * starts from a known state.
      */
@@ -547,13 +562,6 @@ class RunMigrationChunksTest extends PostgresTestBase {
                 .toList();
     }
 
-    /**
-     * Builds the ordered uuid used for source key {@code n}.
-     */
-    private static UUID uuid(int n) {
-        return UUID.fromString("00000000-0000-0000-0000-" + String.format("%012d", n));
-    }
-
     private void createSource(long... ids) {
         createSource(TEST_BIGINT, ids);
     }
@@ -580,14 +588,6 @@ class RunMigrationChunksTest extends PostgresTestBase {
     private void runWith(String label, String template, int chunkSize, Table<?> table) {
         Routines.runMigrationChunks(
                 dsl.configuration(), template, schema(table), name(table), label, chunkSize, "t");
-    }
-
-    private static String schema(Table<?> table) {
-        return table.getSchema().getName();
-    }
-
-    private static String name(Table<?> table) {
-        return table.getName();
     }
 
     private long runId(String label) {

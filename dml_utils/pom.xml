@@ -208,10 +208,12 @@
                                 <databaseName>dml_utils</databaseName>
                             </database>
                             <liquibase>
-                                <changeLogPath>src/test/resources/db/changelog-fixtures/db.changelog-fixtures.xml</changeLogPath>
+                                <changeLogPath>src/test/resources/db/changelog-fixtures/db.changelog-fixtures.xml
+                                </changeLogPath>
                                 <liquibaseSchemaName>liquibase</liquibaseSchemaName>
                                 <databaseChangeLogTableName>dml_utils_databasechangelog</databaseChangeLogTableName>
-                                <databaseChangeLogLockTableName>dml_utils_databasechangeloglock</databaseChangeLogLockTableName>
+                                <databaseChangeLogLockTableName>dml_utils_databasechangeloglock
+                                </databaseChangeLogLockTableName>
                             </liquibase>
                             <jooq>
                                 <generator>
