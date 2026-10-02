@@ -66,6 +66,12 @@ CREATE TABLE dml_utils_data.migration_boundary
                 (boundary_id).text_values,
                 (boundary_id).uuid_values
         ) >= 1
+            AND ((boundary_id).bigint_values IS NULL
+                OR coalesce(pg_catalog.array_length((boundary_id).bigint_values, 1), 0) >= 1)
+            AND ((boundary_id).text_values IS NULL
+                OR coalesce(pg_catalog.array_length((boundary_id).text_values, 1), 0) >= 1)
+            AND ((boundary_id).uuid_values IS NULL
+                OR coalesce(pg_catalog.array_length((boundary_id).uuid_values, 1), 0) >= 1)
         )
 );
 

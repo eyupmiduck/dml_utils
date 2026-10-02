@@ -301,11 +301,12 @@ exist and have a primary key of one to three columns, each of a supported type
 from the catalog in key order, not assumed to be `id`. Each boundary is stored as
 `dml_utils_data.migration_key`, which holds position-aligned arrays — index i is
 the value of primary-key column i in the array matching that column's kind, and
-exactly one array is non-NULL (the `migration_boundary_key_check` constraint
-allows exactly one). Raises `23505` when an active (not archived) run already
-exists for the label. Boundaries are inserted with `completed_at` null. An empty
-source produces a run with no boundaries. Later inserts above the captured
-maximum fall outside the terminal boundary and are not processed.
+exactly one array element is non-NULL per index (the `migration_boundary_key_check`
+constraint requires at least one populated, non-empty array). Raises `23505` when
+an active (not archived) run already exists for the label. Boundaries are
+inserted with `completed_at` null. An empty source produces a run with no
+boundaries. Later inserts above the captured maximum fall outside the terminal
+boundary and are not processed.
 
 ### `dml_utils_lib.process_migration_chunk(i_run_id, i_boundary_no, i_sql_text)`
 

@@ -123,16 +123,22 @@ class MigrationTablesTest extends PostgresTestBase {
     }
 
     /**
-     * A boundary key with no populated array violates the check constraint.
+     * A boundary key with no populated array violates the check constraint, and
+     * so does an empty array (it carries no key value).
      */
     @Test
-    void rejectsBoundaryKeysWithNoPopulatedArray() {
+    void rejectsBoundaryKeysWithNoPopulatedOrEmptyArray() {
         Long runId = insertRun();
 
         assertDomainViolation(() -> dsl.insertInto(MIGRATION_BOUNDARY)
                 .columns(MIGRATION_BOUNDARY.RUN_ID, MIGRATION_BOUNDARY.BOUNDARY_NO,
                         MIGRATION_BOUNDARY.BOUNDARY_ID)
                 .values(runId, 0L, new MigrationKeyRecord(null, null, null))
+                .execute());
+        assertDomainViolation(() -> dsl.insertInto(MIGRATION_BOUNDARY)
+                .columns(MIGRATION_BOUNDARY.RUN_ID, MIGRATION_BOUNDARY.BOUNDARY_NO,
+                        MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .values(runId, 0L, new MigrationKeyRecord(new Long[]{}, null, null))
                 .execute());
     }
 

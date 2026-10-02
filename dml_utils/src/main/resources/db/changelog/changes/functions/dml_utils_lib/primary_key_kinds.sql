@@ -12,8 +12,12 @@ DECLARE
     l_key_kinds text[];
     l_column    record;
 BEGIN
-    -- primary_key_columns validates that the table has a primary key of at most
-    -- three columns; read the type of each in key order.
+    -- primary_key_columns validates the schema and table exist and that the
+    -- primary key has at most three columns (raising otherwise); read the type
+    -- of each in key order.
+    PERFORM dml_utils_lib.primary_key_columns(
+            i_schema_name => i_schema_name,
+            i_table_name => i_table_name);
     FOR l_column IN
         SELECT a.atttypid::pg_catalog.regtype AS column_type, a.attname AS column_name
         FROM pg_catalog.pg_index AS i

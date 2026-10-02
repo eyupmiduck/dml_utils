@@ -31,14 +31,18 @@ DECLARE
 BEGIN
     PERFORM dml_utils_lib.assert_chunking_template(i_sql_text => i_sql_text);
 
-    IF pg_catalog.array_length(i_primary_key_columns, 1)
+    -- array_length of an empty array is NULL, so a NULL length here means empty
+    -- (or NULL); reject it explicitly, otherwise all four arguments agree on
+    -- NULL and the loop below builds an empty, malformed predicate.
+    IF pg_catalog.array_length(i_primary_key_columns, 1) IS NULL
+        OR pg_catalog.array_length(i_primary_key_columns, 1)
         IS DISTINCT FROM pg_catalog.array_length(i_key_kinds, 1)
         OR pg_catalog.array_length(i_primary_key_columns, 1)
         IS DISTINCT FROM pg_catalog.array_length(i_start_values, 1)
         OR pg_catalog.array_length(i_primary_key_columns, 1)
         IS DISTINCT FROM pg_catalog.array_length(i_end_values, 1)
     THEN
-        RAISE EXCEPTION 'primary key columns, kinds and boundary values must have the same length'
+        RAISE EXCEPTION 'primary key columns, kinds and boundary values must have the same, non-zero length'
             USING ERRCODE = '22023';
     END IF;
 

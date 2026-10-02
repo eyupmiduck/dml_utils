@@ -170,6 +170,19 @@ class RenderChunkSqlTest extends PostgresTestBase {
     }
 
     /**
+     * Empty arrays are rejected: {@code array_length} of an empty array is NULL,
+     * so a length comparison alone would let them through and render an empty,
+     * malformed predicate.
+     */
+    @Test
+    void rejectsEmptyArrays() {
+        assertSqlState("22023", () -> Routines.renderChunkSql(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{}, new String[]{},
+                new String[]{}, new String[]{}, false));
+    }
+
+    /**
      * The primary-key names are whatever the caller resolved from the catalog,
      * not hard-coded {@code id}, and they appear in both range bounds.
      */
