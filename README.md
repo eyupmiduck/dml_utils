@@ -53,6 +53,24 @@ backfill does not hold one giant statement (and one long transaction) on the
 table. Each worker commits its own chunk, so progress is durable and a re-run
 resumes where it stopped.
 
+### Why pg_background
+
+The work is done through [`pg_background`](https://github.com/vibhorkum/pg_background),
+which runs SQL in a background worker with an **autonomous transaction**: a
+worker's `COMMIT` is independent of the caller's transaction, so a chunk is
+committed while the calling `run_migration_chunks` is still running, and each
+worker is a separate backend.
+
+This could instead be a stored procedure that commits between chunks — functions
+cannot commit, so a procedure is the only in-database alternative. In practice
+that bloats the driving table badly. The whole procedure runs in one backend,
+and a backend's dead tuples are not reported to the shared buffer for reuse
+until its top-level call completes, so every chunk's old row versions pile up
+and `VACUUM` cannot reclaim them until the entire run returns. The end result is
+a table bloated by the full migration rather than one chunk at a time. Because
+each `pg_background` worker is its own backend, its dead tuples become reclaimable
+as soon as that chunk commits, so the bloat stays bounded by a single chunk.
+
 ### How it works
 
 You supply a SQL **template** with two placeholders that must each appear
