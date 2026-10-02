@@ -89,8 +89,7 @@ exactly once:
   `((<alias>.<pk1>, ...) >= (<start1>, ...) AND (<alias>.<pk1>, ...) <op>
   (<end1>, ...))`, where every start and end is an explicitly cast literal and
   `<op>` is `<` for every chunk except the last, which uses `<=` so the captured
-  maximum row is included. A one-column key degenerates to a scalar comparison
-  (`((<alias>.<pk>) >= (<start>))`).
+  maximum row is included. A one-column key degenerates to a scalar comparison (`((<alias>.<pk>) >= (<start>))`).
 
 The driving table must have a **primary key of up to three columns**, each of
 type `smallint`, `integer`, `bigint`, `text` or `uuid`; the column names are read

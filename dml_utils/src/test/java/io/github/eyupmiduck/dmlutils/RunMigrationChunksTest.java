@@ -53,6 +53,16 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     /**
+     * Asserts a boundary key's position-aligned parts for the fixture's
+     * {@code (b integer, a text, c uuid)} primary key.
+     */
+    private static void assertCompositeKey(MigrationKeyRecord key, long b, String a, UUID c) {
+        assertEquals(b, key.getBigintValues()[0].longValue(), "key part b");
+        assertEquals(a, key.getTextValues()[1], "key part a");
+        assertEquals(c, key.getUuidValues()[2], "key part c");
+    }
+
+    /**
      * Clears the fixture tables this class drives a run over, so each test
      * starts from a known state.
      */
@@ -832,16 +842,6 @@ class RunMigrationChunksTest extends PostgresTestBase {
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
                 .orderBy(MIGRATION_BOUNDARY.BOUNDARY_NO)
                 .fetch(MIGRATION_BOUNDARY.BOUNDARY_ID);
-    }
-
-    /**
-     * Asserts a boundary key's position-aligned parts for the fixture's
-     * {@code (b integer, a text, c uuid)} primary key.
-     */
-    private static void assertCompositeKey(MigrationKeyRecord key, long b, String a, UUID c) {
-        assertEquals(b, key.getBigintValues()[0].longValue(), "key part b");
-        assertEquals(a, key.getTextValues()[1], "key part a");
-        assertEquals(c, key.getUuidValues()[2], "key part c");
     }
 
     private void assertBoundaries(long runId, long[][] expected) {

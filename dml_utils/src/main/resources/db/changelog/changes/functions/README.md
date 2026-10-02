@@ -128,12 +128,10 @@ changeset (`function-dml_utils.delete_archived_migration_runs`).
 ```sql
 i_label dml_utils_data.non_null_text
 RETURNS TABLE
-(
-    run_id, label, chunk_size, threads,
+( run_id, label, chunk_size, threads,
     driving_table_schema_name, driving_table_name,
     created_at, completed_at, archived_at,
-    boundary_count, completed_boundary_count, error_count
-)
+    boundary_count, completed_boundary_count, error_count)
 ```
 
 `STABLE`, `SECURITY INVOKER`. Returns one high-level row per run for the label,
@@ -146,7 +144,7 @@ how many are completed, and the number of recorded errors. Use
 ```sql
 i_run_id bigint
 RETURNS TABLE
-(error_id, boundary_no, sqlstate, message, created_at)
+    (error_id, boundary_no, sqlstate, message, created_at)
 ```
 
 `STABLE`, `SECURITY INVOKER`. Returns the run's recorded errors, ordered by
@@ -157,7 +155,7 @@ RETURNS TABLE
 ```sql
 i_run_id bigint
 RETURNS TABLE
-(boundary_no, boundary_id, completed_at)
+    (boundary_no, boundary_id, completed_at)
 ```
 
 `STABLE`, `SECURITY INVOKER`. Returns the run's chunk boundaries in order.
