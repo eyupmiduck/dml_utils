@@ -186,6 +186,25 @@ archive the current run first; then the label is free again:
 SELECT dml_utils.archive_migration_run(i_label => 'events-region-backfill');
 ```
 
+Helper functions summarise a label's runs and list a run's errors:
+
+```sql
+-- One row per run for the label, with boundary and error counts.
+SELECT *
+FROM dml_utils.migration_run_summary(i_label => 'events-region-backfill');
+
+-- The errors recorded for a run.
+SELECT *
+FROM dml_utils.migration_errors(i_run_id => 42);
+```
+
+Archived runs can be deleted — all of them, or just one label's:
+
+```sql
+SELECT dml_utils.delete_archived_migration_runs();
+SELECT dml_utils.delete_archived_migration_runs(i_label => 'events-region-backfill');
+```
+
 ## Requirements
 
 - PostgreSQL 16, 17 or 18 (CI builds and tests all three; 17 is the default).

@@ -1,0 +1,142 @@
+package io.github.eyupmiduck.dmlutils;
+
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.MigrationErrorsRecord;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.MigrationRunSummaryRecord;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationError.MIGRATION_ERROR;
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * Verifies the migration-maintenance functions: deleting archived runs (all or
+ * by label, cascading to boundaries and errors), the per-label run summary, and
+ * the per-run error listing.
+ */
+class MigrationMaintenanceTest extends PostgresTestBase {
+
+    @BeforeEach
+    void reset() {
+        dsl.deleteFrom(MIGRATION_RUN).execute();
+        dsl.truncate(TEST_BIGINT).execute();
+    }
+
+    /**
+     * Deleting archived runs removes only the archived ones and cascades to
+     * their boundaries and errors.
+     */
+    @Test
+    void deleteAllArchivedRunsDeletesThemAndCascades() {
+        String archivedLabel = "maint-all-archived";
+        long archivedRun = populateRun(archivedLabel, 2, 1, 2, 3, 4);
+        recordError(archivedRun, 0L, "22012", "division by zero");
+        assertEquals(archivedRun, Routines.archiveMigrationRun(dsl.configuration(), archivedLabel));
+        long activeRun = populateRun("maint-all-active", 2, 1, 2);
+
+        long deleted = Routines.deleteArchivedMigrationRuns1(dsl.configuration());
+
+        assertEquals(1, deleted, "only the archived run should be deleted");
+        assertNull(runRow(archivedLabel), "the archived run should be gone");
+        assertNotNull(runRow("maint-all-active"), "the active run should remain");
+        assertEquals(0, dsl.fetchCount(MIGRATION_ERROR, MIGRATION_ERROR.RUN_ID.eq(archivedRun)),
+                "the archived run's errors should be cascaded");
+        assertEquals(0, dsl.fetchCount(MIGRATION_BOUNDARY, MIGRATION_BOUNDARY.RUN_ID.eq(archivedRun)),
+                "the archived run's boundaries should be cascaded");
+        assertTrue(dsl.fetchCount(MIGRATION_BOUNDARY, MIGRATION_BOUNDARY.RUN_ID.eq(activeRun)) > 0,
+                "the active run's boundaries should remain");
+    }
+
+    /**
+     * Deleting archived runs for a label leaves other labels' archived runs.
+     */
+    @Test
+    void deleteArchivedRunsForLabelDeletesOnlyThatLabel() {
+        populateRun("maint-label-a", 2, 1, 2);
+        populateRun("maint-label-b", 2, 1, 2);
+        Routines.archiveMigrationRun(dsl.configuration(), "maint-label-a");
+        Routines.archiveMigrationRun(dsl.configuration(), "maint-label-b");
+
+        long deleted = Routines.deleteArchivedMigrationRuns2(dsl.configuration(), "maint-label-a");
+
+        assertEquals(1, deleted);
+        assertNull(runRow("maint-label-a"));
+        assertNotNull(runRow("maint-label-b"), "another label's archived run should remain");
+    }
+
+    /**
+     * The summary reports one high-level row per run with the boundary and error
+     * counts.
+     */
+    @Test
+    void migrationRunSummaryReportsHighLevelCounts() {
+        String label = "maint-summary";
+        long runId = populateRun(label, 2, 1, 2, 3, 4);
+        recordError(runId, 0L, "22012", "boom one");
+        recordError(runId, 1L, "23505", "boom two");
+
+        List<MigrationRunSummaryRecord> summaries = Routines.migrationRunSummary(
+                dsl.configuration(), label);
+        assertEquals(1, summaries.size(), "one row per run for the label");
+        MigrationRunSummaryRecord summary = summaries.get(0);
+
+        assertNotNull(summary);
+        assertEquals(runId, summary.getRunId().longValue());
+        assertEquals(2, summary.getChunkSize().intValue());
+        assertEquals(1, summary.getThreads().intValue());
+        assertEquals(TEST_BIGINT.getSchema().getName(), summary.getDrivingTableSchemaName());
+        assertEquals(TEST_BIGINT.getName(), summary.getDrivingTableName());
+        assertEquals(3L, summary.getBoundaryCount().longValue(), "chunk starts plus terminal");
+        assertEquals(0L, summary.getCompletedBoundaryCount().longValue());
+        assertEquals(2L, summary.getErrorCount().longValue());
+        assertNull(summary.getCompletedAt());
+        assertNull(summary.getArchivedAt());
+    }
+
+    /**
+     * The error listing returns the run's recorded errors, in order.
+     */
+    @Test
+    void migrationErrorsReturnsTheRecordedErrors() {
+        long runId = populateRun("maint-errors", 2, 1, 2);
+        recordError(runId, 0L, "22012", "division by zero");
+        recordError(runId, 1L, "23505", "duplicate key");
+
+        List<MigrationErrorsRecord> errors = Routines.migrationErrors(dsl.configuration(), runId);
+
+        assertEquals(2, errors.size());
+        assertEquals(0L, errors.get(0).getBoundaryNo().longValue());
+        assertEquals("22012", errors.get(0).getSqlstate());
+        assertEquals("division by zero", errors.get(0).getMessage());
+        assertEquals("23505", errors.get(1).getSqlstate());
+    }
+
+    /**
+     * Resets the driving table, inserts the ids and creates a run for the label.
+     */
+    private long populateRun(String label, int chunkSize, long... ids) {
+        dsl.truncate(TEST_BIGINT).execute();
+        for (long id : ids) {
+            dsl.insertInto(TEST_BIGINT, TEST_BIGINT.ID).values(id).execute();
+        }
+        return io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
+                dsl.configuration(), TEST_BIGINT.getSchema().getName(), TEST_BIGINT.getName(),
+                label, "SELECT 1", chunkSize, 1);
+    }
+
+    private void recordError(long runId, long boundaryNo, String sqlstate, String message) {
+        io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.recordMigrationError(dsl.configuration(), runId, boundaryNo, sqlstate, message);
+    }
+
+    private Long runRow(String label) {
+        return dsl.select(MIGRATION_RUN.RUN_ID)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.LABEL.eq(label))
+                .fetchOne(MIGRATION_RUN.RUN_ID);
+    }
+}

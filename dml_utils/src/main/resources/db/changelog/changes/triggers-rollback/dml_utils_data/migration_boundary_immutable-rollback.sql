@@ -1,0 +1,1 @@
+DROP TRIGGER IF EXISTS migration_boundary_immutable ON dml_utils_data.migration_boundary;

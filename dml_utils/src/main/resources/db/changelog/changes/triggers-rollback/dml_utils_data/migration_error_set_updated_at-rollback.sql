@@ -1,0 +1,1 @@
+DROP TRIGGER IF EXISTS migration_error_set_updated_at ON dml_utils_data.migration_error;

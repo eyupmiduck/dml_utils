@@ -47,24 +47,6 @@ CREATE UNIQUE INDEX migration_run_label_active_idx
 COMMENT ON INDEX dml_utils_data.migration_run_label_active_idx IS
     'Ensures at most one active (not archived) run per label.';
 
--- PostgreSQL has no CREATE TRIGGER IF NOT EXISTS, so drop first to keep the
--- changeset re-runnable against a partially seeded database.
-DROP TRIGGER IF EXISTS migration_run_set_updated_at ON dml_utils_data.migration_run;
-CREATE TRIGGER migration_run_set_updated_at
-    BEFORE UPDATE
-    ON dml_utils_data.migration_run
-    FOR EACH ROW
-EXECUTE FUNCTION dml_utils_data.set_updated_at();
-
--- label, chunk_size and the driving table are fixed at creation; reject any
--- attempt to change them.
-DROP TRIGGER IF EXISTS migration_run_immutable ON dml_utils_data.migration_run;
-CREATE TRIGGER migration_run_immutable
-    BEFORE UPDATE
-    ON dml_utils_data.migration_run
-    FOR EACH ROW
-EXECUTE FUNCTION dml_utils_data.reject_migration_run_update();
-
 CREATE TABLE dml_utils_data.migration_boundary
 (
     run_id       bigint                       NOT NULL,
@@ -106,22 +88,6 @@ COMMENT ON COLUMN dml_utils_data.migration_boundary.updated_at IS
 COMMENT ON COLUMN dml_utils_data.migration_boundary.completed_at IS
     'Set when the chunk for this boundary is processed; NULL until then.';
 
-DROP TRIGGER IF EXISTS migration_boundary_set_updated_at ON dml_utils_data.migration_boundary;
-CREATE TRIGGER migration_boundary_set_updated_at
-    BEFORE UPDATE
-    ON dml_utils_data.migration_boundary
-    FOR EACH ROW
-EXECUTE FUNCTION dml_utils_data.set_updated_at();
-
--- boundary_no and boundary_id are fixed when the boundaries are computed;
--- reject any attempt to change them.
-DROP TRIGGER IF EXISTS migration_boundary_immutable ON dml_utils_data.migration_boundary;
-CREATE TRIGGER migration_boundary_immutable
-    BEFORE UPDATE
-    ON dml_utils_data.migration_boundary
-    FOR EACH ROW
-EXECUTE FUNCTION dml_utils_data.reject_migration_boundary_update();
-
 CREATE TABLE dml_utils_data.migration_error
 (
     error_id    bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -159,10 +125,3 @@ COMMENT ON COLUMN dml_utils_data.migration_error.updated_at IS
 -- scan migration_error for every cascaded row.
 CREATE INDEX migration_error_boundary_idx
     ON dml_utils_data.migration_error (run_id, boundary_no);
-
-DROP TRIGGER IF EXISTS migration_error_set_updated_at ON dml_utils_data.migration_error;
-CREATE TRIGGER migration_error_set_updated_at
-    BEFORE UPDATE
-    ON dml_utils_data.migration_error
-    FOR EACH ROW
-EXECUTE FUNCTION dml_utils_data.set_updated_at();

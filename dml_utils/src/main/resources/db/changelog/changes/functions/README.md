@@ -109,6 +109,47 @@ NULL when the label had no active run. Pair it with
 `dml_utils_lib.populate_migration_boundaries` to rerun a label: populate,
 archive, populate again.
 
+### `dml_utils.delete_archived_migration_runs()` and `dml_utils.delete_archived_migration_runs(i_label)`
+
+```sql
+-- delete_archived_migration_runs(): no arguments
+-- delete_archived_migration_runs(i_label):
+i_label dml_utils_data.non_null_text
+RETURNS bigint
+```
+
+`SECURITY INVOKER`. Deletes archived runs — every one, or only those for the
+label — and returns the number deleted. Deleting a run cascades to its
+`migration_boundary` and `migration_error` rows. The overloads share a
+changeset (`function-dml_utils.delete_archived_migration_runs`).
+
+### `dml_utils.migration_run_summary(i_label)`
+
+```sql
+i_label dml_utils_data.non_null_text
+RETURNS TABLE (
+    run_id, label, chunk_size, threads,
+    driving_table_schema_name, driving_table_name,
+    created_at, completed_at, archived_at,
+    boundary_count, completed_boundary_count, error_count
+)
+```
+
+`STABLE`, `SECURITY INVOKER`. Returns one high-level row per run for the label,
+including the number of boundaries (chunk starts plus the terminal boundary),
+how many are completed, and the number of recorded errors. Use
+`migration_errors` to list the errors themselves.
+
+### `dml_utils.migration_errors(i_run_id)`
+
+```sql
+i_run_id bigint
+RETURNS TABLE (error_id, boundary_no, sqlstate, message, created_at)
+```
+
+`STABLE`, `SECURITY INVOKER`. Returns the run's recorded errors, ordered by
+`error_id`.
+
 ## `dml_utils_lib`
 
 `dml_utils_lib` is the engine. It may reference `dml_utils_data`, but never
