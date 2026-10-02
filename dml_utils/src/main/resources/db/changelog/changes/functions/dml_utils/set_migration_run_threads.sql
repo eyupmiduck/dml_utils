@@ -13,6 +13,7 @@ BEGIN
     UPDATE dml_utils_data.migration_run
     SET threads = i_threads
     WHERE label = i_label
+      AND archived_at IS NULL
       AND completed_at IS NULL;
 
     IF NOT FOUND THEN

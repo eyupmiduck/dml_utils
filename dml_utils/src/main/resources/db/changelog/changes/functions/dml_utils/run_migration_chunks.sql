@@ -166,7 +166,7 @@ BEGIN
         -- Keep launching until i_threads are in flight (or there is nothing left
         -- to launch), unless a worker has already failed.
         IF NOT l_aborting THEN
-            WHILE pg_catalog.cardinality(l_in_flight) < i_threads
+            WHILE pg_catalog.cardinality(l_in_flight) < l_effective_threads
                 LOOP
                     SELECT b.boundary_no,
                            CASE l_key_kind
@@ -259,7 +259,7 @@ BEGIN
             -- Remember the first failure and stop launching new chunks: the
             -- workers already in flight finish (and commit) their current chunk,
             -- then this call exits with the error.
-            IF l_error_sqlstate IS NULL THEN
+            IF NOT l_aborting THEN
                 l_error_sqlstate := l_outcome.sqlstate;
                 l_error_message := l_outcome.error_message;
                 l_error_boundary_no := l_boundary_no;
@@ -268,10 +268,12 @@ BEGIN
         END IF;
     END LOOP;
 
-    IF l_error_sqlstate IS NOT NULL THEN
+    -- l_aborting is the failure latch (not l_error_sqlstate, which a worker could
+    -- in principle report as NULL).
+    IF l_aborting THEN
         RAISE EXCEPTION 'chunk % for run % failed: %', l_error_boundary_no, l_run_id,
             l_error_message
-            USING ERRCODE = l_error_sqlstate;
+            USING ERRCODE = COALESCE(l_error_sqlstate, 'P0001');
     END IF;
 
     -- All boundaries are claimed and every chunk SQL already ran; record the run

@@ -611,6 +611,57 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     /**
+     * A failure stops the coordinator from launching further chunks: with more
+     * chunks than threads, at least one chunk after the failure is left
+     * unprocessed.
+     */
+    @Test
+    void aFailedChunkStopsLaunchingFurtherChunks() {
+        createSource(1, 2, 3, 4, 5, 6);
+        String label = label("threads-stop");
+        String template =
+                "UPDATE <driving_table> SET payload ="
+                        + " CASE WHEN id = 3 THEN (id / 0)::text ELSE 'done' END"
+                        + " WHERE <chunking_clause>";
+
+        assertSqlState("22012", () -> runWith(label, template, 1, 2, TEST_BIGINT));
+
+        long runId = runId(label);
+        assertFalse(runCompleted(runId), "a failed run must not be marked complete");
+        // Chunk size 1 over 6 rows gives 6 chunks; without suppression the other
+        // 5 would all be processed, so a count below 5 proves one was suppressed.
+        assertTrue(doneCount(TEST_BIGINT) < 5,
+                "a chunk after the failure should have been suppressed");
+        assertNotNull(dsl.selectFrom(MIGRATION_ERROR)
+                        .where(MIGRATION_ERROR.RUN_ID.eq(runId))
+                        .fetchOne(),
+                "the failed chunk should be recorded");
+    }
+
+    /**
+     * On a resumed run the stored thread count governs scheduling: an input that
+     * exceeds {@code max_worker_processes} is ignored, so the call succeeds
+     * instead of rejecting or over-launching.
+     */
+    @Test
+    void storedThreadsGovernSchedulingOnResume() {
+        for (long id = 1; id <= 20; id++) {
+            dsl.insertInto(TEST_BIGINT, TEST_BIGINT.ID).values(id).execute();
+        }
+        String label = label("stored-threads-govern");
+        long runId = populate(TEST_BIGINT, label, TEMPLATE, 1, 1);
+
+        int tooMany = dsl.fetchOne(
+                        "SELECT pg_catalog.current_setting('max_worker_processes')::int")
+                .get(0, Integer.class) + 1;
+
+        runWith(label, TEMPLATE, 1, tooMany, TEST_BIGINT);
+
+        assertEquals(20, doneCount(TEST_BIGINT), "the run should process every row");
+        assertTrue(runCompleted(runId), "the run should be marked complete");
+    }
+
+    /**
      * The alias argument defaults to {@code t} at the SQL level when omitted.
      */
     @Test

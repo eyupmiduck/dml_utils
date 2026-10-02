@@ -129,6 +129,30 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     }
 
     /**
+     * A zero thread count is rejected by the positive-integer domain.
+     */
+    @Test
+    void rejectsZeroThreads() {
+        assertDomainViolation(() -> populateByNames(FIXTURE_SCHEMA, TEST_BIGINT.getName(), 1, 0));
+    }
+
+    /**
+     * A negative thread count is rejected by the positive-integer domain.
+     */
+    @Test
+    void rejectsNegativeThreads() {
+        assertDomainViolation(() -> populateByNames(FIXTURE_SCHEMA, TEST_BIGINT.getName(), 1, -1));
+    }
+
+    /**
+     * A null thread count is rejected by the positive-integer domain.
+     */
+    @Test
+    void rejectsNullThreads() {
+        assertDomainViolation(() -> populateByNames(FIXTURE_SCHEMA, TEST_BIGINT.getName(), 1, null));
+    }
+
+    /**
      * An unknown schema fails with invalid_schema_name (3F000).
      */
     @Test
@@ -312,12 +336,21 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     }
 
     private long populateByNames(String schema, String table, Integer chunkSize) {
-        return populateByNames(schema, table, uniqueLabel(), chunkSize);
+        return populateByNames(schema, table, uniqueLabel(), chunkSize, 1);
+    }
+
+    private long populateByNames(String schema, String table, Integer chunkSize, Integer threads) {
+        return populateByNames(schema, table, uniqueLabel(), chunkSize, threads);
     }
 
     private long populateByNames(String schema, String table, String label, Integer chunkSize) {
+        return populateByNames(schema, table, label, chunkSize, 1);
+    }
+
+    private long populateByNames(String schema, String table, String label, Integer chunkSize,
+                                 Integer threads) {
         return Routines.populateMigrationBoundaries(
-                dsl.configuration(), schema, table, label, SQL_TEXT, chunkSize, 1);
+                dsl.configuration(), schema, table, label, SQL_TEXT, chunkSize, threads);
     }
 
     private String uniqueLabel() {

@@ -17,6 +17,7 @@ BEGIN
     UPDATE dml_utils_data.migration_run
     SET sql_text = i_sql_text
     WHERE label = i_label
+      AND archived_at IS NULL
       AND completed_at IS NULL;
 
     IF NOT FOUND THEN
