@@ -168,6 +168,12 @@ REVOKE EXECUTE ON FUNCTION dml_utils.migration_errors(
 GRANT EXECUTE ON FUNCTION dml_utils.migration_errors(
     bigint
     ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils.migration_boundaries(
+    bigint
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils.migration_boundaries(
+    bigint
+    ) TO public;
 REVOKE SELECT, INSERT, UPDATE, DELETE ON dml_utils_data.migration_boundary FROM dml_utils_caller;
 REVOKE SELECT, INSERT, UPDATE, DELETE ON dml_utils_data.migration_error FROM dml_utils_caller;
 REVOKE SELECT, INSERT, UPDATE, DELETE ON dml_utils_data.migration_run FROM dml_utils_caller;

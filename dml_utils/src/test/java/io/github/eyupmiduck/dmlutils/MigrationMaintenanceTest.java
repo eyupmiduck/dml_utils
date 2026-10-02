@@ -1,11 +1,13 @@
 package io.github.eyupmiduck.dmlutils;
 
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.MigrationBoundariesRecord;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.MigrationErrorsRecord;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.MigrationRunSummaryRecord;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
@@ -114,6 +116,33 @@ class MigrationMaintenanceTest extends PostgresTestBase {
         assertEquals("22012", errors.get(0).getSqlstate());
         assertEquals("division by zero", errors.get(0).getMessage());
         assertEquals("23505", errors.get(1).getSqlstate());
+    }
+
+    /**
+     * The boundary listing returns the run's boundaries in order, with the
+     * packed key and the completion timestamp of each. A pending chunk has a
+     * null {@code completed_at}.
+     */
+    @Test
+    void migrationBoundariesReturnsTheRunsBoundaries() {
+        String label = "maint-boundaries";
+        long runId = populateRun(label, 2, 1, 2, 3);
+        dsl.update(MIGRATION_BOUNDARY)
+                .set(MIGRATION_BOUNDARY.COMPLETED_AT, OffsetDateTime.now())
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(0L))
+                .execute();
+
+        List<MigrationBoundariesRecord> boundaries = Routines.migrationBoundaries(
+                dsl.configuration(), runId);
+
+        assertEquals(3, boundaries.size(), "three chunk starts");
+        assertEquals(List.of(0L, 1L, 2L),
+                boundaries.stream().map(b -> b.getBoundaryNo().longValue()).toList());
+        assertEquals(1L, boundaries.get(0).getBoundaryId().getBigintValue().longValue(),
+                "the first boundary packs the first id");
+        assertNotNull(boundaries.get(0).getCompletedAt(), "the completed chunk has a timestamp");
+        assertNull(boundaries.get(1).getCompletedAt(), "a pending chunk has no timestamp");
     }
 
     /**

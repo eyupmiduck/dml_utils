@@ -192,3 +192,9 @@ REVOKE EXECUTE ON FUNCTION dml_utils.migration_errors(
 GRANT EXECUTE ON FUNCTION dml_utils.migration_errors(
     bigint
     ) TO dml_utils_caller;
+REVOKE EXECUTE ON FUNCTION dml_utils.migration_boundaries(
+    bigint
+    ) FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils.migration_boundaries(
+    bigint
+    ) TO dml_utils_caller;
