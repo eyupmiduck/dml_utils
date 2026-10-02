@@ -148,6 +148,26 @@ GRANT EXECUTE ON FUNCTION dml_utils.archive_migration_run(
     dml_utils_data.non_null_text
     ) TO public;
 
+REVOKE EXECUTE ON FUNCTION dml_utils.delete_archived_migration_runs() FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils.delete_archived_migration_runs() TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils.delete_archived_migration_runs(
+    dml_utils_data.non_null_text
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils.delete_archived_migration_runs(
+    dml_utils_data.non_null_text
+    ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils.migration_run_summary(
+    dml_utils_data.non_null_text
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils.migration_run_summary(
+    dml_utils_data.non_null_text
+    ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils.migration_errors(
+    bigint
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils.migration_errors(
+    bigint
+    ) TO public;
 REVOKE SELECT, INSERT, UPDATE, DELETE ON dml_utils_data.migration_boundary FROM dml_utils_caller;
 REVOKE SELECT, INSERT, UPDATE, DELETE ON dml_utils_data.migration_error FROM dml_utils_caller;
 REVOKE SELECT, INSERT, UPDATE, DELETE ON dml_utils_data.migration_run FROM dml_utils_caller;

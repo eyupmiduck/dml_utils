@@ -34,16 +34,25 @@
         </rollback>
     </changeSet>
 
-    <!-- Stored routines: one changeset each, one file per routine. -->
-    <include file="functions.xml" relativeToChangelogFile="true"/>
-
-    <!-- The migration tables and their updated_at triggers. It runs after
-         functions.xml because the triggers call
-         dml_utils_data.set_updated_at(). -->
+    <!-- The migration tables. No triggers yet: the tables do not depend on any
+         routine, and the routines below reference them, so the tables come
+         first. -->
     <changeSet id="005-create-migration-tables" author="dml_utils" dbms="postgresql">
         <sqlFile path="sql_changes/005-create-migration-tables.sql" relativeToChangelogFile="true"/>
         <rollback>
             <sqlFile path="rollback/005-create-migration-tables-rollback.sql" relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <!-- Stored routines: one changeset each, one file per routine. They run
+         after the tables so routines may reference them. -->
+    <include file="functions.xml" relativeToChangelogFile="true"/>
+
+    <!-- The tables' triggers, which call routines defined above. -->
+    <changeSet id="006-create-migration-triggers" author="dml_utils" dbms="postgresql">
+        <sqlFile path="sql_changes/006-create-migration-triggers.sql" relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="rollback/006-create-migration-triggers-rollback.sql" relativeToChangelogFile="true"/>
         </rollback>
     </changeSet>
 
