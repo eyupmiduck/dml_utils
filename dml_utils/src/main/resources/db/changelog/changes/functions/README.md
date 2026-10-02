@@ -150,6 +150,18 @@ RETURNS TABLE (error_id, boundary_no, sqlstate, message, created_at)
 `STABLE`, `SECURITY INVOKER`. Returns the run's recorded errors, ordered by
 `error_id`.
 
+### `dml_utils.migration_boundaries(i_run_id)`
+
+```sql
+i_run_id bigint
+RETURNS TABLE (boundary_no, boundary_id, completed_at)
+```
+
+`STABLE`, `SECURITY INVOKER`. Returns the run's chunk boundaries in order.
+`boundary_id` is a `dml_utils_data.migration_key`; read the attribute for the
+driving table's key type, for example `(boundary_id).bigint_value`. A
+`completed_at` of `NULL` means the chunk is still to process.
+
 ## `dml_utils_lib`
 
 `dml_utils_lib` is the engine. It may reference `dml_utils_data`, but never

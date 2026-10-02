@@ -142,41 +142,25 @@ SELECT dml_utils.run_migration_chunks(
 
 ### Inspecting and restarting a run
 
+Helper functions summarise a label's runs, and list a run's boundaries and
+errors by run id:
+
 ```sql
--- Is the run done, and when did it finish?
-SELECT run_id,
-       label,
-       driving_table_schema_name,
-       driving_table_name,
-       chunk_size,
-       completed_at,
-       archived_at
-FROM dml_utils_data.migration_run
-WHERE label = 'events-region-backfill';
+-- One row per run for the label, with boundary and error counts, and whether it
+-- is done (completed_at) or archived (archived_at). Take the run_id from here.
+SELECT *
+FROM dml_utils.migration_run_summary(i_label => 'events-region-backfill');
 
 -- Per-chunk progress (completed_at IS NULL means still to do). boundary_id is a
 -- migration_key; read the attribute for the table's key type, for example
 -- (boundary_id).bigint_value for a bigint key.
-SELECT boundary_no, boundary_id, (boundary_id).bigint_value, completed_at
-FROM dml_utils_data.migration_boundary
-WHERE run_id = (SELECT run_id
-                FROM dml_utils_data.migration_run
-                WHERE label = 'events-region-backfill'
-                  AND archived_at IS NULL)
-ORDER BY boundary_no;
-```
+SELECT boundary_no, (boundary_id).bigint_value, completed_at
+FROM dml_utils.migration_boundaries(i_run_id => 42);
 
-A failed chunk is recorded in `migration_error`, so a run can be diagnosed
-without the worker logs:
-
-```sql
+-- The errors recorded for the run, so it can be diagnosed without the worker
+-- logs.
 SELECT boundary_no, sqlstate, message, created_at
-FROM dml_utils_data.migration_error
-WHERE run_id = (SELECT run_id
-                FROM dml_utils_data.migration_run
-                WHERE label = 'events-region-backfill'
-                  AND archived_at IS NULL)
-ORDER BY created_at;
+FROM dml_utils.migration_errors(i_run_id => 42);
 ```
 
 To re-run a label from scratch (for example after changing the chunk size),
@@ -184,18 +168,6 @@ archive the current run first; then the label is free again:
 
 ```sql
 SELECT dml_utils.archive_migration_run(i_label => 'events-region-backfill');
-```
-
-Helper functions summarise a label's runs and list a run's errors:
-
-```sql
--- One row per run for the label, with boundary and error counts.
-SELECT *
-FROM dml_utils.migration_run_summary(i_label => 'events-region-backfill');
-
--- The errors recorded for a run.
-SELECT *
-FROM dml_utils.migration_errors(i_run_id => 42);
 ```
 
 Archived runs can be deleted — all of them, or just one label's:
