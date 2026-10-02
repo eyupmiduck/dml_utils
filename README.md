@@ -10,8 +10,10 @@ Liquibase loads three application schemas, layered so nothing lower depends on
 anything above it:
 
 - **`dml_utils`** — the caller-facing API: `dml_utils.run_migration_chunks`, plus
-  `set_migration_run_sql_text` and `archive_migration_run`. It depends on the
-  two schemas below.
+  the run controls (`set_migration_run_sql_text`, `set_migration_run_threads`,
+  `archive_migration_run`) and the inspection and cleanup helpers
+  (`migration_run_summary`, `migration_errors`,
+  `delete_archived_migration_runs`). It depends on the two schemas below.
 - **`dml_utils_lib`** — the engine: the generic catalog and template helpers and
   the internal routines that populate boundaries, run one chunk and record
   errors. It may use `dml_utils_data`, never `dml_utils`.
@@ -274,8 +276,8 @@ CREATE SCHEMA liquibase AUTHORIZATION dml_utils_owner;
 ```
 
 `dml_utils_owner` needs `CREATE` on the database and schema so Liquibase can
-create its tracking tables and the `dml_utils` / `dml_utils_lib` schemas. Never
-run the migration as `postgres`.
+create its tracking tables and the `dml_utils`, `dml_utils_lib` and
+`dml_utils_data` schemas. Never run the migration as `postgres`.
 
 ### 2. Run the changelog
 
