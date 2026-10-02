@@ -1,7 +1,17 @@
 # dml_utils
 
-DML helpers for PostgreSQL, packaged as Liquibase-managed SQL and applied with
-the Liquibase CLI, without building anything or running Docker (see
+## Purpose
+
+dml_utils rewrites large PostgreSQL tables without one long-running statement
+(and one long transaction) on the table. You hand it a DML template and it
+applies that template over the table in fixed-row chunks, each committed in its
+own background worker, so a multi-million-row backfill makes durable progress
+and a re-run resumes where it stopped (see
+[Processing a table in chunks](#processing-a-table-in-chunks)).
+
+It is packaged as Liquibase-managed SQL, so installing it means applying the
+bundled changelog with the Liquibase CLI — there is nothing to build and no
+Docker required (see
 [Installing with the Liquibase CLI](#installing-with-the-liquibase-cli)).
 
 ## What is in the box
@@ -10,8 +20,10 @@ Liquibase loads three application schemas, layered so nothing lower depends on
 anything above it:
 
 - **`dml_utils`** — the caller-facing API: `dml_utils.run_migration_chunks`, plus
-  `set_migration_run_sql_text` and `archive_migration_run`. It depends on the
-  two schemas below.
+  the run controls (`set_migration_run_sql_text`, `set_migration_run_threads`,
+  `archive_migration_run`) and the inspection and cleanup helpers
+  (`migration_run_summary`, `migration_errors`,
+  `delete_archived_migration_runs`). It depends on the two schemas below.
 - **`dml_utils_lib`** — the engine: the generic catalog and template helpers and
   the internal routines that populate boundaries, run one chunk and record
   errors. It may use `dml_utils_data`, never `dml_utils`.
@@ -246,8 +258,8 @@ CREATE SCHEMA liquibase AUTHORIZATION dml_utils_owner;
 ```
 
 `dml_utils_owner` needs `CREATE` on the database and schema so Liquibase can
-create its tracking tables and the `dml_utils` / `dml_utils_lib` schemas. Never
-run the migration as `postgres`.
+create its tracking tables and the `dml_utils`, `dml_utils_lib` and
+`dml_utils_data` schemas. Never run the migration as `postgres`.
 
 ### 2. Run the changelog
 
