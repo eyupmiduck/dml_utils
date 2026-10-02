@@ -210,6 +210,7 @@ RETURNS void
 migration run already exists for the label.
 
 ###
+
 `dml_utils_lib.populate_migration_boundaries(i_schema_name, i_table_name, i_label, i_sql_text, i_chunk_size, i_threads)`
 
 ```sql
