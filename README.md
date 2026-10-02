@@ -259,6 +259,24 @@ Installing dml_utils means applying the bundled Liquibase changelog to your
 database. There is nothing to compile or package: clone the repository and point
 the Liquibase CLI at `db.changelog-master.xml`.
 
+### Prerequisites
+
+- PostgreSQL 16, 17 or 18 (CI builds and tests all three; 17 is the default).
+- Liquibase 5.0.x on your `PATH` (it needs Java 17+). Liquibase 5 ships without
+  database drivers, so add the PostgreSQL driver once:
+
+  ```sh
+  liquibase lpm add postgresql --global
+  ```
+
+- A login role that owns the objects (`dml_utils_owner` below) with `CREATE` on
+  the target database and schema.
+- A role the routines and tables are granted to (`dml_utils_caller` below). The
+  last changeset grants to it, so it must exist **before** you run the
+  changelog. Applications connect as this role (or a role granted it).
+- The [`pg_background`](https://github.com/vibhorkum/pg_background) extension,
+  required by the chunking routines.
+
 ### 1. Create the roles
 
 Connect to the target database as a superuser (or a role that can `CREATE ROLE`)
@@ -358,6 +376,74 @@ docker/postgres/                             Custom image (roles + extensions)
 scripts/                                     Local DB and release helpers
 compose.yaml                                 Local development database
 ```
+
+## Running against a different PostgreSQL version
+
+The PostgreSQL version the build runs against is a single source of truth
+controlled by the `postgres.version` Maven property (`17-alpine` by default). It
+is used for jOOQ code generation and the integration tests, and it drives the
+custom image tag:
+
+```sh
+# Build the custom image for that version, then run the build/tests
+scripts/build-postgres-image.sh postgres:16-alpine
+./mvnw verify -Dpostgres.version=16-alpine
+
+# Local dev database (Docker Compose) takes the image tag directly
+POSTGRES_IMAGE=dml-utils-postgres:16-alpine docker compose up -d
+```
+
+The build rejects a stock `postgres` image at `validate` (it lacks the
+application roles and the compiled extensions). CI builds the custom image and
+runs the full build against PostgreSQL 16, 17 and 18 (see
+`.github/workflows/maven.yml`).
+
+## Changelog validation dependency
+
+Changelog validation (changeset and SQL naming, orphaned SQL files) lives in the
+[`liquibase_validation`](https://github.com/eyupmiduck/liquibase_validation)
+project and is consumed as the test-scoped `io.github.eyupmiduck:liquibase-validation`
+artifact from GitHub Packages. GitHub Packages requires authentication even for
+public packages, so a classic personal access token with the `read:packages`
+scope must be configured under the `github` server id in `~/.m2/settings.xml`
+for local builds. See that project's README for the settings snippet and the CI
+access requirements.
+
+## Open source projects
+
+dml_utils is built on and maintained with these open source projects:
+
+- [PostgreSQL](https://www.postgresql.org/) — the database these helpers target
+  and exercise.
+- [Liquibase](https://www.liquibase.org/) — applies and versions the database
+  schema changes.
+- [jOOQ](https://www.jooq.org/) — generates the type-safe Java classes used by
+  the tests and consumers.
+- [Testcontainers](https://testcontainers.com/) — runs the throwaway PostgreSQL
+  container for jOOQ code generation and the integration tests.
+- [JUnit 5](https://junit.org/) — the test framework.
+- [pg_background](https://github.com/vibhorkum/pg_background) — runs each chunk
+  in a background worker with an autonomous transaction.
+- [plpgsql_check](https://github.com/okbob/plpgsql_check) — statically analyses
+  the PL/pgSQL routines.
+- [SQLFluff](https://sqlfluff.com/) — lints the changelog SQL files.
+- [liquibase-validation](https://github.com/eyupmiduck/liquibase_validation) —
+  the changelog linter and the `plpgsql_check`/audit-column test helpers.
+- [CodeQL](https://codeql.github.com/) — static analysis of the Java code in CI.
+- [Dependabot](https://github.com/dependabot) — keeps the Maven and GitHub
+  Actions dependencies up to date.
+- [OpenJDK](https://openjdk.org/) — provides the Java runtime (Java 25) the
+  project targets.
+- [Apache Maven](https://maven.apache.org/) — builds the project and manages
+  dependencies (through the Maven Wrapper).
+- [OpenCodeReview](https://open-codereview.ai/) — runs the AI code review on
+  pull requests.
+
+## More
+
+- [CONTRIBUTING.md](CONTRIBUTING.md) — build, test, and changelog conventions
+- [AGENTS.md](AGENTS.md) — repository layout and development principles
+- [SECURITY.md](SECURITY.md) — how to report a security issue
 
 ## License
 
