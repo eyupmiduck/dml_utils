@@ -9,6 +9,10 @@ own background worker, so a multi-million-row backfill makes durable progress
 and a re-run resumes where it stopped (see
 [Processing a table in chunks](#processing-a-table-in-chunks)).
 
+It works on a table with a **single-column primary key** of type `smallint`,
+`integer`, `bigint`, `text` or `uuid` (the column name need not be `id`); the
+chunks are primary-key ranges, so the planner can use the primary-key index.
+
 It is packaged as Liquibase-managed SQL, so installing it means applying the
 bundled changelog with the Liquibase CLI — there is nothing to build and no
 Docker required (see
