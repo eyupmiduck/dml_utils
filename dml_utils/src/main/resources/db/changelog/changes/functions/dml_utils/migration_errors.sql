@@ -1,13 +1,14 @@
 CREATE OR REPLACE FUNCTION dml_utils.migration_errors(
     i_run_id bigint
 )
-    RETURNS TABLE (
-        error_id    bigint,
-        boundary_no bigint,
-        sqlstate    text,
-        message     text,
-        created_at  timestamptz
-    )
+    RETURNS TABLE
+            (
+                error_id    bigint,
+                boundary_no bigint,
+                sqlstate    text,
+                message     text,
+                created_at  timestamptz
+            )
     LANGUAGE sql
     STABLE
     SECURITY INVOKER

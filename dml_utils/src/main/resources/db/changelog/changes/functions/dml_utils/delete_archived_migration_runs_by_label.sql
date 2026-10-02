@@ -9,10 +9,9 @@ AS
 $$
 WITH deleted AS (
     DELETE FROM dml_utils_data.migration_run
-    WHERE archived_at IS NOT NULL
-      AND label = i_label
-    RETURNING 1
-    )
+        WHERE archived_at IS NOT NULL
+            AND label = i_label
+        RETURNING 1)
 SELECT pg_catalog.count(*)::bigint
 FROM deleted;
 $$;
