@@ -159,10 +159,10 @@ BEGIN
         IF NOT l_aborting THEN
             WHILE pg_catalog.cardinality(l_in_flight) < l_effective_threads
                 LOOP
-                    -- Extract the per-position key values of the start and end
-                    -- boundaries. Each kind populates a different position-aligned
-                    -- array of migration_key; the extract below flattens them back
-                    -- into a value list, in primary-key order.
+                -- Extract the per-position key values of the start and end
+                -- boundaries. Each kind populates a different position-aligned
+                -- array of migration_key; the extract below flattens them back
+                -- into a value list, in primary-key order.
                     SELECT b.boundary_no,
                            dml_utils_lib.migration_key_values(b.boundary_id, l_key_kinds),
                            dml_utils_lib.migration_key_values(next.boundary_id, l_key_kinds),

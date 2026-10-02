@@ -137,13 +137,14 @@ COMMENT ON COLUMN dml_utils_fixtures.test_numeric.payload IS
     'Fixture payload column.';
 
 -- A three-column primary key that mixes key kinds (integer, text, uuid), to
--- prove multi-column keys and heterogeneous kinds both work. The columns are
--- declared out of alphabetical order (b, a, c) to prove key order comes from the
--- index, not the column name.
+-- prove multi-column keys and heterogeneous kinds both work. The physical
+-- column order (a, b, c) differs from the key order (b, a, c), so a routine
+-- that reads column order instead of the index order would return the wrong
+-- sequence; the key order is b (integer), a (text), c (uuid).
 CREATE TABLE dml_utils_fixtures.test_composite_three
 (
-    b       integer NOT NULL,
     a       text    NOT NULL,
+    b       integer NOT NULL,
     c       uuid    NOT NULL,
     payload text,
     PRIMARY KEY (b, a, c)

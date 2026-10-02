@@ -33,22 +33,22 @@ BEGIN
           AND k.ordinality <= i.indnkeyatts
         ORDER BY k.ordinality
         LOOP
-        -- The integer types all pack into the bigint array of migration_key.
-        IF l_column.column_type IN ('smallint'::pg_catalog.regtype,
-                                    'integer'::pg_catalog.regtype,
-                                    'bigint'::pg_catalog.regtype)
-        THEN
-            l_key_kinds := l_key_kinds || 'bigint'::text;
-        ELSIF l_column.column_type = 'text'::pg_catalog.regtype THEN
-            l_key_kinds := l_key_kinds || 'text'::text;
-        ELSIF l_column.column_type = 'uuid'::pg_catalog.regtype THEN
-            l_key_kinds := l_key_kinds || 'uuid'::text;
-        ELSE
-            RAISE EXCEPTION 'primary key column %.%.% has unsupported type %',
-                i_schema_name, i_table_name, l_column.column_name, l_column.column_type
-                USING ERRCODE = '22023';
-        END IF;
-    END LOOP;
+            -- The integer types all pack into the bigint array of migration_key.
+            IF l_column.column_type IN ('smallint'::pg_catalog.regtype,
+                                        'integer'::pg_catalog.regtype,
+                                        'bigint'::pg_catalog.regtype)
+            THEN
+                l_key_kinds := l_key_kinds || 'bigint'::text;
+            ELSIF l_column.column_type = 'text'::pg_catalog.regtype THEN
+                l_key_kinds := l_key_kinds || 'text'::text;
+            ELSIF l_column.column_type = 'uuid'::pg_catalog.regtype THEN
+                l_key_kinds := l_key_kinds || 'uuid'::text;
+            ELSE
+                RAISE EXCEPTION 'primary key column %.%.% has unsupported type %',
+                    i_schema_name, i_table_name, l_column.column_name, l_column.column_type
+                    USING ERRCODE = '22023';
+            END IF;
+        END LOOP;
 
     RETURN l_key_kinds;
 END;

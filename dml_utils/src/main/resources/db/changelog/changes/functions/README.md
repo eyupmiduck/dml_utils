@@ -127,7 +127,8 @@ changeset (`function-dml_utils.delete_archived_migration_runs`).
 
 ```sql
 i_label dml_utils_data.non_null_text
-RETURNS TABLE (
+RETURNS TABLE
+(
     run_id, label, chunk_size, threads,
     driving_table_schema_name, driving_table_name,
     created_at, completed_at, archived_at,
@@ -144,7 +145,8 @@ how many are completed, and the number of recorded errors. Use
 
 ```sql
 i_run_id bigint
-RETURNS TABLE (error_id, boundary_no, sqlstate, message, created_at)
+RETURNS TABLE
+(error_id, boundary_no, sqlstate, message, created_at)
 ```
 
 `STABLE`, `SECURITY INVOKER`. Returns the run's recorded errors, ordered by
@@ -154,7 +156,8 @@ RETURNS TABLE (error_id, boundary_no, sqlstate, message, created_at)
 
 ```sql
 i_run_id bigint
-RETURNS TABLE (boundary_no, boundary_id, completed_at)
+RETURNS TABLE
+(boundary_no, boundary_id, completed_at)
 ```
 
 `STABLE`, `SECURITY INVOKER`. Returns the run's chunk boundaries in order.
@@ -296,8 +299,8 @@ RETURNS bigint
 with the recorded SQL text, chunk size, threads and driving table, then inserts one
 fixed-row chunk boundary per chunk plus a terminal high-water boundary at the
 captured maximum primary key; returns the new `run_id`. The source table must
-exist and have a primary key of one to three columns, each of a supported type
-(`smallint`, `integer`, `bigint`, `text` or `uuid`); the columns are identified
+exist and have a primary key of one to three columns, each of a supported type (`smallint`, `integer`, `bigint`, `text`
+or `uuid`); the columns are identified
 from the catalog in key order, not assumed to be `id`. Each boundary is stored as
 `dml_utils_data.migration_key`, which holds position-aligned arrays — index i is
 the value of primary-key column i in the array matching that column's kind, and

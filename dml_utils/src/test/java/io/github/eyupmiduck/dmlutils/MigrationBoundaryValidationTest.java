@@ -1,5 +1,6 @@
 package io.github.eyupmiduck.dmlutils;
 
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.udt.records.MigrationKeyRecord;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines;
 import org.jooq.Table;
 import org.junit.jupiter.api.BeforeEach;
@@ -7,6 +8,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.UUID;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
@@ -38,6 +40,13 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
      * not couple tests that populate in the same database.
      */
     private int labelCounter;
+
+    /**
+     * Builds the ordered uuid used for key part {@code n}.
+     */
+    private static UUID uuid(int n) {
+        return UUID.fromString("00000000-0000-0000-0000-" + String.format("%012d", n));
+    }
 
     @BeforeEach
     void resetFixtures() {
@@ -316,6 +325,33 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     @Test
     void primaryKeyKindsRejectsUnsupportedType() {
         assertSqlState("22023", () -> primaryKeyKinds(TEST_NUMERIC));
+    }
+
+    /**
+     * The key-values helper flattens a position-aligned key into one text value
+     * per column, picking the array for each position from the kinds.
+     */
+    @Test
+    void migrationKeyValuesFlattensPositionAlignedArrays() {
+        String[] values = Routines.migrationKeyValues(
+                dsl.configuration(),
+                new MigrationKeyRecord(new Long[]{7L, null, null}, new String[]{null, "x", null},
+                        new UUID[]{null, null, uuid(1)}),
+                new String[]{"bigint", "text", "uuid"});
+
+        assertArrayEquals(new String[]{"7", "x", uuid(1).toString()}, values);
+    }
+
+    /**
+     * The key-values helper rejects an unsupported kind with {@code 22023}
+     * instead of silently returning NULL for that position.
+     */
+    @Test
+    void migrationKeyValuesRejectsUnsupportedKind() {
+        assertSqlState("22023", () -> Routines.migrationKeyValues(
+                dsl.configuration(),
+                new MigrationKeyRecord(new Long[]{1L}, null, null),
+                new String[]{"numeric"}));
     }
 
     /**

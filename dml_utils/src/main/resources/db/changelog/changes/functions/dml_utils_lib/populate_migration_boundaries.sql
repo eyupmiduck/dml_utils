@@ -42,43 +42,43 @@ BEGIN
     -- expression. All identifiers are catalog names quoted with %I/quote_ident;
     -- every kind comes from the whitelist (primary_key_kinds), so interpolating
     -- the result is safe.
-    l_bigint_terms := pg_catalog.array_fill('NULL'::text, ARRAY[pg_catalog.array_length(l_key_kinds, 1)]);
-    l_text_terms := pg_catalog.array_fill('NULL'::text, ARRAY[pg_catalog.array_length(l_key_kinds, 1)]);
-    l_uuid_terms := pg_catalog.array_fill('NULL'::text, ARRAY[pg_catalog.array_length(l_key_kinds, 1)]);
+    l_bigint_terms := pg_catalog.array_fill('NULL'::text, ARRAY [pg_catalog.array_length(l_key_kinds, 1)]);
+    l_text_terms := pg_catalog.array_fill('NULL'::text, ARRAY [pg_catalog.array_length(l_key_kinds, 1)]);
+    l_uuid_terms := pg_catalog.array_fill('NULL'::text, ARRAY [pg_catalog.array_length(l_key_kinds, 1)]);
     l_key_select_list := '';
     l_key_id_list := '';
     l_order_by := '';
     l_order_by_desc := '';
     FOR l_position IN 1..pg_catalog.array_length(l_key_kinds, 1)
         LOOP
-        l_kind := l_key_kinds[l_position];
-        l_key_select_list := l_key_select_list || pg_catalog.format('%s%s AS id%s',
-                                                                    CASE WHEN l_position > 1 THEN ', ' ELSE '' END,
-                                                                    pg_catalog.quote_ident(l_primary_key_columns[l_position]),
-                                                                    l_position);
-        l_key_id_list := l_key_id_list || pg_catalog.format('%sid%s',
-                                                            CASE WHEN l_position > 1 THEN ', ' ELSE '' END,
-                                                            l_position);
-        l_order_by := l_order_by || pg_catalog.format('%s%s',
-                                                      CASE WHEN l_position > 1 THEN ', ' ELSE '' END,
-                                                      pg_catalog.quote_ident(l_primary_key_columns[l_position]));
-        -- DESC applies per ORDER BY term, so the backward scan needs it on
-        -- every column (a trailing DESC would leave the earlier columns ASC).
-        l_order_by_desc := l_order_by_desc || pg_catalog.format('%s%s DESC',
+            l_kind := l_key_kinds[l_position];
+            l_key_select_list := l_key_select_list || pg_catalog.format('%s%s AS id%s',
+                                                                        CASE WHEN l_position > 1 THEN ', ' ELSE '' END,
+                                                                        pg_catalog.quote_ident(l_primary_key_columns[l_position]),
+                                                                        l_position);
+            l_key_id_list := l_key_id_list || pg_catalog.format('%sid%s',
                                                                 CASE WHEN l_position > 1 THEN ', ' ELSE '' END,
-                                                                pg_catalog.quote_ident(l_primary_key_columns[l_position]));
+                                                                l_position);
+            l_order_by := l_order_by || pg_catalog.format('%s%s',
+                                                          CASE WHEN l_position > 1 THEN ', ' ELSE '' END,
+                                                          pg_catalog.quote_ident(l_primary_key_columns[l_position]));
+            -- DESC applies per ORDER BY term, so the backward scan needs it on
+            -- every column (a trailing DESC would leave the earlier columns ASC).
+            l_order_by_desc := l_order_by_desc || pg_catalog.format('%s%s DESC',
+                                                                    CASE WHEN l_position > 1 THEN ', ' ELSE '' END,
+                                                                    pg_catalog.quote_ident(l_primary_key_columns[l_position]));
 
-        IF l_kind = 'bigint' THEN
-            l_bigint_terms[l_position] := pg_catalog.format('id%s::bigint', l_position);
-        ELSIF l_kind = 'text' THEN
-            l_text_terms[l_position] := pg_catalog.format('id%s::text', l_position);
-        ELSIF l_kind = 'uuid' THEN
-            l_uuid_terms[l_position] := pg_catalog.format('id%s::uuid', l_position);
-        ELSE
-            RAISE EXCEPTION 'unsupported key kind %', l_kind
-                USING ERRCODE = '22023';
-        END IF;
-    END LOOP;
+            IF l_kind = 'bigint' THEN
+                l_bigint_terms[l_position] := pg_catalog.format('id%s::bigint', l_position);
+            ELSIF l_kind = 'text' THEN
+                l_text_terms[l_position] := pg_catalog.format('id%s::text', l_position);
+            ELSIF l_kind = 'uuid' THEN
+                l_uuid_terms[l_position] := pg_catalog.format('id%s::uuid', l_position);
+            ELSE
+                RAISE EXCEPTION 'unsupported key kind %', l_kind
+                    USING ERRCODE = '22023';
+            END IF;
+        END LOOP;
 
     l_pack_expression := pg_catalog.format(
             'ROW(%s, %s, %s)::dml_utils_data.migration_key',

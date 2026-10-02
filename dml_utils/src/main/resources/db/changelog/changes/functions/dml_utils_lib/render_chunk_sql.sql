@@ -35,12 +35,9 @@ BEGIN
     -- (or NULL); reject it explicitly, otherwise all four arguments agree on
     -- NULL and the loop below builds an empty, malformed predicate.
     IF pg_catalog.array_length(i_primary_key_columns, 1) IS NULL
-        OR pg_catalog.array_length(i_primary_key_columns, 1)
-        IS DISTINCT FROM pg_catalog.array_length(i_key_kinds, 1)
-        OR pg_catalog.array_length(i_primary_key_columns, 1)
-        IS DISTINCT FROM pg_catalog.array_length(i_start_values, 1)
-        OR pg_catalog.array_length(i_primary_key_columns, 1)
-        IS DISTINCT FROM pg_catalog.array_length(i_end_values, 1)
+        OR pg_catalog.array_length(i_primary_key_columns, 1) IS DISTINCT FROM pg_catalog.array_length(i_key_kinds, 1)
+        OR pg_catalog.array_length(i_primary_key_columns, 1) IS DISTINCT FROM pg_catalog.array_length(i_start_values, 1)
+        OR pg_catalog.array_length(i_primary_key_columns, 1) IS DISTINCT FROM pg_catalog.array_length(i_end_values, 1)
     THEN
         RAISE EXCEPTION 'primary key columns, kinds and boundary values must have the same, non-zero length'
             USING ERRCODE = '22023';
@@ -54,26 +51,28 @@ BEGIN
     l_end_tuple := '';
     FOR l_position IN 1..pg_catalog.array_length(i_primary_key_columns, 1)
         LOOP
-        l_kind := i_key_kinds[l_position];
+            l_kind := i_key_kinds[l_position];
 
-        IF l_kind NOT IN ('bigint', 'text', 'uuid') THEN
-            RAISE EXCEPTION 'unsupported key kind %', l_kind
-                USING ERRCODE = '22023';
-        END IF;
+            -- A NULL kind would slip past NOT IN (NULL NOT IN (...) is NULL,
+            -- not true), so guard it explicitly.
+            IF l_kind IS NULL OR l_kind NOT IN ('bigint', 'text', 'uuid') THEN
+                RAISE EXCEPTION 'unsupported key kind %', l_kind
+                    USING ERRCODE = '22023';
+            END IF;
 
-        l_column_tuple := l_column_tuple || pg_catalog.format('%s%I.%I',
-                                                              CASE WHEN l_position > 1 THEN ', ' ELSE '' END,
-                                                              i_table_alias,
-                                                              i_primary_key_columns[l_position]);
-        l_start_tuple := l_start_tuple || pg_catalog.format('%s%L::%s',
+            l_column_tuple := l_column_tuple || pg_catalog.format('%s%I.%I',
+                                                                  CASE WHEN l_position > 1 THEN ', ' ELSE '' END,
+                                                                  i_table_alias,
+                                                                  i_primary_key_columns[l_position]);
+            l_start_tuple := l_start_tuple || pg_catalog.format('%s%L::%s',
+                                                                CASE WHEN l_position > 1 THEN ', ' ELSE '' END,
+                                                                i_start_values[l_position],
+                                                                l_kind);
+            l_end_tuple := l_end_tuple || pg_catalog.format('%s%L::%s',
                                                             CASE WHEN l_position > 1 THEN ', ' ELSE '' END,
-                                                            i_start_values[l_position],
+                                                            i_end_values[l_position],
                                                             l_kind);
-        l_end_tuple := l_end_tuple || pg_catalog.format('%s%L::%s',
-                                                        CASE WHEN l_position > 1 THEN ', ' ELSE '' END,
-                                                        i_end_values[l_position],
-                                                        l_kind);
-    END LOOP;
+        END LOOP;
 
     -- The driving table is referenced as "<schema>.<table> <alias>" so the
     -- template's column references can use the alias.

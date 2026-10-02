@@ -9,7 +9,7 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.primary_key_columns(
 AS
 $$
 DECLARE
-    l_key_column_count smallint;
+    l_key_column_count    smallint;
     l_primary_key_columns name[];
 BEGIN
     PERFORM dml_utils_lib.assert_schema_exists(i_schema_name => i_schema_name);

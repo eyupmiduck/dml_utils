@@ -19,18 +19,18 @@ BEGIN
     -- make the caller's predicate match no rows.
     FOR l_position IN 1..pg_catalog.array_length(i_key_kinds, 1)
         LOOP
-        l_kind := i_key_kinds[l_position];
-        IF l_kind = 'bigint' THEN
-            l_values := l_values || (i_key).bigint_values[l_position]::text;
-        ELSIF l_kind = 'text' THEN
-            l_values := l_values || (i_key).text_values[l_position];
-        ELSIF l_kind = 'uuid' THEN
-            l_values := l_values || (i_key).uuid_values[l_position]::text;
-        ELSE
-            RAISE EXCEPTION 'unsupported key kind %', l_kind
-                USING ERRCODE = '22023';
-        END IF;
-    END LOOP;
+            l_kind := i_key_kinds[l_position];
+            IF l_kind = 'bigint' THEN
+                l_values := l_values || (i_key).bigint_values[l_position]::text;
+            ELSIF l_kind = 'text' THEN
+                l_values := l_values || (i_key).text_values[l_position];
+            ELSIF l_kind = 'uuid' THEN
+                l_values := l_values || (i_key).uuid_values[l_position]::text;
+            ELSE
+                RAISE EXCEPTION 'unsupported key kind %', l_kind
+                    USING ERRCODE = '22023';
+            END IF;
+        END LOOP;
 
     RETURN l_values;
 END;
