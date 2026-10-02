@@ -14,22 +14,28 @@ CREATE DOMAIN dml_utils_data.non_null_text AS text
 COMMENT ON DOMAIN dml_utils_data.non_null_text IS
     'text that is NOT NULL and not blank.';
 
--- Packs a single primary-key value of any supported kind into one column. The
--- "exactly one attribute" invariant is enforced by the migration_boundary
--- check constraint; the type is not wrapped in a domain because a domain over
--- a UDT makes jOOQ generate a static-init cycle for the schema class.
+-- Packs the primary-key value of a chunk boundary, for a primary key of one to
+-- three columns. Each array is position-aligned to the primary-key columns: at
+-- index i, the array matching that column's kind holds its value and the other
+-- arrays hold NULL (or are NULL when no column of that kind is present). The
+-- arrays therefore all have the same length as the primary key has columns, and
+-- exactly one array is non-NULL per key. The invariants are enforced by the
+-- migration_boundary check constraint; the type is not wrapped in a domain
+-- because a domain over a UDT makes jOOQ generate a static-init cycle for the
+-- schema class.
 -- SQLFluff parses a composite type's attributes as bare words, so the
 -- layout:type:data_type alignment relaxation (see .sqlfluff) does not apply
 -- here and IntelliJ's aligned columns would trip LT01.
 -- noqa:disable=LT01
 CREATE TYPE dml_utils_data.migration_key AS
 (
-    bigint_value bigint,
-    text_value   text,
-    uuid_value   uuid
+    bigint_values bigint[],
+    text_values   text[],
+    uuid_values   uuid[]
 );
 -- noqa:enable=LT01
 
 COMMENT ON TYPE dml_utils_data.migration_key IS
-    'Packed primary-key value for a chunk boundary; exactly one of bigint_value, '
-        'text_value or uuid_value holds the key.';
+    'Packed primary-key value for a chunk boundary: position-aligned arrays, one '
+        'per supported kind, exactly one of which is non-NULL. Index i holds the '
+        'value of primary-key column i when that column has the array''s kind.';

@@ -10,9 +10,10 @@ and a re-run resumes where it stopped (see
 [Processing a table in chunks](#processing-a-table-in-chunks)). Chunks can be
 processed in parallel by more than one worker.
 
-It works on a table with a **single-column primary key** of type `smallint`,
-`integer`, `bigint`, `text` or `uuid` (the column name need not be `id`); the
-chunks are primary-key ranges, so the planner can use the primary-key index.
+It works on a table with a **primary key of up to three columns**, each of type
+`smallint`, `integer`, `bigint`, `text` or `uuid` (the column names need not be
+`id`); the chunks are primary-key ranges, so the planner can use the primary-key
+index.
 
 It is packaged as Liquibase-managed SQL, so installing it means applying the
 bundled changelog with the Liquibase CLI — there is nothing to build and no
@@ -33,7 +34,8 @@ anything above it:
   errors. It may use `dml_utils_data`, never `dml_utils`.
 - **`dml_utils_data`** — the data layer: the shared domains (`non_null_text`,
   `positive_integer`), the `migration_key` composite type that packs a
-  boundary's primary-key value, and the fixed-row chunk migration tables
+  boundary's primary-key value (position-aligned arrays, one per key kind), and
+  the fixed-row chunk migration tables
   `migration_run` / `migration_boundary` (`migration_error` records failed
   chunks), plus their trigger functions.
 
@@ -87,12 +89,14 @@ exactly once:
   `(<alias>.<pk> >= <start> AND <alias>.<pk> < <end>)` for every chunk except
   the last, which uses `<= <end>` so the captured maximum row is included.
 
-The driving table must have a **single-column primary key** of type `smallint`,
-`integer`, `bigint`, `text` or `uuid`; the column name is read from the catalog,
-so it need not be `id`. The predicate compares the key to an explicitly cast
-literal (`t.id >= '1'::bigint`) so the planner can use the primary-key index.
-Chunks are cut by row number over `ORDER BY <pk>`; rows inserted later with keys
-above the captured maximum are outside the final chunk and are not processed.
+The driving table must have a **primary key of up to three columns**, each of
+type `smallint`, `integer`, `bigint`, `text` or `uuid`; the column names are read
+from the catalog, so they need not be `id`. The predicate compares the key tuple
+to explicitly cast literals (`(t.id) >= ('1'::bigint)`, or
+`(t.a, t.b) >= ('1'::bigint, 'x'::text)` for a composite key) so the planner can
+use the primary-key index. Chunks are cut by row number over `ORDER BY <pk>`;
+rows inserted later with keys above the captured maximum are outside the final
+chunk and are not processed.
 
 The first call for a `label` computes the boundaries (via
 `populate_migration_boundaries`) and then processes them. Re-running with the
@@ -192,9 +196,10 @@ SELECT *
 FROM dml_utils.migration_run_summary(i_label => 'events-region-backfill');
 
 -- Per-chunk progress (completed_at IS NULL means still to do). boundary_id is a
--- migration_key; read the attribute for the table's key type, for example
--- (boundary_id).bigint_value for a bigint key.
-SELECT boundary_no, (boundary_id).bigint_value, completed_at
+-- migration_key: position-aligned arrays, one per key kind. Index i is the i-th
+-- primary-key column, so (boundary_id).bigint_values[1] reads the first column
+-- of a bigint key.
+SELECT boundary_no, (boundary_id).bigint_values[1], completed_at
 FROM dml_utils.migration_boundaries(i_run_id => 42);
 
 -- The errors recorded for the run, so it can be diagnosed without the worker

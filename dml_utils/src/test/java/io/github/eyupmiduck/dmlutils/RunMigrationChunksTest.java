@@ -16,6 +16,7 @@ import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.Migration
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationError.MIGRATION_ERROR;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeThree.TEST_COMPOSITE_THREE;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestInteger.TEST_INTEGER;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestKey.TEST_KEY;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestOther.TEST_OTHER;
@@ -57,9 +58,29 @@ class RunMigrationChunksTest extends PostgresTestBase {
     @BeforeEach
     void resetFixtures() {
         for (Table<?> table : List.of(TEST_BIGINT, TEST_OTHER, TEST_INTEGER, TEST_SMALLINT,
-                TEST_TEXT, TEST_UUID, TEST_KEY)) {
+                TEST_TEXT, TEST_UUID, TEST_KEY, TEST_COMPOSITE_THREE)) {
             dsl.truncate(table).execute();
         }
+    }
+
+    /**
+     * A composite-primary-key table is chunked and every row is processed.
+     */
+    @Test
+    void processesACompositeKeyedTable() {
+        dsl.insertInto(TEST_COMPOSITE_THREE, TEST_COMPOSITE_THREE.B, TEST_COMPOSITE_THREE.A,
+                        TEST_COMPOSITE_THREE.C)
+                .values(1, "x", uuid(1))
+                .values(1, "y", uuid(2))
+                .values(2, "x", uuid(3))
+                .execute();
+
+        String label = label("composite");
+        run(label, 2, TEST_COMPOSITE_THREE);
+
+        assertEquals(3, payloadCount(TEST_COMPOSITE_THREE, "done"),
+                "all rows of the composite-keyed table should be updated");
+        assertTrue(runCompleted(runId(label)), "the run should be marked complete");
     }
 
     /**
@@ -714,7 +735,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
                 .orderBy(MIGRATION_BOUNDARY.BOUNDARY_NO)
                 .fetch(MIGRATION_BOUNDARY.BOUNDARY_ID)
                 .stream()
-                .map(key -> key.getTextValue())
+                .map(key -> key.getTextValues()[0])
                 .toList();
     }
 
@@ -728,7 +749,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
                 .orderBy(MIGRATION_BOUNDARY.BOUNDARY_NO)
                 .fetch(MIGRATION_BOUNDARY.BOUNDARY_ID)
                 .stream()
-                .map(key -> key.getUuidValue())
+                .map(key -> key.getUuidValues()[0])
                 .toList();
     }
 
@@ -801,7 +822,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
         for (int i = 0; i < expected.length; i++) {
             assertEquals(expected[i][0], actual.get(i).getBoundaryNo().longValue(),
                     "boundary_no " + i);
-            assertEquals(expected[i][1], actual.get(i).getBoundaryId().getBigintValue().longValue(),
+            assertEquals(expected[i][1], actual.get(i).getBoundaryId().getBigintValues()[0].longValue(),
                     "boundary_id " + i);
         }
     }

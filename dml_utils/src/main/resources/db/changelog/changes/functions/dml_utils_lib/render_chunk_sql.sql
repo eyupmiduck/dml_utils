@@ -3,10 +3,10 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.render_chunk_sql(
     i_schema_name dml_utils_data.non_null_text,
     i_table_name dml_utils_data.non_null_text,
     i_table_alias dml_utils_data.non_null_text,
-    i_primary_key_name name,
-    i_key_kind dml_utils_data.non_null_text,
-    i_start_value text,
-    i_end_value text,
+    i_primary_key_columns name[],
+    i_key_kinds text[],
+    i_start_values text[],
+    i_end_values text[],
     i_is_final boolean
 )
     RETURNS text
@@ -22,34 +22,69 @@ DECLARE
     l_driving_table_sentinel   constant text := pg_catalog.chr(1);
     l_chunking_clause_sentinel constant text := pg_catalog.chr(2);
     l_driving_table                     text;
+    l_start_tuple                       text;
+    l_end_tuple                         text;
+    l_column_tuple                      text;
     l_chunking_clause                   text;
     l_rendered                          text;
+    l_kind                              text;
 BEGIN
     PERFORM dml_utils_lib.assert_chunking_template(i_sql_text => i_sql_text);
 
-    -- The kind selects the explicit cast and is interpolated into the SQL, so
-    -- it must be one of the known kinds (never caller SQL). The values are the
-    -- text form of the packed key's populated attribute.
-    IF i_key_kind NOT IN ('bigint', 'text', 'uuid') THEN
-        RAISE EXCEPTION 'unsupported key kind %', i_key_kind
+    IF pg_catalog.array_length(i_primary_key_columns, 1)
+        IS DISTINCT FROM pg_catalog.array_length(i_key_kinds, 1)
+        OR pg_catalog.array_length(i_primary_key_columns, 1)
+        IS DISTINCT FROM pg_catalog.array_length(i_start_values, 1)
+        OR pg_catalog.array_length(i_primary_key_columns, 1)
+        IS DISTINCT FROM pg_catalog.array_length(i_end_values, 1)
+    THEN
+        RAISE EXCEPTION 'primary key columns, kinds and boundary values must have the same length'
             USING ERRCODE = '22023';
     END IF;
+
+    -- Build the alias-qualified column tuple and the two value tuples. The kind
+    -- selects the explicit cast and is interpolated into the SQL, so it must be
+    -- one of the known kinds (never caller SQL); the values are quoted with %L.
+    l_column_tuple := '';
+    l_start_tuple := '';
+    l_end_tuple := '';
+    FOR l_position IN 1..pg_catalog.array_length(i_primary_key_columns, 1)
+        LOOP
+        l_kind := i_key_kinds[l_position];
+
+        IF l_kind NOT IN ('bigint', 'text', 'uuid') THEN
+            RAISE EXCEPTION 'unsupported key kind %', l_kind
+                USING ERRCODE = '22023';
+        END IF;
+
+        l_column_tuple := l_column_tuple || pg_catalog.format('%s%I.%I',
+                                                              CASE WHEN l_position > 1 THEN ', ' ELSE '' END,
+                                                              i_table_alias,
+                                                              i_primary_key_columns[l_position]);
+        l_start_tuple := l_start_tuple || pg_catalog.format('%s%L::%s',
+                                                            CASE WHEN l_position > 1 THEN ', ' ELSE '' END,
+                                                            i_start_values[l_position],
+                                                            l_kind);
+        l_end_tuple := l_end_tuple || pg_catalog.format('%s%L::%s',
+                                                        CASE WHEN l_position > 1 THEN ', ' ELSE '' END,
+                                                        i_end_values[l_position],
+                                                        l_kind);
+    END LOOP;
 
     -- The driving table is referenced as "<schema>.<table> <alias>" so the
     -- template's column references can use the alias.
     l_driving_table := pg_catalog.format('%I.%I %I',
                                          i_schema_name, i_table_name, i_table_alias);
 
-    -- The range predicate is parenthesized so it drops into a template clause
-    -- verbatim. The final chunk uses an inclusive upper bound so the captured
-    -- maximum row is processed; every other chunk is half-open. %L quotes the
-    -- value and %s appends the whitelisted cast.
+    -- The row-value range predicate is parenthesized so it drops into a template
+    -- clause verbatim. The final chunk uses an inclusive upper bound so the
+    -- captured maximum row is processed; every other chunk is half-open. A
+    -- one-column key degenerates to an ordinary scalar comparison.
     l_chunking_clause := pg_catalog.format(
-            '(%I.%I >= %L::%s AND %I.%I %s %L::%s)',
-            i_table_alias, i_primary_key_name, i_start_value, i_key_kind,
-            i_table_alias, i_primary_key_name,
+            '((%s) >= (%s) AND (%s) %s (%s))',
+            l_column_tuple, l_start_tuple, l_column_tuple,
             CASE WHEN i_is_final THEN '<=' ELSE '<' END,
-            i_end_value, i_key_kind);
+            l_end_tuple);
 
     -- A quoted identifier could in principle contain a sentinel character;
     -- reject that so the substitution below stays unambiguous.
@@ -76,6 +111,6 @@ $$;
 
 COMMENT ON FUNCTION dml_utils_lib.render_chunk_sql IS
     'Returns the SQL template with <driving_table> and <chunking_clause> '
-        'substituted for the given table, alias, primary key and chunk range; '
-        'the key kind (bigint, text or uuid) selects the explicit cast. The final '
-        'chunk uses an inclusive upper bound.';
+        'substituted for the given table, alias, primary-key columns and chunk '
+        'range; each key kind (bigint, text or uuid) selects the explicit cast. '
+        'The final chunk uses an inclusive upper bound.';

@@ -11,8 +11,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * Verifies {@code dml_utils_lib.assert_chunking_template} and
  * {@code dml_utils_lib.render_chunk_sql}: the template tokens must appear
  * exactly once, and substitution produces the expected driving-table reference
- * and half-open (or inclusive, for the final chunk) range predicate with an
- * explicitly cast key literal.
+ * and half-open (or inclusive, for the final chunk) row-value range predicate
+ * with an explicitly cast key literal per column.
  */
 class RenderChunkSqlTest extends PostgresTestBase {
 
@@ -60,7 +60,8 @@ class RenderChunkSqlTest extends PostgresTestBase {
 
     /**
      * Substitution produces the qualified, aliased driving-table reference and
-     * a non-final (half-open) range predicate with an explicit bigint cast.
+     * a non-final (half-open) range predicate with an explicit bigint cast. A
+     * one-column key renders as a one-element row.
      */
     @Test
     void rendersNonFinalChunk() {
@@ -68,7 +69,7 @@ class RenderChunkSqlTest extends PostgresTestBase {
 
         assertEquals(
                 "UPDATE public.src t SET processed = true"
-                        + " WHERE (t.id >= '10'::bigint AND t.id < '20'::bigint)",
+                        + " WHERE ((t.id) >= ('10'::bigint) AND (t.id) < ('20'::bigint))",
                 rendered);
     }
 
@@ -81,7 +82,7 @@ class RenderChunkSqlTest extends PostgresTestBase {
 
         assertEquals(
                 "UPDATE public.src t SET processed = true"
-                        + " WHERE (t.id >= '30'::bigint AND t.id <= '40'::bigint)",
+                        + " WHERE ((t.id) >= ('30'::bigint) AND (t.id) <= ('40'::bigint))",
                 rendered);
     }
 
@@ -94,7 +95,7 @@ class RenderChunkSqlTest extends PostgresTestBase {
 
         assertEquals(
                 "UPDATE public.src t SET processed = true"
-                        + " WHERE (t.id >= 'abc'::text AND t.id < 'def'::text)",
+                        + " WHERE ((t.id) >= ('abc'::text) AND (t.id) < ('def'::text))",
                 rendered);
     }
 
@@ -110,8 +111,26 @@ class RenderChunkSqlTest extends PostgresTestBase {
 
         assertEquals(
                 "UPDATE public.src t SET processed = true"
-                        + " WHERE (t.id >= '11223344-5566-7788-99aa-bbccddeeff00'::uuid"
-                        + " AND t.id < '11223344-5566-7788-99aa-bbccddeeff01'::uuid)",
+                        + " WHERE ((t.id) >= ('11223344-5566-7788-99aa-bbccddeeff00'::uuid)"
+                        + " AND (t.id) < ('11223344-5566-7788-99aa-bbccddeeff01'::uuid))",
+                rendered);
+    }
+
+    /**
+     * A composite key renders as a row-value comparison with one explicitly cast
+     * literal per column, in key order.
+     */
+    @Test
+    void rendersCompositeKeyAsARowValueComparison() {
+        String rendered = Routines.renderChunkSql(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{"a", "b"}, new String[]{"bigint", "text"},
+                new String[]{"1", "x"}, new String[]{"2", "y"}, false);
+
+        assertEquals(
+                "UPDATE public.src t SET processed = true"
+                        + " WHERE ((t.a, t.b) >= ('1'::bigint, 'x'::text)"
+                        + " AND (t.a, t.b) < ('2'::bigint, 'y'::text))",
                 rendered);
     }
 
@@ -125,7 +144,7 @@ class RenderChunkSqlTest extends PostgresTestBase {
 
         assertEquals(
                 "UPDATE public.src t SET processed = true"
-                        + " WHERE (t.id >= 'O''Brien'::text AND t.id < 'O''Dad'::text)",
+                        + " WHERE ((t.id) >= ('O''Brien'::text) AND (t.id) < ('O''Dad'::text))",
                 rendered);
     }
 
@@ -139,18 +158,30 @@ class RenderChunkSqlTest extends PostgresTestBase {
     }
 
     /**
-     * The primary-key name is whatever the caller resolved from the catalog,
-     * not hard-coded {@code id}, and it appears in both range bounds.
+     * Arrays of differing length (columns, kinds or values) are rejected, since
+     * they cannot be zipped into one row-value comparison.
+     */
+    @Test
+    void rejectsMismatchedArrayLengths() {
+        assertSqlState("22023", () -> Routines.renderChunkSql(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{"a", "b"}, new String[]{"bigint"},
+                new String[]{"1", "x"}, new String[]{"2", "y"}, false));
+    }
+
+    /**
+     * The primary-key names are whatever the caller resolved from the catalog,
+     * not hard-coded {@code id}, and they appear in both range bounds.
      */
     @Test
     void usesTheGivenPrimaryKeyName() {
         String rendered = Routines.renderChunkSql(
-                dsl.configuration(), TEMPLATE, "public", "src", "s", "pk",
-                "bigint", "5", "15", false);
+                dsl.configuration(), TEMPLATE, "public", "src", "s",
+                new String[]{"pk"}, new String[]{"bigint"}, new String[]{"5"}, new String[]{"15"}, false);
 
         assertEquals(
                 "UPDATE public.src s SET processed = true"
-                        + " WHERE (s.pk >= '5'::bigint AND s.pk < '15'::bigint)",
+                        + " WHERE ((s.pk) >= ('5'::bigint) AND (s.pk) < ('15'::bigint))",
                 rendered);
     }
 
@@ -161,12 +192,12 @@ class RenderChunkSqlTest extends PostgresTestBase {
     @Test
     void usesTheGivenAlias() {
         String rendered = Routines.renderChunkSql(
-                dsl.configuration(), TEMPLATE, "public", "src", "src_row", "id",
-                "bigint", "1", "2", false);
+                dsl.configuration(), TEMPLATE, "public", "src", "src_row",
+                new String[]{"id"}, new String[]{"bigint"}, new String[]{"1"}, new String[]{"2"}, false);
 
         assertEquals(
                 "UPDATE public.src src_row SET processed = true"
-                        + " WHERE (src_row.id >= '1'::bigint AND src_row.id < '2'::bigint)",
+                        + " WHERE ((src_row.id) >= ('1'::bigint) AND (src_row.id) < ('2'::bigint))",
                 rendered);
     }
 
@@ -183,16 +214,16 @@ class RenderChunkSqlTest extends PostgresTestBase {
                 "my schema",
                 "my table",
                 "x\"y",
-                "pk\"col",
-                "bigint",
-                "1",
-                "2",
+                new String[]{"pk\"col"},
+                new String[]{"bigint"},
+                new String[]{"1"},
+                new String[]{"2"},
                 false);
 
         assertEquals(
                 "UPDATE \"my schema\".\"my table\" \"x\"\"y\" SET processed = true"
-                        + " WHERE (\"x\"\"y\".\"pk\"\"col\" >= '1'::bigint"
-                        + " AND \"x\"\"y\".\"pk\"\"col\" < '2'::bigint)",
+                        + " WHERE ((\"x\"\"y\".\"pk\"\"col\") >= ('1'::bigint)"
+                        + " AND (\"x\"\"y\".\"pk\"\"col\") < ('2'::bigint))",
                 rendered);
     }
 
@@ -209,21 +240,22 @@ class RenderChunkSqlTest extends PostgresTestBase {
                 "public",
                 "<chunking_clause>",
                 "t",
-                "id",
-                "bigint",
-                "1",
-                "2",
+                new String[]{"id"},
+                new String[]{"bigint"},
+                new String[]{"1"},
+                new String[]{"2"},
                 false);
 
         assertEquals(
                 "UPDATE public.\"<chunking_clause>\" t SET processed = true"
-                        + " WHERE (t.id >= '1'::bigint AND t.id < '2'::bigint)",
+                        + " WHERE ((t.id) >= ('1'::bigint) AND (t.id) < ('2'::bigint))",
                 rendered);
     }
 
     private String render(boolean isFinal, String keyKind, String startValue, String endValue) {
         return Routines.renderChunkSql(
-                dsl.configuration(), TEMPLATE, "public", "src", "t", "id",
-                keyKind, startValue, endValue, isFinal);
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{"id"}, new String[]{keyKind},
+                new String[]{startValue}, new String[]{endValue}, isFinal);
     }
 }

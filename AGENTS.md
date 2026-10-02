@@ -239,8 +239,11 @@ jOOQ codegen and tests; `docker_java_config` is a build shim. CI: GitHub Actions
     - Do not wrap a composite type that a table in the same schema uses in a
       domain. The generated `Domains` -> UDT -> schema class -> tables ->
       `Domains` initialisation cycle throws during class loading.
-      `dml_utils_data.migration_key` is a bare composite type, and the "exactly one
-      populated attribute" rule is a table check constraint (`migration_boundary_key_check`).
+      `dml_utils_data.migration_key` is a bare composite type, and its "at least
+      one populated array" rule is a table check constraint
+      (`migration_boundary_key_check`). It packs a boundary's primary-key value
+      as position-aligned arrays, one per key kind, so a primary key of one to
+      three columns is supported.
 
 ## Testing
 

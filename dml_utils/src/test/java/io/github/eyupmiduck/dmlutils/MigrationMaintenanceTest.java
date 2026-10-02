@@ -139,7 +139,7 @@ class MigrationMaintenanceTest extends PostgresTestBase {
         assertEquals(3, boundaries.size(), "three chunk starts");
         assertEquals(List.of(0L, 1L, 2L),
                 boundaries.stream().map(b -> b.getBoundaryNo().longValue()).toList());
-        assertEquals(1L, boundaries.get(0).getBoundaryId().getBigintValue().longValue(),
+        assertEquals(1L, boundaries.get(0).getBoundaryId().getBigintValues()[0].longValue(),
                 "the first boundary packs the first id");
         assertNotNull(boundaries.get(0).getCompletedAt(), "the completed chunk has a timestamp");
         assertNull(boundaries.get(1).getCompletedAt(), "a pending chunk has no timestamp");

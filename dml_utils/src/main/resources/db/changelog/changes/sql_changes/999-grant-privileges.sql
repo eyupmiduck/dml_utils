@@ -43,21 +43,29 @@ GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_table_exists(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text
     ) TO dml_utils_caller;
-REVOKE EXECUTE ON FUNCTION dml_utils_lib.single_column_primary_key(
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.primary_key_columns(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text
     ) FROM public;
-GRANT EXECUTE ON FUNCTION dml_utils_lib.single_column_primary_key(
+GRANT EXECUTE ON FUNCTION dml_utils_lib.primary_key_columns(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text
     ) TO dml_utils_caller;
-REVOKE EXECUTE ON FUNCTION dml_utils_lib.primary_key_kind(
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.primary_key_kinds(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text
     ) FROM public;
-GRANT EXECUTE ON FUNCTION dml_utils_lib.primary_key_kind(
+GRANT EXECUTE ON FUNCTION dml_utils_lib.primary_key_kinds(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text
+    ) TO dml_utils_caller;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.migration_key_values(
+    dml_utils_data.migration_key,
+    text[]
+    ) FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.migration_key_values(
+    dml_utils_data.migration_key,
+    text[]
     ) TO dml_utils_caller;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_chunking_template(
     dml_utils_data.non_null_text
@@ -70,10 +78,10 @@ REVOKE EXECUTE ON FUNCTION dml_utils_lib.render_chunk_sql(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text,
-    name,
-    dml_utils_data.non_null_text,
-    text,
-    text,
+    name[],
+    text[],
+    text[],
+    text[],
     boolean
     ) FROM public;
 GRANT EXECUTE ON FUNCTION dml_utils_lib.render_chunk_sql(
@@ -81,10 +89,10 @@ GRANT EXECUTE ON FUNCTION dml_utils_lib.render_chunk_sql(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text,
-    name,
-    dml_utils_data.non_null_text,
-    text,
-    text,
+    name[],
+    text[],
+    text[],
+    text[],
     boolean
     ) TO dml_utils_caller;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_no_active_run_for_label(

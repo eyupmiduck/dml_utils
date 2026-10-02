@@ -135,3 +135,51 @@ COMMENT ON COLUMN dml_utils_fixtures.test_numeric.id IS
     'Fixture primary key.';
 COMMENT ON COLUMN dml_utils_fixtures.test_numeric.payload IS
     'Fixture payload column.';
+
+-- A three-column primary key that mixes key kinds (integer, text, uuid), to
+-- prove multi-column keys and heterogeneous kinds both work. The columns are
+-- declared out of alphabetical order (b, a, c) to prove key order comes from the
+-- index, not the column name.
+CREATE TABLE dml_utils_fixtures.test_composite_three
+(
+    b       integer NOT NULL,
+    a       text    NOT NULL,
+    c       uuid    NOT NULL,
+    payload text,
+    PRIMARY KEY (b, a, c)
+);
+
+COMMENT ON TABLE dml_utils_fixtures.test_composite_three IS
+    'Fixture: a table with a three-column, mixed-kind primary key.';
+COMMENT ON COLUMN dml_utils_fixtures.test_composite_three.b IS
+    'Fixture first primary-key column (integer).';
+COMMENT ON COLUMN dml_utils_fixtures.test_composite_three.a IS
+    'Fixture second primary-key column (text).';
+COMMENT ON COLUMN dml_utils_fixtures.test_composite_three.c IS
+    'Fixture third primary-key column (uuid).';
+COMMENT ON COLUMN dml_utils_fixtures.test_composite_three.payload IS
+    'Fixture payload column.';
+
+-- Four primary-key columns, one more than the supported maximum.
+CREATE TABLE dml_utils_fixtures.test_composite_four
+(
+    a       bigint,
+    b       bigint,
+    c       bigint,
+    d       bigint,
+    payload text,
+    PRIMARY KEY (a, b, c, d)
+);
+
+COMMENT ON TABLE dml_utils_fixtures.test_composite_four IS
+    'Fixture: a table with four primary-key columns, more than the supported maximum.';
+COMMENT ON COLUMN dml_utils_fixtures.test_composite_four.a IS
+    'Fixture primary-key part.';
+COMMENT ON COLUMN dml_utils_fixtures.test_composite_four.b IS
+    'Fixture primary-key part.';
+COMMENT ON COLUMN dml_utils_fixtures.test_composite_four.c IS
+    'Fixture primary-key part.';
+COMMENT ON COLUMN dml_utils_fixtures.test_composite_four.d IS
+    'Fixture primary-key part.';
+COMMENT ON COLUMN dml_utils_fixtures.test_composite_four.payload IS
+    'Fixture payload column.';

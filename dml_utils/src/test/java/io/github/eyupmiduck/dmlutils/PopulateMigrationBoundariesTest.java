@@ -182,10 +182,10 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
 
         List<MigrationBoundaryRecord> actual = boundaries(runId);
         assertEquals(4, actual.size(), "ten rows at chunk size four yield four boundaries");
-        assertEquals("k01", actual.get(0).getBoundaryId().getTextValue());
-        assertEquals("k05", actual.get(1).getBoundaryId().getTextValue());
-        assertEquals("k09", actual.get(2).getBoundaryId().getTextValue());
-        assertEquals("k10", actual.get(3).getBoundaryId().getTextValue());
+        assertEquals("k01", actual.get(0).getBoundaryId().getTextValues()[0]);
+        assertEquals("k05", actual.get(1).getBoundaryId().getTextValues()[0]);
+        assertEquals("k09", actual.get(2).getBoundaryId().getTextValues()[0]);
+        assertEquals("k10", actual.get(3).getBoundaryId().getTextValues()[0]);
     }
 
     /**
@@ -203,10 +203,10 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
 
         List<MigrationBoundaryRecord> actual = boundaries(runId);
         assertEquals(4, actual.size(), "ten rows at chunk size four yield four boundaries");
-        assertEquals(uuid(1), actual.get(0).getBoundaryId().getUuidValue());
-        assertEquals(uuid(5), actual.get(1).getBoundaryId().getUuidValue());
-        assertEquals(uuid(9), actual.get(2).getBoundaryId().getUuidValue());
-        assertEquals(uuid(10), actual.get(3).getBoundaryId().getUuidValue());
+        assertEquals(uuid(1), actual.get(0).getBoundaryId().getUuidValues()[0]);
+        assertEquals(uuid(5), actual.get(1).getBoundaryId().getUuidValues()[0]);
+        assertEquals(uuid(9), actual.get(2).getBoundaryId().getUuidValues()[0]);
+        assertEquals(uuid(10), actual.get(3).getBoundaryId().getUuidValues()[0]);
     }
 
     /**
@@ -223,10 +223,10 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
 
         List<MigrationBoundaryRecord> actual = boundaries(runId);
         assertEquals(4, actual.size(), "ten rows at chunk size four yield four boundaries");
-        assertEquals(1L, actual.get(0).getBoundaryId().getBigintValue());
-        assertEquals(5L, actual.get(1).getBoundaryId().getBigintValue());
-        assertEquals(9L, actual.get(2).getBoundaryId().getBigintValue());
-        assertEquals(10L, actual.get(3).getBoundaryId().getBigintValue());
+        assertEquals(1L, actual.get(0).getBoundaryId().getBigintValues()[0]);
+        assertEquals(5L, actual.get(1).getBoundaryId().getBigintValues()[0]);
+        assertEquals(9L, actual.get(2).getBoundaryId().getBigintValues()[0]);
+        assertEquals(10L, actual.get(3).getBoundaryId().getBigintValues()[0]);
     }
 
     /**
@@ -382,7 +382,7 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
         for (int i = 0; i < expected.length; i++) {
             assertEquals(expected[i][0], actual.get(i).getBoundaryNo().longValue(),
                     "boundary_no " + i);
-            assertEquals(expected[i][1], actual.get(i).getBoundaryId().getBigintValue().longValue(),
+            assertEquals(expected[i][1], actual.get(i).getBoundaryId().getBigintValues()[0].longValue(),
                     "boundary_id " + i);
         }
     }
