@@ -3,7 +3,8 @@
 ## Purpose
 
 dml_utils rewrites large PostgreSQL tables without one long-running statement (and one long transaction) on the table.
-You hand it a DML template and it
+You hand it a DML template — anything PostgreSQL can run, including `UPDATE`,
+`DELETE` or `INSERT ... SELECT` with joins and subqueries — and it
 applies that template over the table in fixed-row chunks, each committed in its
 own background worker, so a multi-million-row backfill makes durable progress
 and a re-run resumes where it stopped (see
