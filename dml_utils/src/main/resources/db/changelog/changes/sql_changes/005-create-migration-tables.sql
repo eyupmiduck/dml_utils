@@ -1,13 +1,14 @@
 CREATE TABLE dml_utils_data.migration_run
 (
     run_id                    bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    label                     text                         NOT NULL,
-    sql_text                  text                         NOT NULL,
-    chunk_size                integer                      NOT NULL,
-    driving_table_schema_name dml_utils_data.non_null_text NOT NULL,
-    driving_table_name        dml_utils_data.non_null_text NOT NULL,
-    created_at                timestamptz                  NOT NULL DEFAULT pg_catalog.now(),
-    updated_at                timestamptz                  NOT NULL DEFAULT pg_catalog.now(),
+    label                     text                            NOT NULL,
+    sql_text                  text                            NOT NULL,
+    chunk_size                integer                         NOT NULL,
+    threads                   dml_utils_data.positive_integer NOT NULL,
+    driving_table_schema_name dml_utils_data.non_null_text    NOT NULL,
+    driving_table_name        dml_utils_data.non_null_text    NOT NULL,
+    created_at                timestamptz                     NOT NULL DEFAULT pg_catalog.now(),
+    updated_at                timestamptz                     NOT NULL DEFAULT pg_catalog.now(),
     completed_at              timestamptz,
     archived_at               timestamptz,
     CONSTRAINT migration_run_chunk_size_check CHECK (chunk_size > 0)
@@ -23,6 +24,9 @@ COMMENT ON COLUMN dml_utils_data.migration_run.sql_text IS
     'The migration SQL recorded for the run; stored as given.';
 COMMENT ON COLUMN dml_utils_data.migration_run.chunk_size IS
     'Number of source rows per chunk used to compute the boundaries.';
+COMMENT ON COLUMN dml_utils_data.migration_run.threads IS
+    'Number of pg_background workers used to process the run''s chunks; may be '
+        'changed with dml_utils.set_migration_run_threads while the run is unfinished.';
 COMMENT ON COLUMN dml_utils_data.migration_run.driving_table_schema_name IS
     'Schema of the driving table whose primary-key order defines the chunks.';
 COMMENT ON COLUMN dml_utils_data.migration_run.driving_table_name IS

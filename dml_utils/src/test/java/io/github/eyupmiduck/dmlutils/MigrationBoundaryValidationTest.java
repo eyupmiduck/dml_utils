@@ -74,7 +74,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     @Test
     void rejectsNullLabel() {
         assertDomainViolation(() -> Routines.populateMigrationBoundaries(
-                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), null, SQL_TEXT, 1));
+                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), null, SQL_TEXT, 1, 1));
     }
 
     /**
@@ -83,7 +83,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     @Test
     void rejectsBlankLabel() {
         assertDomainViolation(() -> Routines.populateMigrationBoundaries(
-                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), "   ", SQL_TEXT, 1));
+                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), "   ", SQL_TEXT, 1, 1));
     }
 
     /**
@@ -92,7 +92,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     @Test
     void rejectsNullSqlText() {
         assertDomainViolation(() -> Routines.populateMigrationBoundaries(
-                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), "null-sql-text", null, 1));
+                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), "null-sql-text", null, 1, 1));
     }
 
     /**
@@ -101,7 +101,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     @Test
     void rejectsBlankSqlText() {
         assertDomainViolation(() -> Routines.populateMigrationBoundaries(
-                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), "blank-sql-text", "   ", 1));
+                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), "blank-sql-text", "   ", 1, 1));
     }
 
     /**
@@ -126,6 +126,30 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     @Test
     void rejectsNullChunkSize() {
         assertDomainViolation(() -> populateByNames(FIXTURE_SCHEMA, TEST_BIGINT.getName(), null));
+    }
+
+    /**
+     * A zero thread count is rejected by the positive-integer domain.
+     */
+    @Test
+    void rejectsZeroThreads() {
+        assertDomainViolation(() -> populateByNames(FIXTURE_SCHEMA, TEST_BIGINT.getName(), 1, 0));
+    }
+
+    /**
+     * A negative thread count is rejected by the positive-integer domain.
+     */
+    @Test
+    void rejectsNegativeThreads() {
+        assertDomainViolation(() -> populateByNames(FIXTURE_SCHEMA, TEST_BIGINT.getName(), 1, -1));
+    }
+
+    /**
+     * A null thread count is rejected by the positive-integer domain.
+     */
+    @Test
+    void rejectsNullThreads() {
+        assertDomainViolation(() -> populateByNames(FIXTURE_SCHEMA, TEST_BIGINT.getName(), 1, null));
     }
 
     /**
@@ -312,12 +336,21 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     }
 
     private long populateByNames(String schema, String table, Integer chunkSize) {
-        return populateByNames(schema, table, uniqueLabel(), chunkSize);
+        return populateByNames(schema, table, uniqueLabel(), chunkSize, 1);
+    }
+
+    private long populateByNames(String schema, String table, Integer chunkSize, Integer threads) {
+        return populateByNames(schema, table, uniqueLabel(), chunkSize, threads);
     }
 
     private long populateByNames(String schema, String table, String label, Integer chunkSize) {
+        return populateByNames(schema, table, label, chunkSize, 1);
+    }
+
+    private long populateByNames(String schema, String table, String label, Integer chunkSize,
+                                 Integer threads) {
         return Routines.populateMigrationBoundaries(
-                dsl.configuration(), schema, table, label, SQL_TEXT, chunkSize);
+                dsl.configuration(), schema, table, label, SQL_TEXT, chunkSize, threads);
     }
 
     private String uniqueLabel() {

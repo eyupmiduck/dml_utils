@@ -245,8 +245,25 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
         assertEquals(label, run.getLabel());
         assertEquals(SQL_TEXT, run.getSqlText());
         assertEquals(5, run.getChunkSize());
+        assertEquals(1, run.getThreads().intValue());
         assertEquals(TEST_BIGINT.getSchema().getName(), run.getDrivingTableSchemaName());
         assertEquals(TEST_BIGINT.getName(), run.getDrivingTableName());
+    }
+
+    /**
+     * The run records the supplied thread count (a non-default value, so the
+     * parameter pass-through is exercised and not just the column default).
+     */
+    @Test
+    void recordsTheGivenThreads() {
+        String label = LABEL + "-threads";
+
+        long runId = populate(TEST_BIGINT, label, 5, 3);
+
+        MigrationRunRecord run = dsl.selectFrom(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne();
+        assertEquals(3, run.getThreads().intValue());
     }
 
     /**
@@ -343,9 +360,13 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
     }
 
     private long populate(Table<?> table, String label, int chunkSize) {
+        return populate(table, label, chunkSize, 1);
+    }
+
+    private long populate(Table<?> table, String label, int chunkSize, int threads) {
         return io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
                 dsl.configuration(), table.getSchema().getName(), table.getName(), label, SQL_TEXT,
-                chunkSize);
+                chunkSize, threads);
     }
 
     private List<MigrationBoundaryRecord> boundaries(long runId) {

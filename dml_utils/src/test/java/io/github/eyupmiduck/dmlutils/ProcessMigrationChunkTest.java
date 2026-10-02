@@ -78,7 +78,7 @@ class ProcessMigrationChunkTest extends PostgresTestBase {
     private long populate(int chunkSize) {
         return Routines.populateMigrationBoundaries(
                 dsl.configuration(), TEST_BIGINT.getSchema().getName(), TEST_BIGINT.getName(),
-                "process-chunk-test-" + System.nanoTime(), "SELECT 1", chunkSize);
+                "process-chunk-test-" + System.nanoTime(), "SELECT 1", chunkSize, 1);
     }
 
     private void processChunk(long runId, long boundaryNo, String sql) {

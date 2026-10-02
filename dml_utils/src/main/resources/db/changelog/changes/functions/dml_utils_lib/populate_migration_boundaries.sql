@@ -3,7 +3,8 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.populate_migration_boundaries(
     i_table_name dml_utils_data.non_null_text,
     i_label dml_utils_data.non_null_text,
     i_sql_text dml_utils_data.non_null_text,
-    i_chunk_size dml_utils_data.positive_integer
+    i_chunk_size dml_utils_data.positive_integer,
+    i_threads dml_utils_data.positive_integer DEFAULT 1
 )
     RETURNS bigint
     LANGUAGE plpgsql
@@ -49,9 +50,9 @@ BEGIN
                                  'ROW(NULL, NULL, id::uuid)::dml_utils_data.migration_key'
         END;
 
-    INSERT INTO dml_utils_data.migration_run (label, sql_text, chunk_size, driving_table_schema_name,
-                                              driving_table_name)
-    VALUES (i_label, i_sql_text, i_chunk_size, i_schema_name, i_table_name)
+    INSERT INTO dml_utils_data.migration_run (label, sql_text, chunk_size, threads,
+                                              driving_table_schema_name, driving_table_name)
+    VALUES (i_label, i_sql_text, i_chunk_size, i_threads, i_schema_name, i_table_name)
     RETURNING run_id
         INTO l_run_id;
 
