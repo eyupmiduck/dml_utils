@@ -86,8 +86,11 @@ exactly once:
 
 - `<driving_table>` — replaced by `"<schema>"."<table>" "<alias>"`.
 - `<chunking_clause>` — replaced by the chunk's primary-key range,
-  `(<alias>.<pk> >= <start> AND <alias>.<pk> < <end>)` for every chunk except
-  the last, which uses `<= <end>` so the captured maximum row is included.
+  `((<alias>.<pk1>, ...) >= (<start1>, ...) AND (<alias>.<pk1>, ...) <op>
+  (<end1>, ...))`, where every start and end is an explicitly cast literal and
+  `<op>` is `<` for every chunk except the last, which uses `<=` so the captured
+  maximum row is included. A one-column key degenerates to a scalar comparison
+  (`((<alias>.<pk>) >= (<start>))`).
 
 The driving table must have a **primary key of up to three columns**, each of
 type `smallint`, `integer`, `bigint`, `text` or `uuid`; the column names are read
@@ -149,10 +152,10 @@ The worker SQL for the first chunk is:
 ```sql
 UPDATE "app"."events" "t"
 SET region = 'unknown'
-WHERE (t.id >= '1'::bigint AND t.id < '10001'::bigint)
+WHERE ((t.id) >= ('1'::bigint) AND (t.id) < ('10001'::bigint))
 ```
 
-and the final chunk uses `t.id <= '<max>'::bigint`.
+and the final chunk uses `(t.id) <= ('<max>'::bigint)`.
 
 ### Example: a custom alias
 

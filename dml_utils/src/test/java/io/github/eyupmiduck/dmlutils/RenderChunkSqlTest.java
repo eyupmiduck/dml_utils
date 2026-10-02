@@ -135,6 +135,24 @@ class RenderChunkSqlTest extends PostgresTestBase {
     }
 
     /**
+     * A composite key's final chunk uses an inclusive upper bound, so the
+     * captured maximum row is included.
+     */
+    @Test
+    void rendersCompositeFinalChunk() {
+        String rendered = Routines.renderChunkSql(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{"a", "b"}, new String[]{"bigint", "text"},
+                new String[]{"1", "x"}, new String[]{"2", "y"}, true);
+
+        assertEquals(
+                "UPDATE public.src t SET processed = true"
+                        + " WHERE ((t.a, t.b) >= ('1'::bigint, 'x'::text)"
+                        + " AND (t.a, t.b) <= ('2'::bigint, 'y'::text))",
+                rendered);
+    }
+
+    /**
      * A quote inside a text key is escaped by the literal, so it cannot break
      * out of the generated SQL.
      */
@@ -166,6 +184,11 @@ class RenderChunkSqlTest extends PostgresTestBase {
         assertSqlState("22023", () -> Routines.renderChunkSql(
                 dsl.configuration(), TEMPLATE, "public", "src", "t",
                 new String[]{"a", "b"}, new String[]{"bigint"},
+                new String[]{"1", "x"}, new String[]{"2", "y"}, false));
+
+        assertSqlState("22023", () -> Routines.renderChunkSql(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{"a"}, new String[]{"bigint"},
                 new String[]{"1", "x"}, new String[]{"2", "y"}, false));
     }
 

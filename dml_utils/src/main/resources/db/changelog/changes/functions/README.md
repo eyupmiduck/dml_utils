@@ -226,9 +226,10 @@ i_key_kinds text[]
 RETURNS text[]
 ```
 
-`STABLE`, `SECURITY INVOKER`. Flattens a position-aligned `migration_key` into
-one text value per primary-key column, in key order, using `i_key_kinds` to pick
-the array for each position. The chunk predicate re-casts each value.
+`IMMUTABLE`, `SECURITY INVOKER`. Flattens a position-aligned `migration_key`
+into one text value per primary-key column, in key order, using `i_key_kinds` to
+pick the array for each position. The chunk predicate re-casts each value. Pure
+casts and array element access, so it is `IMMUTABLE`.
 
 ### `dml_utils_lib.assert_chunking_template(i_sql_text)`
 
@@ -304,8 +305,11 @@ or `uuid`); the columns are identified
 from the catalog in key order, not assumed to be `id`. Each boundary is stored as
 `dml_utils_data.migration_key`, which holds position-aligned arrays — index i is
 the value of primary-key column i in the array matching that column's kind, and
-exactly one array element is non-NULL per index (the `migration_boundary_key_check`
-constraint requires at least one populated, non-empty array). Raises `23505` when
+exactly one array element is non-NULL per index. The `migration_boundary_key_check`
+constraint enforces that: each present array must have a non-NULL element (so an
+all-NULL or empty array is rejected), present arrays must share one length of one
+to three, and exactly one of the three arrays holds a non-NULL value at each
+index. Raises `23505` when
 an active (not archived) run already exists for the label. Boundaries are
 inserted with `completed_at` null. An empty source produces a run with no
 boundaries. Later inserts above the captured maximum fall outside the terminal

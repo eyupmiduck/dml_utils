@@ -64,9 +64,14 @@ BEGIN
                                                           pg_catalog.quote_ident(l_primary_key_columns[l_position]));
             -- DESC applies per ORDER BY term, so the backward scan needs it on
             -- every column (a trailing DESC would leave the earlier columns ASC).
-            l_order_by_desc := l_order_by_desc || pg_catalog.format('%s%s DESC',
+            -- Order by the SELECT's idN aliases, not the raw column names: this is
+            -- a top-level ORDER BY over the aliased select, and PostgreSQL prefers
+            -- an output alias over an input column, so a key column literally
+            -- named id1 at another position would otherwise resolve to the wrong
+            -- column. The aliases are the key columns in key order.
+            l_order_by_desc := l_order_by_desc || pg_catalog.format('%sid%s DESC',
                                                                     CASE WHEN l_position > 1 THEN ', ' ELSE '' END,
-                                                                    pg_catalog.quote_ident(l_primary_key_columns[l_position]));
+                                                                    l_position);
 
             IF l_kind = 'bigint' THEN
                 l_bigint_terms[l_position] := pg_catalog.format('id%s::bigint', l_position);

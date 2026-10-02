@@ -4,6 +4,7 @@ import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.routines.RunMigrationChunks;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.records.MigrationBoundaryRecord;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.records.MigrationErrorRecord;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.udt.records.MigrationKeyRecord;
 import org.jooq.Table;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -78,9 +79,18 @@ class RunMigrationChunksTest extends PostgresTestBase {
         String label = label("composite");
         run(label, 2, TEST_COMPOSITE_THREE);
 
+        long runId = runId(label);
         assertEquals(3, payloadCount(TEST_COMPOSITE_THREE, "done"),
                 "all rows of the composite-keyed table should be updated");
-        assertTrue(runCompleted(runId(label)), "the run should be marked complete");
+        assertTrue(runCompleted(runId), "the run should be marked complete");
+
+        // Key order (b, a, c); chunk size 2 starts chunks at (1,x,u1) and
+        // (2,x,u3), and the terminal high-water boundary captures (2,x,u3).
+        List<MigrationKeyRecord> keys = boundaryKeys(runId);
+        assertEquals(3, keys.size(), "two chunk boundaries plus the terminal boundary");
+        assertCompositeKey(keys.get(0), 1L, "x", uuid(1));
+        assertCompositeKey(keys.get(1), 2L, "x", uuid(3));
+        assertCompositeKey(keys.get(2), 2L, "x", uuid(3));
     }
 
     /**
@@ -811,6 +821,27 @@ class RunMigrationChunksTest extends PostgresTestBase {
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId)
                         .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(boundaryNo)))
                 .fetchOne(MIGRATION_BOUNDARY.COMPLETED_AT.isNotNull()));
+    }
+
+    /**
+     * Returns the run's boundary keys in boundary order.
+     */
+    private List<MigrationKeyRecord> boundaryKeys(long runId) {
+        return dsl.select(MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .from(MIGRATION_BOUNDARY)
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .orderBy(MIGRATION_BOUNDARY.BOUNDARY_NO)
+                .fetch(MIGRATION_BOUNDARY.BOUNDARY_ID);
+    }
+
+    /**
+     * Asserts a boundary key's position-aligned parts for the fixture's
+     * {@code (b integer, a text, c uuid)} primary key.
+     */
+    private static void assertCompositeKey(MigrationKeyRecord key, long b, String a, UUID c) {
+        assertEquals(b, key.getBigintValues()[0].longValue(), "key part b");
+        assertEquals(a, key.getTextValues()[1], "key part a");
+        assertEquals(c, key.getUuidValues()[2], "key part c");
     }
 
     private void assertBoundaries(long runId, long[][] expected) {
