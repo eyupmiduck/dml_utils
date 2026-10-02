@@ -123,6 +123,25 @@ COMMENT ON COLUMN dml_utils_fixtures.test_composite_pk.b IS
 COMMENT ON COLUMN dml_utils_fixtures.test_composite_pk.payload IS
     'Fixture payload column.';
 
+-- A two-column, mixed-kind primary key (bigint + text), to exercise a
+-- heterogeneous key at the shortest composite arity.
+CREATE TABLE dml_utils_fixtures.test_composite_mixed
+(
+    a       bigint,
+    b       text,
+    payload text,
+    PRIMARY KEY (a, b)
+);
+
+COMMENT ON TABLE dml_utils_fixtures.test_composite_mixed IS
+    'Fixture: a table with a two-column, mixed-kind primary key.';
+COMMENT ON COLUMN dml_utils_fixtures.test_composite_mixed.a IS
+    'Fixture first primary-key column (bigint).';
+COMMENT ON COLUMN dml_utils_fixtures.test_composite_mixed.b IS
+    'Fixture second primary-key column (text).';
+COMMENT ON COLUMN dml_utils_fixtures.test_composite_mixed.payload IS
+    'Fixture payload column.';
+
 CREATE TABLE dml_utils_fixtures.test_numeric
 (
     id      numeric PRIMARY KEY,

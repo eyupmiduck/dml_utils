@@ -143,6 +143,28 @@ class MigrationTablesTest extends PostgresTestBase {
     }
 
     /**
+     * The boundary key check rejects present arrays of differing lengths, even
+     * when no single index holds two values (the second case below passes the
+     * per-index rule but not the shared-arity rule).
+     */
+    @Test
+    void rejectsBoundaryKeysWithMismatchedArrayLengths() {
+        Long runId = insertRun();
+
+        assertDomainViolation(() -> dsl.insertInto(MIGRATION_BOUNDARY)
+                .columns(MIGRATION_BOUNDARY.RUN_ID, MIGRATION_BOUNDARY.BOUNDARY_NO,
+                        MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .values(runId, 0L, new MigrationKeyRecord(new Long[]{1L, 2L}, new String[]{"x"}, null))
+                .execute());
+        assertDomainViolation(() -> dsl.insertInto(MIGRATION_BOUNDARY)
+                .columns(MIGRATION_BOUNDARY.RUN_ID, MIGRATION_BOUNDARY.BOUNDARY_NO,
+                        MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .values(runId, 0L,
+                        new MigrationKeyRecord(new Long[]{1L, null, 3L}, new String[]{null, "x"}, null))
+                .execute());
+    }
+
+    /**
      * A non-positive {@code chunk_size} is rejected by the check constraint.
      */
     @Test

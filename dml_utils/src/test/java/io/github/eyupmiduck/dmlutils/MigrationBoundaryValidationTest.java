@@ -328,6 +328,24 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     }
 
     /**
+     * The key-kind helper rejects a table without a primary key with
+     * {@code 22023}, via its up-front primary-key-columns call.
+     */
+    @Test
+    void primaryKeyKindsRejectsATableWithoutPrimaryKey() {
+        assertSqlState("22023", () -> primaryKeyKinds(TEST_NO_PK));
+    }
+
+    /**
+     * The key-kind helper rejects a primary key of more than three columns with
+     * {@code 22023}, via its up-front primary-key-columns call.
+     */
+    @Test
+    void primaryKeyKindsRejectsMoreThanThreeColumns() {
+        assertSqlState("22023", () -> primaryKeyKinds(TEST_COMPOSITE_FOUR));
+    }
+
+    /**
      * The key-values helper flattens a position-aligned key into one text value
      * per column, picking the array for each position from the kinds.
      */
@@ -340,6 +358,57 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
                 new String[]{"bigint", "text", "uuid"});
 
         assertArrayEquals(new String[]{"7", "x", uuid(1).toString()}, values);
+    }
+
+    /**
+     * The key-values helper flattens single-column keys and a two-column mixed
+     * key, keeping each value at its key position.
+     */
+    @Test
+    void migrationKeyValuesFlattensSingleAndTwoColumnKeys() {
+        assertArrayEquals(new String[]{"7"}, Routines.migrationKeyValues(
+                        dsl.configuration(),
+                        new MigrationKeyRecord(new Long[]{7L}, null, null),
+                        new String[]{"bigint"}),
+                "a single-column bigint key flattens to one value");
+
+        assertArrayEquals(new String[]{"x"}, Routines.migrationKeyValues(
+                        dsl.configuration(),
+                        new MigrationKeyRecord(null, new String[]{"x"}, null),
+                        new String[]{"text"}),
+                "a single-column text key reads the text array");
+
+        assertArrayEquals(new String[]{"1", "x"}, Routines.migrationKeyValues(
+                        dsl.configuration(),
+                        new MigrationKeyRecord(new Long[]{1L, null}, new String[]{null, "x"}, null),
+                        new String[]{"bigint", "text"}),
+                "a two-column mixed key keeps each value at its position");
+    }
+
+    /**
+     * An absent array (NULL) for a used position and a present array with a
+     * NULL element there both flatten to a NULL value, so the result keeps the
+     * key's arity instead of shifting the remaining values.
+     */
+    @Test
+    void migrationKeyValuesDoesNotShiftAroundAnAbsentOrNullPosition() {
+        assertArrayEquals(new String[]{null}, Routines.migrationKeyValues(
+                        dsl.configuration(),
+                        new MigrationKeyRecord(null, null, null),
+                        new String[]{"bigint"}),
+                "an absent array yields NULL at the position");
+
+        assertArrayEquals(new String[]{null}, Routines.migrationKeyValues(
+                        dsl.configuration(),
+                        new MigrationKeyRecord(new Long[]{null}, null, null),
+                        new String[]{"bigint"}),
+                "a NULL element yields NULL at the position");
+
+        assertArrayEquals(new String[]{null, "x"}, Routines.migrationKeyValues(
+                        dsl.configuration(),
+                        new MigrationKeyRecord(null, new String[]{null, "x"}, null),
+                        new String[]{"text", "text"}),
+                "a NULL element does not compact away the later value");
     }
 
     /**

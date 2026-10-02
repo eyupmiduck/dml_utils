@@ -17,6 +17,7 @@ import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.Migration
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationError.MIGRATION_ERROR;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeMixed.TEST_COMPOSITE_MIXED;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeThree.TEST_COMPOSITE_THREE;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestInteger.TEST_INTEGER;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestKey.TEST_KEY;
@@ -63,13 +64,22 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     /**
+     * Asserts a boundary key's position-aligned parts for the fixture's
+     * {@code (a bigint, b text)} primary key.
+     */
+    private static void assertMixedKey(MigrationKeyRecord key, long a, String b) {
+        assertEquals(a, key.getBigintValues()[0].longValue(), "key part a");
+        assertEquals(b, key.getTextValues()[1], "key part b");
+    }
+
+    /**
      * Clears the fixture tables this class drives a run over, so each test
      * starts from a known state.
      */
     @BeforeEach
     void resetFixtures() {
         for (Table<?> table : List.of(TEST_BIGINT, TEST_OTHER, TEST_INTEGER, TEST_SMALLINT,
-                TEST_TEXT, TEST_UUID, TEST_KEY, TEST_COMPOSITE_THREE)) {
+                TEST_TEXT, TEST_UUID, TEST_KEY, TEST_COMPOSITE_MIXED, TEST_COMPOSITE_THREE)) {
             dsl.truncate(table).execute();
         }
     }
@@ -101,6 +111,36 @@ class RunMigrationChunksTest extends PostgresTestBase {
         assertCompositeKey(keys.get(0), 1L, "x", uuid(1));
         assertCompositeKey(keys.get(1), 2L, "x", uuid(3));
         assertCompositeKey(keys.get(2), 2L, "x", uuid(3));
+    }
+
+    /**
+     * A two-column, mixed-kind (bigint, text) primary key is chunked end to
+     * end: every row is processed and the boundary keys land in the right
+     * arrays.
+     */
+    @Test
+    void processesAMixedCompositeKeyedTable() {
+        dsl.insertInto(TEST_COMPOSITE_MIXED, TEST_COMPOSITE_MIXED.A, TEST_COMPOSITE_MIXED.B)
+                .values(1L, "x")
+                .values(1L, "y")
+                .values(2L, "x")
+                .execute();
+
+        String label = label("composite-mixed");
+        run(label, 2, TEST_COMPOSITE_MIXED);
+
+        long runId = runId(label);
+        assertEquals(3, payloadCount(TEST_COMPOSITE_MIXED, "done"),
+                "all rows of the mixed composite-keyed table should be updated");
+        assertTrue(runCompleted(runId), "the run should be marked complete");
+
+        // Key order (a bigint, b text); chunk size 2 starts chunks at (1,x) and
+        // (2,x), and the terminal high-water boundary captures (2,x).
+        List<MigrationKeyRecord> keys = boundaryKeys(runId);
+        assertEquals(3, keys.size(), "two chunk boundaries plus the terminal boundary");
+        assertMixedKey(keys.get(0), 1L, "x");
+        assertMixedKey(keys.get(1), 2L, "x");
+        assertMixedKey(keys.get(2), 2L, "x");
     }
 
     /**

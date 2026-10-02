@@ -135,6 +135,29 @@ class RenderChunkSqlTest extends PostgresTestBase {
     }
 
     /**
+     * A three-column, mixed-kind key renders one explicitly cast literal per
+     * column, in key order.
+     */
+    @Test
+    void rendersAThreeColumnCompositeKeyAsARowValueComparison() {
+        String startUuid = new UUID(0x1122334455667788L, 0x99aabbccddeeff00L).toString();
+        String endUuid = new UUID(0x1122334455667788L, 0x99aabbccddeeff01L).toString();
+
+        String rendered = Routines.renderChunkSql(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{"a", "b", "c"}, new String[]{"bigint", "text", "uuid"},
+                new String[]{"1", "x", startUuid}, new String[]{"2", "y", endUuid}, false);
+
+        assertEquals(
+                "UPDATE public.src t SET processed = true"
+                        + " WHERE ((t.a, t.b, t.c) >= ('1'::bigint, 'x'::text,"
+                        + " '11223344-5566-7788-99aa-bbccddeeff00'::uuid)"
+                        + " AND (t.a, t.b, t.c) < ('2'::bigint, 'y'::text,"
+                        + " '11223344-5566-7788-99aa-bbccddeeff01'::uuid))",
+                rendered);
+    }
+
+    /**
      * A composite key's final chunk uses an inclusive upper bound, so the
      * captured maximum row is included.
      */
