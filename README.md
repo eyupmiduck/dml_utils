@@ -1,7 +1,17 @@
 # dml_utils
 
-DML helpers for PostgreSQL, packaged as Liquibase-managed SQL and applied with
-the Liquibase CLI, without building anything or running Docker (see
+## Purpose
+
+dml_utils rewrites large PostgreSQL tables without one long-running statement
+(and one long transaction) on the table. You hand it a DML template and it
+applies that template over the table in fixed-row chunks, each committed in its
+own background worker, so a multi-million-row backfill makes durable progress
+and a re-run resumes where it stopped (see
+[Processing a table in chunks](#processing-a-table-in-chunks)).
+
+It is packaged as Liquibase-managed SQL, so installing it means applying the
+bundled changelog with the Liquibase CLI — there is nothing to build and no
+Docker required (see
 [Installing with the Liquibase CLI](#installing-with-the-liquibase-cli)).
 
 ## What is in the box
