@@ -15,19 +15,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * files must start with a three-digit, zero-padded prefix (for example
  * {@code 001-create-schema}), followed by a hyphen or an underscore. ChangeSet
  * ids either follow the same {@code NNN-name} pattern (schema/table changesets)
- * or name the routine they load: {@code function-<schema>.<name>} and
- * {@code procedure-<schema>.<name>}. Overloads of one routine share a
+ * or name the routine or trigger they load:
+ * {@code function-<schema>.<name>}, {@code procedure-<schema>.<name>} and
+ * {@code trigger-<schema>.<name>}. Overloads of one routine share a
  * changeset, so the id is the routine's schema and name, not its signature.
  */
 class ChangelogNamingTest {
 
     /**
-     * The changeSet id rule: the {@code NNN-name} pattern, or a stored-routine
+     * The changeSet id rule: the {@code NNN-name} pattern, or a stored-object
      * id of the form {@code function-<schema>.<name>} /
-     * {@code procedure-<schema>.<name>}.
+     * {@code procedure-<schema>.<name>} / {@code trigger-<schema>.<name>}.
      */
     private static final Pattern CHANGE_SET_ID = Pattern.compile(
-            "\\d{3}[-_].+|(function|procedure)-[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*");
+            "\\d{3}[-_].+|(function|procedure|trigger)-[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*");
 
     /**
      * Scans the changelog changes directory and asserts that no SQL file name

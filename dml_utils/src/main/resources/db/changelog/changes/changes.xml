@@ -48,13 +48,9 @@
          after the tables so routines may reference them. -->
     <include file="functions.xml" relativeToChangelogFile="true"/>
 
-    <!-- The tables' triggers, which call routines defined above. -->
-    <changeSet id="006-create-migration-triggers" author="dml_utils" dbms="postgresql">
-        <sqlFile path="sql_changes/006-create-migration-triggers.sql" relativeToChangelogFile="true"/>
-        <rollback>
-            <sqlFile path="rollback/006-create-migration-triggers-rollback.sql" relativeToChangelogFile="true"/>
-        </rollback>
-    </changeSet>
+    <!-- The tables' triggers, one per file. They call the routines defined
+         above, so they run after the functions include. -->
+    <include file="triggers.xml" relativeToChangelogFile="true"/>
 
     <!-- A single, re-runnable changeset for all caller grants. runOnChange
          makes Liquibase re-apply it whenever this SQL changes, so new grants
