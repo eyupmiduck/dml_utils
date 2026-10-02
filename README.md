@@ -2,8 +2,8 @@
 
 ## Purpose
 
-dml_utils rewrites large PostgreSQL tables without one long-running statement
-(and one long transaction) on the table. You hand it a DML template and it
+dml_utils rewrites large PostgreSQL tables without one long-running statement (and one long transaction) on the table.
+You hand it a DML template and it
 applies that template over the table in fixed-row chunks, each committed in its
 own background worker, so a multi-million-row backfill makes durable progress
 and a re-run resumes where it stopped (see
@@ -25,8 +25,7 @@ anything above it:
 
 - **`dml_utils`** — the caller-facing API: `dml_utils.run_migration_chunks`, plus
   the run controls (`set_migration_run_sql_text`, `set_migration_run_threads`,
-  `archive_migration_run`) and the inspection and cleanup helpers
-  (`migration_run_summary`, `migration_errors`,
+  `archive_migration_run`) and the inspection and cleanup helpers (`migration_run_summary`, `migration_errors`,
   `delete_archived_migration_runs`). It depends on the two schemas below.
 - **`dml_utils_lib`** — the engine: the generic catalog and template helpers and
   the internal routines that populate boundaries, run one chunk and record
