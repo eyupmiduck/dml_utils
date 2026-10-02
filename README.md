@@ -7,7 +7,8 @@ You hand it a DML template and it
 applies that template over the table in fixed-row chunks, each committed in its
 own background worker, so a multi-million-row backfill makes durable progress
 and a re-run resumes where it stopped (see
-[Processing a table in chunks](#processing-a-table-in-chunks)).
+[Processing a table in chunks](#processing-a-table-in-chunks)). Chunks can be
+processed in parallel by more than one worker.
 
 It works on a table with a **single-column primary key** of type `smallint`,
 `integer`, `bigint`, `text` or `uuid` (the column name need not be `id`); the
@@ -51,6 +52,12 @@ fixed-row chunks, one `pg_background` worker per chunk, so a long-running
 backfill does not hold one giant statement (and one long transaction) on the
 table. Each worker commits its own chunk, so progress is durable and a re-run
 resumes where it stopped.
+
+The chunks can be processed in parallel: `i_threads` (default `1`) sets how many
+workers run at once, so a run can use several CPU cores and finish sooner on a
+fast storage system. It is not free — parallel chunks contend for the same
+table's locks and pages, and it must not exceed `max_worker_processes` — so tune
+it to the workload (see [How it works](#how-it-works)).
 
 ### Why pg_background
 
