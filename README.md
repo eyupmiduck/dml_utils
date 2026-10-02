@@ -2,12 +2,16 @@
 
 ## Purpose
 
-dml_utils rewrites large PostgreSQL tables without one long-running statement
-(and one long transaction) on the table. You hand it a DML template and it
+dml_utils rewrites large PostgreSQL tables without one long-running statement (and one long transaction) on the table.
+You hand it a DML template and it
 applies that template over the table in fixed-row chunks, each committed in its
 own background worker, so a multi-million-row backfill makes durable progress
 and a re-run resumes where it stopped (see
 [Processing a table in chunks](#processing-a-table-in-chunks)).
+
+It works on a table with a **single-column primary key** of type `smallint`,
+`integer`, `bigint`, `text` or `uuid` (the column name need not be `id`); the
+chunks are primary-key ranges, so the planner can use the primary-key index.
 
 It is packaged as Liquibase-managed SQL, so installing it means applying the
 bundled changelog with the Liquibase CLI — there is nothing to build and no
@@ -21,8 +25,7 @@ anything above it:
 
 - **`dml_utils`** — the caller-facing API: `dml_utils.run_migration_chunks`, plus
   the run controls (`set_migration_run_sql_text`, `set_migration_run_threads`,
-  `archive_migration_run`) and the inspection and cleanup helpers
-  (`migration_run_summary`, `migration_errors`,
+  `archive_migration_run`) and the inspection and cleanup helpers (`migration_run_summary`, `migration_errors`,
   `delete_archived_migration_runs`). It depends on the two schemas below.
 - **`dml_utils_lib`** — the engine: the generic catalog and template helpers and
   the internal routines that populate boundaries, run one chunk and record
@@ -48,6 +51,24 @@ fixed-row chunks, one `pg_background` worker per chunk, so a long-running
 backfill does not hold one giant statement (and one long transaction) on the
 table. Each worker commits its own chunk, so progress is durable and a re-run
 resumes where it stopped.
+
+### Why pg_background
+
+The work is done through [`pg_background`](https://github.com/vibhorkum/pg_background),
+which runs SQL in a background worker with an **autonomous transaction**: a
+worker's `COMMIT` is independent of the caller's transaction, so a chunk is
+committed while the calling `run_migration_chunks` is still running, and each
+worker is a separate backend.
+
+This could instead be a stored procedure that commits between chunks — functions
+cannot commit, so a procedure is the only in-database alternative. In practice
+that bloats the driving table badly. The whole procedure runs in one backend,
+and a backend's dead tuples are not reported to the shared buffer for reuse
+until its top-level call completes, so every chunk's old row versions pile up
+and `VACUUM` cannot reclaim them until the entire run returns. The end result is
+a table bloated by the full migration rather than one chunk at a time. Because
+each `pg_background` worker is its own backend, its dead tuples become reclaimable
+as soon as that chunk commits, so the bloat stays bounded by a single chunk.
 
 ### How it works
 
