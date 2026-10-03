@@ -23,6 +23,9 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
 
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -253,14 +256,48 @@ abstract class PostgresTestBase {
      */
     @BeforeAll
     void createTestDatabase() throws Exception {
-        databaseName = "test_" + getClass().getSimpleName().toLowerCase()
-                + "_" + Integer.toHexString(getClass().getName().hashCode());
+        // Bounded and collision-resistant: a 12-char hash suffix of the fully
+        // qualified name keeps the identifier under PostgreSQL's 63-byte limit
+        // (a long class name must not truncate the suffix), and the hash is wide
+        // enough that two test classes do not collide. The name is quoted so an
+        // unusual class name cannot produce an invalid identifier.
+        String suffix = Integer.toUnsignedString(getClass().getName().hashCode(), 16);
+        databaseName = "test_" + suffix;
         try (Connection admin = openConnection(POSTGRES.getDatabaseName(), POSTGRES.getUsername(), POSTGRES.getPassword());
              Statement statement = admin.createStatement()) {
-            statement.execute("CREATE DATABASE " + databaseName + " TEMPLATE " + TEMPLATE_DATABASE);
+            statement.execute("CREATE DATABASE \"" + databaseName + "\" TEMPLATE " + TEMPLATE_DATABASE);
+        } catch (SQLException e) {
+            // CREATE DATABASE succeeded but nothing owns the cleanup yet if the
+            // rest of setup fails, so drop it here before re-raising.
+            dropDatabaseQuietly();
+            throw e;
         }
-        connection = openConnection(databaseName, TEST_USER, TEST_PASSWORD);
-        dsl = DSL.using(connection, SQLDialect.POSTGRES);
+        try {
+            connection = openConnection(databaseName, TEST_USER, TEST_PASSWORD);
+            dsl = DSL.using(connection, SQLDialect.POSTGRES);
+        } catch (SQLException e) {
+            if (connection != null) {
+                connection.close();
+            }
+            dropDatabaseQuietly();
+            throw e;
+        }
+    }
+
+    /**
+     * Drops this class's private database, ignoring an already-gone database, so
+     * a failed setup does not leak it.
+     */
+    private void dropDatabaseQuietly() {
+        if (databaseName == null) {
+            return;
+        }
+        try (Connection admin = openConnection(POSTGRES.getDatabaseName(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             Statement statement = admin.createStatement()) {
+            statement.execute("DROP DATABASE IF EXISTS \"" + databaseName + "\" WITH (FORCE)");
+        } catch (SQLException ignored) {
+            // Best effort; the @AfterAll cleanup is the backstop.
+        }
     }
 
     /**
@@ -412,12 +449,7 @@ abstract class PostgresTestBase {
         } finally {
             // Drop even if closing the connection failed, so the per-class
             // database cannot be leaked by a broken connection.
-            if (databaseName != null) {
-                try (Connection admin = openConnection(POSTGRES.getDatabaseName(), POSTGRES.getUsername(), POSTGRES.getPassword());
-                     Statement statement = admin.createStatement()) {
-                    statement.execute("DROP DATABASE " + databaseName + " WITH (FORCE)");
-                }
-            }
+            dropDatabaseQuietly();
         }
     }
 
@@ -433,5 +465,73 @@ abstract class PostgresTestBase {
         } catch (SQLException e) {
             return false;
         }
+    }
+
+    // --- Shared fixtures and run helpers -------------------------------------
+    // Small, behaviour-level helpers every DB test needs, so the test classes do
+    // not each re-implement the same inserts and queries.
+
+    /**
+     * Inserts one row per id into {@code dml_utils_fixtures.test_bigint}, the
+     * single-bigint-key fixture the routines are driven over.
+     *
+     * @param ids the primary-key values to insert
+     */
+    protected void seedBigint(long... ids) {
+        for (long id : ids) {
+            dsl.insertInto(TEST_BIGINT, TEST_BIGINT.ID).values(id).execute();
+        }
+    }
+
+    /**
+     * A per-invocation unique run label: {@code prefix-UUID}, so tests never
+     * collide on the one-active-run-per-label rule regardless of order.
+     *
+     * @param prefix a short descriptive prefix
+     * @return a unique label
+     */
+    protected String uniqueLabel(String prefix) {
+        return prefix + "-" + java.util.UUID.randomUUID();
+    }
+
+    /**
+     * Whether the run with the given id has completed.
+     *
+     * @param runId the run id
+     * @return {@code true} when {@code completed_at} is set
+     */
+    protected boolean runCompleted(long runId) {
+        return Boolean.TRUE.equals(dsl.select(MIGRATION_RUN.COMPLETED_AT.isNotNull())
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_RUN.COMPLETED_AT.isNotNull()));
+    }
+
+    /**
+     * Whether the run with the given label has completed.
+     *
+     * @param label the run label
+     * @return {@code true} when {@code completed_at} is set
+     */
+    protected boolean runCompleted(String label) {
+        return Boolean.TRUE.equals(dsl.select(MIGRATION_RUN.COMPLETED_AT.isNotNull())
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.LABEL.eq(label))
+                .fetchOne(MIGRATION_RUN.COMPLETED_AT.isNotNull()));
+    }
+
+    /**
+     * Whether the boundary {@code (runId, boundaryNo)} has been claimed.
+     *
+     * @param runId      the run id
+     * @param boundaryNo the boundary number
+     * @return {@code true} when {@code completed_at} is set
+     */
+    protected boolean boundaryCompleted(long runId, long boundaryNo) {
+        return Boolean.TRUE.equals(dsl.select(MIGRATION_BOUNDARY.COMPLETED_AT.isNotNull())
+                .from(MIGRATION_BOUNDARY)
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId)
+                        .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(boundaryNo)))
+                .fetchOne(MIGRATION_BOUNDARY.COMPLETED_AT.isNotNull()));
     }
 }

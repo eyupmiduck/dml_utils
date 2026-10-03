@@ -30,9 +30,16 @@ EOF
 # Exit 0 when $1 (a v-prefixed version) is strictly greater than every existing
 # v* tag, and print the greatest existing tag. The comparison is semver, so a
 # release outranks its own prereleases (v0.2.0 > v0.2.0-rc1) and numbers are
-# compared numerically (v0.10.0 > v0.9.0).
+# compared numerically (v0.10.0 > v0.9.0). Tags that are not valid SemVer are
+# ignored (not compared), so a stray vfoo/v999/v1.2.3.foo cannot distort the
+# ordering. Reads tags from stdin.
 newest_tag() {
-    git tag --list 'v*' | awk -v candidate="$1" '
+    awk -v candidate="$1" '
+        # A valid release tag: v<major>.<minor>.<patch> with optional
+        # -prerelease of dot-separated [0-9A-Za-z-] identifiers.
+        function is_valid(v) {
+            return v ~ /^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$/
+        }
         function parse(v,   n) {
             sub(/^v/, "", v)
             n = index(v, "-")
@@ -70,7 +77,7 @@ newest_tag() {
             r = cmp_core(ac, bc)
             return (r != 0) ? r : cmp_pre(ap, bp)
         }
-        { if (max == "" || semver_cmp($0, max) > 0) max = $0 }
+        { if (is_valid($0) && (max == "" || semver_cmp($0, max) > 0)) max = $0 }
         END {
             if (max == "" || semver_cmp(candidate, max) > 0) { print max; exit 0 }
             print max
@@ -132,6 +139,12 @@ if ! printf '%s' "$semver_core" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
     echo "invalid version '$version': expected <major>.<minor>.<patch> (optionally with a -prerelease)" >&2
     exit 1
 fi
+# A numeric core identifier must not have a leading zero (SemVer 2.0), so the
+# tag is canonical: 01.2.3 and 1.02.3 are rejected.
+if printf '%s' "$semver_core" | grep -Eq '(^|\.)0[0-9]'; then
+    echo "invalid version '$semver_core': core identifiers must not have leading zeros" >&2
+    exit 1
+fi
 
 if [ "$has_pre" = "1" ]; then
     # SemVer 2.0 prerelease: dot-separated, non-empty [0-9A-Za-z-] identifiers,
@@ -187,10 +200,18 @@ if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; the
     exit 1
 fi
 
+# Compare against the union of local and remote tags: `git fetch origin main`
+# does not fetch tags unreachable from main, so a release tag on another commit
+# would otherwise be missed and a non-newer version accepted.
 latest=""
-if ! latest="$(newest_tag "$tag")"; then
-    echo "version $version is not newer than the latest tag ${latest:-<none>}" >&2
-    exit 1
+remote_tags="$(git ls-remote --tags --refs origin 'v*' | sed 's#.*refs/tags/##')"
+if ! latest="$(printf '%s\n' "$remote_tags" | newest_tag "$tag")"; then
+    # Fall back to local tags if the remote returned none (for example no
+    # network or a fresh remote), so the ordering guard still applies.
+    if ! latest="$(git tag --list 'v*' | newest_tag "$tag")"; then
+        echo "version $version is not newer than the latest tag ${latest:-<none>}" >&2
+        exit 1
+    fi
 fi
 
 if [ -z "$yes" ]; then
@@ -207,7 +228,16 @@ fi
 
 git tag -a "$tag" -m "Release $tag"
 if ! git push origin "$tag"; then
-    echo "failed to push $tag; remove the local tag with: git tag -d $tag" >&2
+    # A transport error can be ambiguous: the remote may have accepted the tag
+    # before the connection failed. Remove the local tag only when the remote is
+    # confirmed not to have it, and say so; otherwise keep it and tell the
+    # operator the push may have succeeded.
+    if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+        echo "push of $tag reported failure, but origin now has the tag; it likely succeeded" >&2
+    else
+        echo "failed to push $tag; origin does not have it, removing the local tag" >&2
+        git tag -d "$tag" >&2
+    fi
     exit 1
 fi
 

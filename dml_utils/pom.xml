@@ -77,7 +77,12 @@
             <!-- jOOQ codegen against a real PostgreSQL container built from the
                  custom image (roles baked in), migrated with Liquibase as the
                  dml_utils_owner role (like a real deployment). Requires a
-                 running Docker daemon and the custom image built first. -->
+                 running Docker daemon and the custom image built first; this is
+                 intentional (no offline/H2 simulation), so `verify` and any other
+                 lifecycle that reaches codegen need Docker. Prebuilt generated
+                 sources can be reused by adding
+                 -Dtestcontainers.jooq.codegen.skip=true, which is only for
+                 environments that already have target/generated-sources/jooq. -->
             <plugin>
                 <groupId>org.testcontainers</groupId>
                 <artifactId>testcontainers-jooq-codegen-maven-plugin</artifactId>
@@ -127,6 +132,9 @@
                         </goals>
                         <phase>generate-sources</phase>
                         <configuration>
+                            <!-- Skip switch for environments that already have
+                                 generated sources; see the plugin comment. -->
+                            <skip>${testcontainers.jooq.codegen.skip}</skip>
                             <database>
                                 <type>POSTGRES</type>
                                 <containerImage>${postgres.image}</containerImage>
@@ -200,6 +208,8 @@
                         </goals>
                         <phase>generate-test-sources</phase>
                         <configuration>
+                            <!-- Same skip switch as generate-jooq-sources. -->
+                            <skip>${testcontainers.jooq.codegen.skip}</skip>
                             <database>
                                 <type>POSTGRES</type>
                                 <containerImage>${postgres.image}</containerImage>

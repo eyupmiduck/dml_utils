@@ -408,9 +408,7 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
     }
 
     private void createSource(long... ids) {
-        for (long id : ids) {
-            dsl.insertInto(TEST_BIGINT, TEST_BIGINT.ID).values(id).execute();
-        }
+        seedBigint(ids);
     }
 
     private boolean archived(long runId) {

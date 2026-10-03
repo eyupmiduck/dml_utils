@@ -17,6 +17,15 @@ Dependencies point downward: `dml_utils_lib` may reference `dml_utils_data`;
 changeset; the matching drop lives in `changes/functions-rollback/`. Every
 routine is `SECURITY INVOKER` unless it genuinely needs `SECURITY DEFINER`.
 
+The routines are intentionally **not an authorization boundary**: a routine runs
+with the caller's privileges and can do nothing the caller could not do by
+running its SQL directly, so no routine checks the caller's privileges. The
+caller role is granted only the `EXECUTE`/`USAGE`/DML it needs (see
+`sql_changes/999-grant-privileges.sql`), and `ALTER DEFAULT PRIVILEGES` keeps
+future objects off `PUBLIC`. A helper that executes caller-supplied SQL (for
+example `dml_utils_lib.process_migration_chunk`) is safe for the same reason — it
+is no more privileged than the caller's own statements, not a sandbox.
+
 One exception: `dml_utils_lib.migration_key_is_canonical` is loaded earlier, by
 `changes/sql_changes/005-create-migration-key-check.sql`, because the
 `migration_boundary_key_check` constraint is created with its table and calls it.
@@ -57,8 +66,10 @@ table's locks and pages. `i_sql_text` is a template with
 `<driving_table>` and `<chunking_clause>` (see `render_chunk_sql`). Reuses the
 active run for the label, or creates it by running
 `dml_utils_lib.populate_migration_boundaries` in a worker so its boundaries
-commit before the chunks run. A resumed run uses the recorded SQL text, chunk
-size, threads and driving table; a differing input is ignored with a notice, so
+commit before the chunks run (run resolution is delegated to
+`dml_utils_lib.resolve_migration_run`). A resumed run uses the recorded SQL
+text, chunk size, threads and driving table; a differing input is ignored with a
+notice, so
 the boundaries and the rendered chunk SQL always refer to the same table. Use
 `set_migration_run_sql_text` or `set_migration_run_threads` to change the
 recorded SQL text or thread count of an unfinished run. Each chunk
@@ -241,6 +252,23 @@ RETURNS void
 `STABLE`, `SECURITY INVOKER`. Raises `undefined_table` (`42P01`) when the table
 does not exist in the schema.
 
+### `dml_utils_lib.primary_key_attributes(i_schema_name, i_table_name)`
+
+```sql
+i_schema_name dml_utils_data.non_null_text
+i_table_name  dml_utils_data.non_null_text
+RETURNS TABLE (ordinality integer, column_name name, column_oid oid,
+               column_type regtype, key_kind text)
+```
+
+`STABLE`, `SECURITY INVOKER`. The single catalog reader for a table's primary
+key: `primary_key_columns` and `primary_key_kinds` delegate to it, so the key
+order and the one-to-three-column validation live in one place. Each row is one
+key column in key order, with its ordinal position, name, type oid, type and
+collapsed boundary kind (`bigint`/`text`/`uuid`, or NULL for an unsupported
+type). Raises `invalid_parameter_value` (`22023`) when the table has no primary
+key or more than 3 key columns.
+
 ### `dml_utils_lib.primary_key_columns(i_schema_name, i_table_name)`
 
 ```sql
@@ -252,7 +280,7 @@ RETURNS name[]
 `STABLE`, `SECURITY INVOKER`. Returns the table's primary-key columns in key
 order (from the index, so a key declared `(b, a)` returns `{b, a}`), raising
 `invalid_parameter_value` (`22023`) when the table has no primary key or more
-than 3 key columns.
+than 3 key columns. Delegates the column read to `primary_key_attributes`.
 
 ### `dml_utils_lib.primary_key_kinds(i_schema_name, i_table_name)`
 
@@ -310,6 +338,32 @@ primary-key columns in key order (`SELECT <fn>(t.<pk1>, ...) FROM <driving_table
 Resolves the primary key via `primary_key_columns` and validates that the
 function exists and returns `void` with argument types equal to the primary-key
 column types in key order; raises `invalid_parameter_value` (`22023`) otherwise.
+
+###
+`dml_utils_lib.resolve_migration_run(i_sql_text, i_driving_table_schema_name, i_driving_table_name, i_label, i_chunk_size, i_threads, i_driving_table_alias)`
+
+```sql
+i_sql_text                  dml_utils_data.non_null_text
+i_driving_table_schema_name dml_utils_data.non_null_text
+i_driving_table_name        dml_utils_data.non_null_text
+i_label                     dml_utils_data.non_null_text
+i_chunk_size                dml_utils_data.positive_integer
+i_threads                   dml_utils_data.positive_integer
+i_driving_table_alias       dml_utils_data.non_null_text
+RETURNS record (o_run_id bigint, o_already_completed boolean,
+                o_effective_sql_text text, o_effective_schema_name text,
+                o_effective_table_name text, o_effective_alias text,
+                o_effective_threads integer, o_primary_key_columns name[],
+                o_key_kinds text[])
+```
+
+`SECURITY INVOKER`. The run-resolution half of `run_migration_chunks`: it reuses
+the active run for the label or creates one (populating its boundaries in a
+`pg_background` worker so they commit autonomously), then returns the run id,
+whether it was already complete, the effective sql_text/schema/table/alias/
+threads (the stored values for a resumed run, ignoring differing inputs with a
+notice) and the driving table's primary-key columns and kinds. It validates the
+thread count against `max_worker_processes` before creating a run.
 
 ### `dml_utils_lib.assert_chunking_template(i_sql_text)`
 

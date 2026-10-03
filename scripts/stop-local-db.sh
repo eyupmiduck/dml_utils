@@ -5,7 +5,11 @@
 
 set -eu
 
-repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+. "$script_dir/lib.sh"
+
+repo_root="$(resolve_repo_root "$0")"
+project="$(compose_project_name "$repo_root")"
 
 cd "$repo_root"
 
@@ -20,6 +24,6 @@ fi
 
 # `down` keeps named volumes by default; do not add -v here. Use
 # scripts/refresh-local-db.sh, which wipes the data on purpose. Pin the compose
-# file and project so an inherited COMPOSE_FILE / project name cannot bring down
-# an unrelated stack.
-docker compose --project-name dml_utils --file "$repo_root/compose.yaml" down
+# file and per-checkout project name so an inherited COMPOSE_FILE / project name
+# cannot bring down an unrelated stack.
+docker compose --project-name "$project" --file "$repo_root/compose.yaml" down

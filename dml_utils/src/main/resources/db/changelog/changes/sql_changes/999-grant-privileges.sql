@@ -64,6 +64,14 @@ GRANT EXECUTE ON FUNCTION dml_utils_lib.primary_key_columns(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text
     ) TO dml_utils_caller;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.primary_key_attributes(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text
+    ) FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.primary_key_attributes(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text
+    ) TO dml_utils_caller;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.primary_key_kinds(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text
@@ -102,6 +110,24 @@ REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_chunking_template(
     dml_utils_data.non_null_text
     ) FROM public;
 GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_chunking_template(
+    dml_utils_data.non_null_text
+    ) TO dml_utils_caller;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.resolve_migration_run(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.positive_integer,
+    dml_utils_data.positive_integer,
+    dml_utils_data.non_null_text
+    ) FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.resolve_migration_run(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.positive_integer,
+    dml_utils_data.positive_integer,
     dml_utils_data.non_null_text
     ) TO dml_utils_caller;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.render_chunk_sql(

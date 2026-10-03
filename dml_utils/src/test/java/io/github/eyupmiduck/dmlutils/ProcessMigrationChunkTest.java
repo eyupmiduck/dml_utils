@@ -13,7 +13,6 @@ import java.sql.SQLException;
 import java.util.UUID;
 import java.util.concurrent.*;
 
-import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
 import static org.junit.jupiter.api.Assertions.*;
@@ -65,18 +64,24 @@ class ProcessMigrationChunkTest extends PostgresTestBase {
     }
 
     /**
-     * A chunk whose SQL raises rolls back both the data change and the claim, so
-     * the boundary is left unclaimed and a later call can retry it.
+     * A chunk whose SQL raises after a successful change rolls back the change
+     * (and the claim too), so a failed chunk leaves no partial effect and a later
+     * call can retry it.
      */
     @Test
     void rollsBackAFailedChunkAndAllowsARetry() {
         createSource(1, 2, 3, 4);
         long runId = populate(2);
 
-        assertSqlState("42P01", () -> processChunk(runId, 0,
-                "UPDATE public.no_such_table SET payload = 'done'"));
+        // Update the chunk rows, then fail: the update must not survive.
+        String mutateThenFail = "UPDATE " + qualified(TEST_BIGINT)
+                + " SET payload = 'leaked' WHERE id >= 1 AND id < 3;"
+                + " SELECT 1 / 0";
+        assertSqlState("22012", () -> processChunk(runId, 0, mutateThenFail));
         assertFalse(boundaryCompleted(runId, 0),
                 "a failed chunk must not leave the boundary claimed");
+        assertEquals(0, dsl.fetchCount(TEST_BIGINT, TEST_BIGINT.PAYLOAD.isNotNull()),
+                "the change from the failed chunk must be rolled back");
 
         processChunk(runId, 0, "UPDATE " + qualified(TEST_BIGINT)
                 + " SET payload = 'done' WHERE id >= 1 AND id < 3");
@@ -122,8 +127,11 @@ class ProcessMigrationChunkTest extends PostgresTestBase {
         createSource(1, 2, 3, 4);
         long runId = populate(2);
 
+        // A non-idempotent effect (append, not assign) so the final state reveals
+        // how many times the chunk SQL actually ran, not just that the boundary
+        // was claimed once.
         String sql = "UPDATE " + qualified(TEST_BIGINT)
-                + " SET payload = 'done' WHERE id >= 1 AND id < 3";
+                + " SET payload = coalesce(payload, '') || 'x' WHERE id >= 1 AND id < 3";
         CountDownLatch start = new CountDownLatch(1);
         ExecutorService pool = Executors.newFixedThreadPool(2);
         try {
@@ -154,16 +162,17 @@ class ProcessMigrationChunkTest extends PostgresTestBase {
                     "exactly one caller should claim the boundary");
         } finally {
             pool.shutdownNow();
+            pool.awaitTermination(30, TimeUnit.SECONDS);
         }
 
         assertTrue(boundaryCompleted(runId, 0), "the boundary should be completed once");
-        assertEquals(2, payloadCount(), "the chunk SQL should run exactly once");
+        assertEquals(2, dsl.fetchCount(TEST_BIGINT, TEST_BIGINT.PAYLOAD.eq("x")),
+                "the losing caller must not have run the chunk SQL, so each row is"
+                        + " updated exactly once (payload 'x', not 'xx')");
     }
 
     private void createSource(long... ids) {
-        for (long id : ids) {
-            dsl.insertInto(TEST_BIGINT, TEST_BIGINT.ID).values(id).execute();
-        }
+        seedBigint(ids);
     }
 
     private long populate(int chunkSize) {
@@ -174,14 +183,6 @@ class ProcessMigrationChunkTest extends PostgresTestBase {
 
     private void processChunk(long runId, long boundaryNo, String sql) {
         Routines.processMigrationChunk(dsl.configuration(), runId, boundaryNo, sql);
-    }
-
-    private boolean boundaryCompleted(long runId, long boundaryNo) {
-        return Boolean.TRUE.equals(dsl.select(MIGRATION_BOUNDARY.COMPLETED_AT.isNotNull())
-                .from(MIGRATION_BOUNDARY)
-                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId)
-                        .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(boundaryNo)))
-                .fetchOne(MIGRATION_BOUNDARY.COMPLETED_AT.isNotNull()));
     }
 
     private int payloadCount() {

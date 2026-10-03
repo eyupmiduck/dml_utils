@@ -8,13 +8,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.UUID;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeMixed.TEST_COMPOSITE_MIXED;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Verifies {@code dml_utils.run_function_over_table}: it validates the
@@ -73,7 +71,7 @@ class RunFunctionOverTableTest extends PostgresTestBase {
     void appliesAMatchingFunctionOverEveryRow() {
         createMixed();
         createMarkMixed("done");
-        String label = uniqueLabel("mixed");
+        String label = functionTestLabel("mixed");
 
         Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_COMPOSITE_MIXED),
                 name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 2, 1, label);
@@ -98,12 +96,30 @@ class RunFunctionOverTableTest extends PostgresTestBase {
         Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_COMPOSITE_MIXED),
                 name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 99, 4, null);
 
-        String derivedLabel = "function:" + schema(TEST_COMPOSITE_MIXED) + "."
-                + name(TEST_COMPOSITE_MIXED) + ":" + FN_SCHEMA + ".mark_mixed";
+        String derivedLabel = "function:"
+                + dsl.fetchOne("SELECT pg_catalog.json_build_array(?, ?, ?, ?)::text",
+                schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
+                FN_SCHEMA, "mark_mixed").get(0, String.class);
         assertEquals(1, dsl.fetchCount(MIGRATION_RUN, MIGRATION_RUN.LABEL.eq(derivedLabel)),
                 "both calls share one derived run");
         assertEquals(3, payloadCount(TEST_COMPOSITE_MIXED, "done"),
                 "every row should still be updated exactly once");
+    }
+
+    /**
+     * The derived label distinguishes inputs that the old delimiter-joined format
+     * would have conflated: a name containing a '.' does not shift the component
+     * boundaries, so two different table/function tuples derive different labels.
+     */
+    @Test
+    void derivedLabelIsUnambiguousForNamesContainingDelimiters() {
+        String first = dsl.fetchOne("SELECT 'function:' || pg_catalog.json_build_array(?, ?, ?, ?)::text",
+                "dml_utils_fixtures", "t.a", "public", "fn").get(0, String.class);
+        String second = dsl.fetchOne("SELECT 'function:' || pg_catalog.json_build_array(?, ?, ?, ?)::text",
+                "dml_utils_fixtures", "t", "public", "fn.a").get(0, String.class);
+
+        assertNotEquals(first, second,
+                "tuples with '.' in different components must derive different labels");
     }
 
     /**
@@ -115,7 +131,7 @@ class RunFunctionOverTableTest extends PostgresTestBase {
         createMixed();
         createMarkMixed("first");
         createMarkMixed2("second");
-        String label = uniqueLabel("setfn");
+        String label = functionTestLabel("setfn");
 
         // Create the run without processing it, then swap in the second function.
         io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
@@ -249,15 +265,8 @@ class RunFunctionOverTableTest extends PostgresTestBase {
                 + " WHERE a = p_a AND b = p_b $$");
     }
 
-    private String uniqueLabel(String suffix) {
-        return "function-test-" + suffix + "-" + UUID.randomUUID();
-    }
-
-    private boolean runCompleted(String label) {
-        return Boolean.TRUE.equals(dsl.select(MIGRATION_RUN.COMPLETED_AT.isNotNull())
-                .from(MIGRATION_RUN)
-                .where(MIGRATION_RUN.LABEL.eq(label))
-                .fetchOne(MIGRATION_RUN.COMPLETED_AT.isNotNull()));
+    private String functionTestLabel(String suffix) {
+        return uniqueLabel("function-test-" + suffix);
     }
 
     private String storedSqlText(String label) {

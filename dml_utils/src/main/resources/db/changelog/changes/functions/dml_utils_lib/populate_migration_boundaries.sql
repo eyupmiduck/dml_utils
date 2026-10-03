@@ -183,4 +183,7 @@ $$;
 
 COMMENT ON FUNCTION dml_utils_lib.populate_migration_boundaries IS
     'Creates a migration run for the label and populates its fixed-row chunk '
-        'boundaries for the given table, returning the new run_id.';
+        'boundaries for the given table, returning the new run_id. Boundaries are '
+        'written as the contiguous sequence 0..N in one statement, so a run has '
+        'exactly the chunk starts plus one terminal high-water boundary the runner '
+        'assumes; this is the only supported write path for boundaries.';

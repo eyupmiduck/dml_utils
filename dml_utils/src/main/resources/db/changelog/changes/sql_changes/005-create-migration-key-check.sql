@@ -9,16 +9,30 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.migration_key_is_canonical(
 AS
 $$
     -- A canonical boundary key has an arity of one to three, every present array
--- shares that arity, exactly one array holds a non-NULL element at each index
--- (so each position names one key column), and no present array is empty or
--- all-NULL. The arity is the greatest present array length: greatest/least
--- ignore NULLs, so absent kinds do not participate, and coalescing to 0 makes an
--- all-absent key false rather than NULL (a CHECK would accept NULL).
+-- shares that arity, is one-dimensional and 1-based, exactly one array holds a
+-- non-NULL element at each index (so each position names one key column), and no
+-- present array is empty or all-NULL. The arity is the greatest present array
+-- length: greatest/least ignore NULLs, so absent kinds do not participate, and
+-- coalescing to 0 makes an all-absent key false rather than NULL (a CHECK would
+-- accept NULL).
 WITH arity AS (SELECT coalesce(
                               greatest(pg_catalog.array_length((i_key).bigint_values, 1),
                                        pg_catalog.array_length((i_key).text_values, 1),
                                        pg_catalog.array_length((i_key).uuid_values, 1)), 0) AS n)
 SELECT arity.n BETWEEN 1 AND 3
+           -- Every present array is one-dimensional with a lower bound of 1.
+           -- One-subscript indexing below (and in migration_key_values) assumes
+           -- both; a non-1-based or multidimensional array would otherwise be
+           -- read at the wrong subscript (or array_remove would raise).
+           AND ((i_key).bigint_values IS NULL
+        OR (pg_catalog.array_ndims((i_key).bigint_values) = 1
+            AND pg_catalog.array_lower((i_key).bigint_values, 1) = 1))
+           AND ((i_key).text_values IS NULL
+        OR (pg_catalog.array_ndims((i_key).text_values) = 1
+            AND pg_catalog.array_lower((i_key).text_values, 1) = 1))
+           AND ((i_key).uuid_values IS NULL
+        OR (pg_catalog.array_ndims((i_key).uuid_values) = 1
+            AND pg_catalog.array_lower((i_key).uuid_values, 1) = 1))
            -- Every present array shares the arity; absent kinds do not participate.
            AND least(pg_catalog.array_length((i_key).bigint_values, 1),
                      pg_catalog.array_length((i_key).text_values, 1),

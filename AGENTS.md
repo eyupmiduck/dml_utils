@@ -100,6 +100,11 @@ jOOQ codegen and tests; `docker_java_config` is a build shim. CI: GitHub Actions
 - Do not assume a globally installed Maven version.
 - Changes should pass:
   `./mvnw verify`
+- `mvnw` is the upstream Maven Wrapper script; keep it in sync with upstream
+  rather than patching it. Its download path checks `distributionSha256Sum`
+  from `.mvn/wrapper/maven-wrapper.properties` when set, and it refuses a
+  non-HTTPS `distributionUrl`; leave that pin in place so the wrapper cannot be
+  silently repointed at an unverified artifact.
 
 ## PostgreSQL
 
@@ -174,6 +179,16 @@ jOOQ codegen and tests; `docker_java_config` is a build shim. CI: GitHub Actions
   Use `SECURITY DEFINER` only when a caller genuinely must perform an operation
   it lacks privileges for, and then pin a safe `search_path` and grant `EXECUTE`
   explicitly (revoking it from `PUBLIC`).
+- **Intentional design: routines are not an authorization boundary.** The API is
+  `SECURITY INVOKER` on purpose, so a routine executes with the caller's
+  privileges and can do nothing the caller could not do by running its SQL
+  directly. Consequently the routines deliberately do *not* verify the caller's
+  privileges, and a helper that executes caller-supplied SQL (for example
+  `process_migration_chunk`) is safe precisely because it is no more privileged
+  than the caller's own statements — it is not a sandbox. `dml_utils_caller`
+  receives only the `EXECUTE`/`USAGE`/DML grants it needs for that, via
+  `999-grant-privileges.sql`; least privilege is enforced by that explicit grant
+  set and by `ALTER DEFAULT PRIVILEGES`, not by per-call privilege checks.
 - Never build dynamic SQL by concatenating values. Quote identifiers with
   `format('... %I ...', ...)` and literals with `%L`, and reject input that
   cannot be safely parameterized (for example a fragment with multiple

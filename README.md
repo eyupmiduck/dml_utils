@@ -217,6 +217,15 @@ full runnable script.
   `dml_utils_caller`).
 - The routine is `SECURITY INVOKER`: the caller needs whatever privileges the
   chunk SQL needs on the driving table (typically `UPDATE`).
+- The routines are **not an authorization boundary** by design. A routine runs
+  with the caller's privileges and can do nothing the caller could not do by
+  running its SQL directly, so the routines deliberately do not check the
+  caller's privileges. `dml_utils_caller` is granted exactly the
+  `EXECUTE`/`USAGE`/DML it needs (see `999-grant-privileges.sql`), and
+  `ALTER DEFAULT PRIVILEGES` keeps future objects off `PUBLIC`; security comes
+  from that grant set, not from per-call checks. This also means a helper that
+  executes caller-supplied SQL (such as the internal `process_migration_chunk`)
+  is no more powerful than the caller's own statements.
 - Run under `READ COMMITTED`, and do not hold locks (or uncommitted writes) on
   the driving table across the call: a worker that needs a row the caller holds
   cannot make progress.
@@ -350,6 +359,15 @@ CREATE SCHEMA liquibase AUTHORIZATION dml_utils_owner;
 `dml_utils_owner` needs `CREATE` on the database and schema so Liquibase can
 create its tracking tables and the `dml_utils`, `dml_utils_lib` and
 `dml_utils_data` schemas. Never run the migration as `postgres`.
+
+**Ownership policy.** The migration role is the permanent owner of the three
+application schemas and their objects: it is the role enumerated in
+`999-grant-privileges.sql` and in the `ALTER DEFAULT PRIVILEGES` statements, so
+run every migration/upgrade as that same stable role (not a transient admin
+account). `dml_utils_caller` only holds `USAGE`/`EXECUTE`/DML and can never
+`ALTER` or `DROP` an object, so ownership stays separate from the caller grants.
+Creating objects otherwise (as a different role) leaves them with that role's
+default privileges, which the least-privilege grants do not cover.
 
 ### 2. Run the changelog
 

@@ -1,10 +1,13 @@
 package io.github.eyupmiduck.dmlutils;
 
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.UUID;
 
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
@@ -84,6 +87,69 @@ class RenderChunkSqlTest extends PostgresTestBase {
                 "UPDATE public.src t SET processed = true"
                         + " WHERE ((t.id) >= ('30'::bigint) AND (t.id) <= ('40'::bigint))",
                 rendered);
+    }
+
+    @BeforeEach
+    void resetFixture() {
+        dsl.truncate(TEST_BIGINT).execute();
+        for (long id = 1; id <= 5; id++) {
+            dsl.insertInto(TEST_BIGINT, TEST_BIGINT.ID).values(id).execute();
+        }
+    }
+
+    /**
+     * The rendered predicate is not just text: executing it against real rows
+     * affects exactly the half-open range for a non-final chunk and exactly the
+     * inclusive range for a final chunk, including the boundary rows.
+     */
+    @Test
+    void renderedPredicateSelectsTheChunkRowsWhenExecuted() {
+        String template = "UPDATE <driving_table> SET payload = 'x' WHERE <chunking_clause>";
+        String sql = Routines.renderChunkSql(dsl.configuration(), template,
+                TEST_BIGINT.getSchema().getName(), TEST_BIGINT.getName(), "t",
+                new String[]{"id"}, new String[]{"bigint"},
+                new String[]{"2"}, new String[]{"4"}, false);
+        dsl.execute(sql);
+
+        assertEquals(List.of(2L, 3L), updatedIds(),
+                "a non-final chunk covers [start, end) - rows exactly at start, not end");
+
+        dsl.truncate(TEST_BIGINT).execute();
+        for (long id = 1; id <= 5; id++) {
+            dsl.insertInto(TEST_BIGINT, TEST_BIGINT.ID).values(id).execute();
+        }
+        String finalChunk = Routines.renderChunkSql(dsl.configuration(), template,
+                TEST_BIGINT.getSchema().getName(), TEST_BIGINT.getName(), "t",
+                new String[]{"id"}, new String[]{"bigint"},
+                new String[]{"2"}, new String[]{"4"}, true);
+        dsl.execute(finalChunk);
+
+        assertEquals(List.of(2L, 3L, 4L), updatedIds(),
+                "a final chunk covers [start, end] - the end row is included");
+    }
+
+    private List<Long> updatedIds() {
+        return dsl.select(TEST_BIGINT.ID)
+                .from(TEST_BIGINT)
+                .where(TEST_BIGINT.PAYLOAD.eq("x"))
+                .orderBy(TEST_BIGINT.ID)
+                .fetch(TEST_BIGINT.ID);
+    }
+
+    /**
+     * A final chunk may cover a single row (start equals end), while a non-final
+     * chunk with start equal to end, and any reversed range, are rejected: the
+     * predicate would match no rows yet the worker still marks the boundary done.
+     */
+    @Test
+    void rejectsEqualNonFinalOrReversedRanges() {
+        assertEquals(
+                "UPDATE public.src t SET processed = true"
+                        + " WHERE ((t.id) >= ('40'::bigint) AND (t.id) <= ('40'::bigint))",
+                render(true, "bigint", "40", "40"));
+        assertSqlState("22023", () -> render(false, "bigint", "40", "40"));
+        assertSqlState("22023", () -> render(false, "bigint", "40", "30"));
+        assertSqlState("22023", () -> render(true, "bigint", "40", "30"));
     }
 
     /**

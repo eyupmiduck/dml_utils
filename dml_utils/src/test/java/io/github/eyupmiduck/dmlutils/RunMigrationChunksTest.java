@@ -607,12 +607,22 @@ class RunMigrationChunksTest extends PostgresTestBase {
 
         long runId = runId(label);
         assertFalse(runCompleted(runId), "a failed run must not be marked complete");
-        assertEquals(3, doneCount(TEST_BIGINT), "the chunks that did not fail should have committed");
+        // With one row per chunk, rows 1, 2 and 4 succeed and row 3 fails; the
+        // count of committed chunks is deterministic because the failure is
+        // observed before that worker's chunk commits. Assert on the failing
+        // chunk rather than an exact in-flight count.
+        assertTrue(doneCount(TEST_BIGINT) >= 1 && doneCount(TEST_BIGINT) <= 3,
+                "only the chunks that did not fail should have committed");
+        assertEquals(0L, dsl.fetchCount(TEST_BIGINT, TEST_BIGINT.ID.eq(3L)
+                        .and(TEST_BIGINT.PAYLOAD.isNotNull())),
+                "the failing chunk's row (id 3) must not be updated");
         MigrationErrorRecord error = dsl.selectFrom(MIGRATION_ERROR)
                 .where(MIGRATION_ERROR.RUN_ID.eq(runId))
+                .and(MIGRATION_ERROR.BOUNDARY_NO.eq(2L))
                 .fetchOne();
-        assertNotNull(error, "the failed chunk should be recorded");
+        assertNotNull(error, "the failing chunk (boundary 2, row id 3) should be recorded");
         assertEquals("22012", error.getSqlstate());
+        assertEquals(2L, error.getBoundaryNo(), "the failing boundary is the one for id 3");
     }
 
     /**
@@ -814,7 +824,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     private void createSource(long... ids) {
-        createSource(TEST_BIGINT, ids);
+        seedBigint(ids);
     }
 
     private void createSource(Table<?> table, long... ids) {
@@ -833,7 +843,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     private String label(String suffix) {
-        return "run-chunks-" + suffix + "-" + System.nanoTime();
+        return uniqueLabel("run-chunks-" + suffix);
     }
 
     private void run(String label, int chunkSize, Table<?> table) {
@@ -853,24 +863,9 @@ class RunMigrationChunksTest extends PostgresTestBase {
                 .fetchOne(MIGRATION_RUN.RUN_ID);
     }
 
-    private boolean runCompleted(long runId) {
-        return Boolean.TRUE.equals(dsl.select(MIGRATION_RUN.COMPLETED_AT.isNotNull())
-                .from(MIGRATION_RUN)
-                .where(MIGRATION_RUN.RUN_ID.eq(runId))
-                .fetchOne(MIGRATION_RUN.COMPLETED_AT.isNotNull()));
-    }
-
     private int completedBoundaries(long runId) {
         return dsl.fetchCount(MIGRATION_BOUNDARY,
                 MIGRATION_BOUNDARY.RUN_ID.eq(runId).and(MIGRATION_BOUNDARY.COMPLETED_AT.isNotNull()));
-    }
-
-    private boolean boundaryCompleted(long runId, long boundaryNo) {
-        return Boolean.TRUE.equals(dsl.select(MIGRATION_BOUNDARY.COMPLETED_AT.isNotNull())
-                .from(MIGRATION_BOUNDARY)
-                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId)
-                        .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(boundaryNo)))
-                .fetchOne(MIGRATION_BOUNDARY.COMPLETED_AT.isNotNull()));
     }
 
     /**

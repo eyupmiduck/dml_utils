@@ -19,8 +19,8 @@ DECLARE
     -- Control-character sentinels that stand in for one token each while the
     -- other token is being replaced, so a substituted value can never be
     -- re-scanned or rewritten.
-    l_driving_table_sentinel   constant text := pg_catalog.chr(1);
-    l_chunking_clause_sentinel constant text := pg_catalog.chr(2);
+    l_driving_table_sentinel   constant text    := pg_catalog.chr(1);
+    l_chunking_clause_sentinel constant text    := pg_catalog.chr(2);
     l_driving_table                     text;
     l_start_tuple                       text;
     l_end_tuple                         text;
@@ -28,6 +28,11 @@ DECLARE
     l_chunking_clause                   text;
     l_rendered                          text;
     l_kind                              text;
+    l_start_bigint                      bigint;
+    l_end_bigint                        bigint;
+    l_start_uuid                        uuid;
+    l_end_uuid                          uuid;
+    l_first_difference                  integer := 0;
 BEGIN
     PERFORM dml_utils_lib.assert_chunking_template(i_sql_text => i_sql_text);
 
@@ -103,27 +108,44 @@ BEGIN
             -- any value, so only bigint and uuid need a cast (literals, not
             -- pg_input_is_valid, whose type-name argument PL/pgSQL caches per
             -- expression and which therefore misfires in this loop).
-            IF l_kind = 'bigint' THEN
-                BEGIN
-                    PERFORM i_start_values[l_position]::bigint, i_end_values[l_position]::bigint;
-                EXCEPTION
-                    WHEN OTHERS THEN
-                        RAISE EXCEPTION
-                            'boundary value for primary-key column % is not a valid bigint',
-                            i_primary_key_columns[l_position]
-                            USING ERRCODE = '22023';
-                END;
-            ELSIF l_kind = 'uuid' THEN
-                BEGIN
-                    PERFORM i_start_values[l_position]::uuid, i_end_values[l_position]::uuid;
-                EXCEPTION
-                    WHEN OTHERS THEN
-                        RAISE EXCEPTION
-                            'boundary value for primary-key column % is not a valid uuid',
-                            i_primary_key_columns[l_position]
-                            USING ERRCODE = '22023';
-                END;
-            END IF;
+            -- A non-NULL value that is not a valid literal for its kind would be
+            -- emitted into the chunk SQL and only fail when a worker parses it;
+            -- validate by casting here (and keep the typed value for the range
+            -- check below), so the failure is not deferred. text accepts any
+            -- value, so only bigint and uuid need a cast (literals, not
+            -- pg_input_is_valid, whose type-name argument PL/pgSQL caches per
+            -- expression and which therefore misfires in this loop). Catch only
+            -- the invalid-text conditions (22023 / 22P02); an unexpected error is
+            -- re-raised with its original SQLSTATE.
+            BEGIN
+                IF l_kind = 'bigint' THEN
+                    l_start_bigint := i_start_values[l_position]::bigint;
+                    l_end_bigint := i_end_values[l_position]::bigint;
+                    IF l_first_difference = 0 AND l_start_bigint IS DISTINCT FROM l_end_bigint THEN
+                        l_first_difference := CASE WHEN l_start_bigint < l_end_bigint THEN -1 ELSE 1 END;
+                    END IF;
+                ELSIF l_kind = 'uuid' THEN
+                    l_start_uuid := i_start_values[l_position]::uuid;
+                    l_end_uuid := i_end_values[l_position]::uuid;
+                    IF l_first_difference = 0 AND l_start_uuid IS DISTINCT FROM l_end_uuid THEN
+                        l_first_difference := CASE WHEN l_start_uuid < l_end_uuid THEN -1 ELSE 1 END;
+                    END IF;
+                ELSE
+                    -- text compares with the database collation, as the predicate will.
+                    IF l_first_difference = 0
+                        AND i_start_values[l_position] IS DISTINCT FROM i_end_values[l_position]
+                    THEN
+                        l_first_difference :=
+                                CASE WHEN i_start_values[l_position] < i_end_values[l_position] THEN -1 ELSE 1 END;
+                    END IF;
+                END IF;
+            EXCEPTION
+                WHEN invalid_parameter_value OR invalid_text_representation THEN
+                    RAISE EXCEPTION
+                        'boundary value for primary-key column % is not a valid %',
+                        i_primary_key_columns[l_position], l_kind
+                        USING ERRCODE = '22023';
+            END;
 
             l_column_tuple := l_column_tuple || pg_catalog.format('%s%I.%I',
                                                                   CASE WHEN l_position > 1 THEN ', ' ELSE '' END,
@@ -143,6 +165,17 @@ BEGIN
     -- template's column references can use the alias.
     l_driving_table := pg_catalog.format('%I.%I %I',
                                          i_schema_name, i_table_name, i_table_alias);
+
+    -- Reject a reversed chunk range (or an empty non-final one), which would
+    -- render a predicate that matches no rows while the worker still marks the
+    -- boundary complete. A final chunk may be a single row (start = end); any
+    -- other chunk is half-open and needs start < end.
+    IF l_first_difference > 0
+        OR (NOT i_is_final AND l_first_difference = 0)
+    THEN
+        RAISE EXCEPTION 'chunk start boundary must be less than the end boundary'
+            USING ERRCODE = '22023';
+    END IF;
 
     -- The row-value range predicate is parenthesized so it drops into a template
     -- clause verbatim. The final chunk uses an inclusive upper bound so the

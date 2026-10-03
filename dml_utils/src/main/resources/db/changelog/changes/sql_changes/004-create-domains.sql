@@ -5,14 +5,20 @@ COMMENT ON DOMAIN dml_utils_data.positive_integer IS
     'integer that is NOT NULL and greater than 0.';
 
 -- Trim ASCII whitespace, including vertical tab via the octal escape \013:
--- PostgreSQL has no \v escape in E-strings (it reads \v as the letter v).
+-- PostgreSQL has no \v escape in E-strings (it reads \v as the letter v). The
+-- set is deliberately the ASCII whitespace characters only: non-ASCII whitespace
+-- (for example NBSP U+00A0) is treated as ordinary text, so a value of only such
+-- characters is accepted. Extend the set only if the application treats that
+-- character as blank.
 CREATE DOMAIN dml_utils_data.non_null_text AS text
     CONSTRAINT non_null_text_check CHECK (
         value IS NOT NULL AND pg_catalog.btrim(value, E' \t\n\r\f\013') <> ''
         );
 
 COMMENT ON DOMAIN dml_utils_data.non_null_text IS
-    'text that is NOT NULL and not blank.';
+    'text that is NOT NULL and not blank. Blank means empty after trimming the '
+        'ASCII whitespace characters (space, tab, LF, CR, FF, vertical tab); '
+        'non-ASCII whitespace such as NBSP is not trimmed.';
 
 -- Packs the primary-key value of a chunk boundary, for a primary key of one to
 -- three columns. One array per supported kind, each position-aligned to the

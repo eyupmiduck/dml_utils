@@ -16,13 +16,7 @@ DECLARE
     l_primary_key_columns   name[];
     l_key_kinds             text[];
     l_run_id                bigint;
-    l_completed_at          timestamptz;
-    l_stored_sql_text       text;
-    l_stored_chunk_size     integer;
-    l_stored_threads        integer;
-    l_stored_schema_name    text;
-    l_stored_table_name     text;
-    l_stored_alias          text;
+    l_already_completed     boolean;
     l_effective_sql_text    text;
     l_effective_threads     integer;
     l_effective_schema_name text;
@@ -52,109 +46,33 @@ BEGIN
     -- worker exists.
     PERFORM dml_utils_lib.assert_chunking_template(i_sql_text => i_sql_text);
 
-    -- Reuse the active run for the label when there is one; otherwise create it
-    -- by running populate_migration_boundaries in a worker so it commits
-    -- autonomously and the boundaries become visible to the processing workers.
-    SELECT run_id,
-           completed_at,
-           sql_text,
-           chunk_size,
-           threads::integer,
-           driving_table_schema_name::text,
-           driving_table_name::text,
-           driving_table_alias::text
-    INTO l_run_id, l_completed_at, l_stored_sql_text, l_stored_chunk_size,
-        l_stored_threads, l_stored_schema_name, l_stored_table_name, l_stored_alias
-    FROM dml_utils_data.migration_run
-    WHERE label = i_label
-      AND archived_at IS NULL;
+    -- Resolve or create the run and the effective inputs (stored values for a
+    -- resumed run, the call's inputs for a new one); a new run's boundaries are
+    -- populated in a pg_background worker so they commit autonomously.
+    SELECT r.o_run_id,
+           r.o_already_completed,
+           r.o_effective_sql_text,
+           r.o_effective_schema_name,
+           r.o_effective_table_name,
+           r.o_effective_alias,
+           r.o_effective_threads,
+           r.o_primary_key_columns,
+           r.o_key_kinds
+    INTO l_run_id, l_already_completed, l_effective_sql_text,
+        l_effective_schema_name, l_effective_table_name, l_effective_alias,
+        l_effective_threads, l_primary_key_columns, l_key_kinds
+    FROM dml_utils_lib.resolve_migration_run(
+                 i_sql_text => i_sql_text,
+                 i_driving_table_schema_name => i_driving_table_schema_name,
+                 i_driving_table_name => i_driving_table_name,
+                 i_label => i_label,
+                 i_chunk_size => i_chunk_size,
+                 i_threads => i_threads,
+                 i_driving_table_alias => i_driving_table_alias) AS r;
 
-    IF FOUND AND l_completed_at IS NOT NULL THEN
-        RAISE NOTICE 'run for label % already completed at %', i_label, l_completed_at;
+    IF l_already_completed THEN
         RETURN;
     END IF;
-
-    -- The stored thread count wins for a resumed run. Each chunk is one
-    -- background worker, and more workers than the server allows would fail at
-    -- launch, so validate before creating a run or scheduling any worker.
-    l_effective_threads := CASE WHEN FOUND THEN l_stored_threads ELSE i_threads::integer END;
-    IF l_effective_threads > pg_catalog.current_setting('max_worker_processes')::integer THEN
-        RAISE EXCEPTION 'threads (%) exceeds max_worker_processes (%)',
-            l_effective_threads, pg_catalog.current_setting('max_worker_processes')
-            USING ERRCODE = '22023';
-    END IF;
-
-    IF FOUND THEN
-        -- A resumed run uses the SQL, chunk size, threads and driving table
-        -- recorded when it was created, so an adjusted statement (for example to
-        -- fix a bad execution plan) is applied via set_migration_run_sql_text
-        -- rather than a changed call. A differing input is ignored, with a
-        -- notice, so the boundaries and their chunk SQL are never silently
-        -- redefined against a different table.
-        l_effective_sql_text := l_stored_sql_text;
-        l_effective_schema_name := l_stored_schema_name;
-        l_effective_table_name := l_stored_table_name;
-        l_effective_alias := l_stored_alias;
-        IF l_stored_alias IS DISTINCT FROM i_driving_table_alias THEN
-            RAISE NOTICE 'run for label % already exists; using the stored driving table alias %',
-                i_label, l_stored_alias;
-        END IF;
-        IF l_stored_sql_text IS DISTINCT FROM i_sql_text THEN
-            RAISE NOTICE 'run for label % already exists; using the stored sql_text',
-                i_label;
-        END IF;
-        IF l_stored_chunk_size IS DISTINCT FROM i_chunk_size THEN
-            RAISE NOTICE 'run for label % already exists; using the stored chunk_size %',
-                i_label, l_stored_chunk_size;
-        END IF;
-        IF l_stored_threads IS DISTINCT FROM i_threads::integer THEN
-            RAISE NOTICE 'run for label % already exists; using the stored threads %',
-                i_label, l_stored_threads;
-        END IF;
-        IF l_stored_schema_name IS DISTINCT FROM i_driving_table_schema_name
-            OR l_stored_table_name IS DISTINCT FROM i_driving_table_name
-        THEN
-            RAISE NOTICE 'run for label % already exists; using the stored driving table %.%',
-                i_label, l_stored_schema_name, l_stored_table_name;
-        END IF;
-    ELSE
-        l_effective_sql_text := i_sql_text;
-        l_effective_schema_name := i_driving_table_schema_name;
-        l_effective_table_name := i_driving_table_name;
-        l_effective_alias := i_driving_table_alias;
-
-        l_handle := public.pg_background_launch(pg_catalog.format(
-                'SELECT dml_utils_lib.populate_migration_boundaries(%L, %L, %L, %L, %s, %s) AS run_id',
-                i_driving_table_schema_name,
-                i_driving_table_name,
-                i_label,
-                i_sql_text,
-                i_chunk_size,
-                i_threads));
-        PERFORM public.pg_background_wait(l_handle.pid, l_handle.cookie);
-
-        -- result() is one-time consumption and auto-detaches; it re-raises the
-        -- worker's SQLSTATE (for example 23505 on a concurrent same-label run).
-        SELECT run_id
-        INTO l_run_id
-        FROM public.pg_background_result(l_handle.pid, l_handle.cookie) AS (run_id bigint);
-
-        -- Persist the alias with the run so a later resume renders with the same
-        -- alias the first call used; on a resume the caller's alias is ignored
-        -- like the other creation-time inputs.
-        UPDATE dml_utils_data.migration_run
-        SET driving_table_alias = i_driving_table_alias
-        WHERE run_id = l_run_id;
-    END IF;
-
-    -- Resolve the key from the effective driving table (the input for a new run,
-    -- the stored table for a resumed one) before any chunk worker is launched.
-    l_primary_key_columns := dml_utils_lib.primary_key_columns(
-            i_schema_name => l_effective_schema_name,
-            i_table_name => l_effective_table_name);
-    l_key_kinds := dml_utils_lib.primary_key_kinds(
-            i_schema_name => l_effective_schema_name,
-            i_table_name => l_effective_table_name);
 
     -- Process every unclaimed boundary, up to i_threads workers at a time. Each
     -- worker claims its boundary and runs its chunk SQL in its own transaction,

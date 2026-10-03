@@ -549,7 +549,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     }
 
     private String uniqueLabel() {
-        return "validation-run-" + UUID.randomUUID();
+        return uniqueLabel("validation-run");
     }
 
     private int runCount(String label) {
