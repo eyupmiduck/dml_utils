@@ -1,9 +1,11 @@
 package io.github.eyupmiduck.dmlutils;
 
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.udt.records.MigrationKeyRecord;
+import org.jooq.Record;
 import org.junit.jupiter.api.Test;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
@@ -276,6 +278,49 @@ class MigrationTablesTest extends PostgresTestBase {
                 .set(MIGRATION_BOUNDARY.COMPLETED_AT, OffsetDateTime.now())
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
                 .execute();
+    }
+
+    /**
+     * The shared timestamp columns are {@code timestamptz NOT NULL}, and the
+     * primary and foreign keys are the composite ones the routines rely on.
+     */
+    @Test
+    void migrationTableMetadataIsAsExpected() {
+        for (String table : List.of("migration_run", "migration_boundary", "migration_error")) {
+            for (String column : List.of("created_at", "updated_at")) {
+                Record row = dsl.fetchOne(
+                        "SELECT data_type, is_nullable FROM information_schema.columns"
+                                + " WHERE table_schema = 'dml_utils_data'"
+                                + " AND table_name = ? AND column_name = ?",
+                        table, column);
+                assertTrue(row != null, table + "." + column + " should exist");
+                assertEquals("timestamp with time zone", row.get("data_type", String.class),
+                        table + "." + column + " should be timestamptz");
+                assertEquals("NO", row.get("is_nullable", String.class),
+                        table + "." + column + " should be NOT NULL");
+            }
+        }
+
+        assertEquals(List.of("run_id"), constraintColumns("migration_run", "p"),
+                "migration_run's primary key");
+        assertEquals(List.of("run_id", "boundary_no"),
+                constraintColumns("migration_boundary", "p"),
+                "migration_boundary's composite primary key");
+        assertEquals(List.of("run_id", "boundary_no"),
+                constraintColumns("migration_error", "f"),
+                "migration_error's composite foreign key");
+    }
+
+    private List<String> constraintColumns(String table, String constraintType) {
+        return dsl.fetch(
+                "SELECT a.attname FROM pg_constraint con"
+                        + " JOIN pg_class c ON c.oid = con.conrelid"
+                        + " JOIN pg_namespace n ON n.oid = c.relnamespace"
+                        + " CROSS JOIN LATERAL unnest(con.conkey) WITH ORDINALITY AS k(attnum, ord)"
+                        + " JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = k.attnum"
+                        + " WHERE con.contype = ? AND n.nspname = 'dml_utils_data'"
+                        + " AND c.relname = ? ORDER BY k.ord",
+                constraintType, table).getValues(0, String.class);
     }
 
     /**

@@ -201,6 +201,8 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
         long runId = populateTable(TEST_COMPOSITE_PK, 2);
 
         assertTrue(runId > 0, "a composite primary key should be accepted");
+        assertEquals(3, boundaries(runId).intValue(),
+                "three rows at chunk size two give two chunk starts plus a terminal boundary");
     }
 
     /**
@@ -218,6 +220,8 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
         long runId = populateTable(TEST_COMPOSITE_THREE, 2);
 
         assertTrue(runId > 0, "a three-column mixed-kind primary key should be accepted");
+        assertEquals(3, boundaries(runId).intValue(),
+                "three rows at chunk size two give two chunk starts plus a terminal boundary");
     }
 
     /**

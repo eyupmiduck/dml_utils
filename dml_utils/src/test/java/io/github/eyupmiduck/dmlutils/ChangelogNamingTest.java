@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.regex.Pattern;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -42,6 +43,33 @@ class ChangelogNamingTest {
         List<Path> invalid = ChangelogValidator.findInvalidlyNamedSqlFiles(changesRoot);
 
         assertTrue(invalid.isEmpty(), "Invalidly named SQL files: " + invalid);
+    }
+
+    /**
+     * The id pattern accepts the documented ids and rejects malformed ones
+     * (wrong prefix length, extra text, or invalid schema/object characters).
+     */
+    @Test
+    void changeSetIdPatternAcceptsAndRejects() {
+        for (String valid : List.of(
+                "001-create-schema",
+                "999-grant_privileges",
+                "function-dml_utils.run_migration_chunks",
+                "procedure-dml_utils.some_proc",
+                "trigger-dml_utils_data.set_updated_at")) {
+            assertTrue(CHANGE_SET_ID.matcher(valid).matches(), valid + " should be accepted");
+        }
+        for (String invalid : List.of(
+                "1-short",
+                "0012-too-long",
+                "invalid-001-name-suffix",
+                "function-dml_utils",
+                "function-dml_utils.bad-name",
+                "function-.name",
+                "function-dml-utils.name",
+                "prefix-function-dml_utils.name")) {
+            assertFalse(CHANGE_SET_ID.matcher(invalid).matches(), invalid + " should be rejected");
+        }
     }
 
     /**
