@@ -19,5 +19,7 @@ if ! docker compose version >/dev/null 2>&1; then
 fi
 
 # `down` keeps named volumes by default; do not add -v here. Use
-# scripts/refresh-local-db.sh, which wipes the data on purpose.
-docker compose down
+# scripts/refresh-local-db.sh, which wipes the data on purpose. Pin the compose
+# file and project so an inherited COMPOSE_FILE / project name cannot bring down
+# an unrelated stack.
+docker compose --project-name dml_utils --file "$repo_root/compose.yaml" down

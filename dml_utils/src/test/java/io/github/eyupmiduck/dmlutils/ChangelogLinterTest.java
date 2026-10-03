@@ -20,9 +20,14 @@ import java.util.stream.Collectors;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Runs the Liquibase changelog linter over the module changelog,
- * mirroring the {@code liquibase-linter} {@code verify} gate in {@code pom.xml},
- * and checks that the gate would actually fail on a bad changeset.
+ * Runs the Liquibase changelog linter over the module changelog with the default
+ * rule set and configuration, and checks that it reports and fails a deliberately
+ * bad changeset.
+ *
+ * <p>The {@code liquibase-linter} {@code verify} gate in {@code pom.xml} reads
+ * its rules and whitelist from {@code .liquibase-linter.yml}; this test exercises
+ * the same rules with the library defaults, so it is a focused unit test of the
+ * linter rather than an exact mirror of the gate.
  *
  * <p>The linter rules combine the SQL tokens with Liquibase changeset semantics
  * (for example {@code runInTransaction}), which SQLFluff and plpgsql_check
@@ -103,6 +108,12 @@ class ChangelogLinterTest {
         Linter linter = new Linter(Rules.all(17), LinterConfig.defaults());
         List<Finding> findings = linter.lint(List.of(deliberatelyBadChangeSet()));
 
+        // The whitelist can only be shown to suppress something if the finding
+        // exists first.
+        assertEquals(List.of("changeset-run-in-transaction-required"),
+                findings.stream().map(Finding::ruleId).toList(),
+                "the deliberate changeset should produce the transaction finding");
+
         Whitelist.Report report = whitelist("""
                 - rule: changeset-run-in-transaction-required
                   changeset: 999-deliberate
@@ -130,5 +141,11 @@ class ChangelogLinterTest {
 
         assertEquals(1, report.unmatched().size(), "the real finding is not accepted");
         assertEquals(1, report.stale().size(), "the entry matches nothing and is stale");
+        assertEquals("changeset-run-in-transaction-required", report.unmatched().get(0).ruleId(),
+                "the unmatched finding is the deliberate one");
+        assertEquals("999-deliberate", report.unmatched().get(0).changeSetId(),
+                "the unmatched finding is the deliberate changeset");
+        assertEquals("999-gone", report.stale().get(0).changeset(),
+                "the stale whitelist entry is the one for the removed changeset");
     }
 }

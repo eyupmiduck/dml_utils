@@ -6,8 +6,9 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Verifies the caller grants: {@code dml_utils_caller} can execute every
- * callable routine and use the migration key type, and no routine is
- * executable by {@code PUBLIC}.
+ * callable routine (ordinary and trigger-returning functions, plus procedures)
+ * and use the migration key type, and that no routine or type is usable by
+ * {@code PUBLIC}.
  */
 class GrantPrivilegesTest extends PostgresTestBase {
 
@@ -24,13 +25,15 @@ class GrantPrivilegesTest extends PostgresTestBase {
                                     FROM pg_proc p
                                     JOIN pg_namespace n ON n.oid = p.pronamespace
                                     WHERE n.nspname IN ('dml_utils', 'dml_utils_lib', 'dml_utils_data')
-                                      AND p.prokind = 'f'
+                                      AND p.prokind IN ('f', 'p')
                                       AND (
                                           p.proacl IS NULL
                                           OR EXISTS (
                                               SELECT 1
                                               FROM unnest(p.proacl) AS a
-                                              WHERE a::text LIKE '=X/%'
+                                              -- The grantee is empty ("=X/..."), and a
+                                              -- trailing "*" marks WITH GRANT OPTION.
+                                              WHERE a::text LIKE '=X%'
                                           )
                                       )
                                 )
@@ -61,7 +64,9 @@ class GrantPrivilegesTest extends PostgresTestBase {
                                       OR EXISTS (
                                           SELECT 1
                                           FROM unnest(t.typacl) AS a
-                                          WHERE a::text LIKE '=U/%'
+                                          -- "=U..." is the PUBLIC entry; a trailing "*"
+                                          -- marks WITH GRANT OPTION.
+                                          WHERE a::text LIKE '=U%'
                                       )
                                   )
                                 """)
@@ -72,7 +77,9 @@ class GrantPrivilegesTest extends PostgresTestBase {
     }
 
     /**
-     * The caller role can execute every non-trigger routine.
+     * The caller role can execute every routine it is meant to invoke: every
+     * procedure, and every function except trigger functions (whose EXECUTE is
+     * deliberately granted to no one).
      */
     @Test
     void callerCanExecuteEveryCallableRoutine() {
@@ -82,8 +89,8 @@ class GrantPrivilegesTest extends PostgresTestBase {
                                 FROM pg_proc p
                                 JOIN pg_namespace n ON n.oid = p.pronamespace
                                 WHERE n.nspname IN ('dml_utils', 'dml_utils_lib', 'dml_utils_data')
-                                  AND p.prokind = 'f'
-                                  AND p.prorettype <> 'trigger'::regtype
+                                  AND p.prokind IN ('f', 'p')
+                                  AND (p.prokind = 'p' OR p.prorettype <> 'trigger'::regtype)
                                   AND NOT pg_catalog.has_function_privilege(
                                       'dml_utils_caller', p.oid, 'EXECUTE')
                                 """)

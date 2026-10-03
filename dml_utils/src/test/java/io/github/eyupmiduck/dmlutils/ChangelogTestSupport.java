@@ -49,6 +49,13 @@ final class ChangelogTestSupport {
     private static Path classpathDir(String resource) {
         URL url = ChangelogTestSupport.class.getClassLoader().getResource(resource);
         Objects.requireNonNull(url, resource + " must be on the test classpath");
+        // These tests walk the changelog as files, so they require an exploded
+        // classpath. Fail with a clear message rather than a FileSystemNotFound
+        // when run from a packaged (jar:) test classpath.
+        if (!"file".equals(url.getProtocol())) {
+            throw new IllegalStateException(resource
+                    + " must be an exploded directory on the test classpath, but was " + url);
+        }
         try {
             return Path.of(url.toURI());
         } catch (URISyntaxException e) {

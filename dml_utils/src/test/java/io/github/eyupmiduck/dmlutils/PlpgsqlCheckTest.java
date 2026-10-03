@@ -15,8 +15,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
  * Runs the {@code plpgsql_check} static analyser over every routine in the
- * {@code dml_utils} and {@code dml_utils_lib} schemas, failing on any finding
- * not accepted in {@code plpgsql-check-whitelist.yml}.
+ * {@code dml_utils}, {@code dml_utils_lib} and {@code dml_utils_data} schemas,
+ * failing on any finding not accepted in {@code plpgsql-check-whitelist.yml}.
  *
  * <p>The extension is compiled into the custom image and installed into the
  * template database, so each cloned test database (and the dev database, via

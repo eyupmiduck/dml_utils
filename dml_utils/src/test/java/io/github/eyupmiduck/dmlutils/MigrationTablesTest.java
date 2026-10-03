@@ -1,11 +1,15 @@
 package io.github.eyupmiduck.dmlutils;
 
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.udt.records.MigrationKeyRecord;
+import org.jooq.Record;
 import org.junit.jupiter.api.Test;
 
 import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.UUID;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationError.MIGRATION_ERROR;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -82,7 +86,7 @@ class MigrationTablesTest extends PostgresTestBase {
                 .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE,
                         MIGRATION_RUN.THREADS,
                         MIGRATION_RUN.DRIVING_TABLE_SCHEMA_NAME, MIGRATION_RUN.DRIVING_TABLE_NAME)
-                .values("migration-tables-test-" + System.nanoTime(), "SELECT 1", 1, 1,
+                .values("migration-tables-test-" + UUID.randomUUID(), "SELECT 1", 1, 1,
                         PUBLIC_SCHEMA, "migration_tables_source")
                 .returningResult(MIGRATION_RUN.RUN_ID)
                 .fetchOne(MIGRATION_RUN.RUN_ID);
@@ -247,12 +251,14 @@ class MigrationTablesTest extends PostgresTestBase {
     }
 
     /**
-     * {@code boundary_no} and {@code boundary_id} are immutable: updating either
-     * is rejected, while updating the mutable {@code completed_at} is allowed.
+     * {@code run_id}, {@code boundary_no} and {@code boundary_id} are immutable:
+     * updating any of them is rejected, while updating the mutable
+     * {@code completed_at} is allowed.
      */
     @Test
-    void rejectsUpdatesToBoundaryNoAndBoundaryId() {
+    void rejectsUpdatesToImmutableBoundaryColumns() {
         long runId = insertRunWithBoundary();
+        long otherRunId = insertRun();
 
         assertSqlState("22023", () -> dsl.update(MIGRATION_BOUNDARY)
                 .set(MIGRATION_BOUNDARY.BOUNDARY_ID, new MigrationKeyRecord(new Long[]{999L}, null, null))
@@ -262,12 +268,59 @@ class MigrationTablesTest extends PostgresTestBase {
                 .set(MIGRATION_BOUNDARY.BOUNDARY_NO, 999L)
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
                 .execute());
+        assertSqlState("22023", () -> dsl.update(MIGRATION_BOUNDARY)
+                .set(MIGRATION_BOUNDARY.RUN_ID, otherRunId)
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .execute());
 
         // A mutable column can still be updated.
         dsl.update(MIGRATION_BOUNDARY)
                 .set(MIGRATION_BOUNDARY.COMPLETED_AT, OffsetDateTime.now())
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
                 .execute();
+    }
+
+    /**
+     * The shared timestamp columns are {@code timestamptz NOT NULL}, and the
+     * primary and foreign keys are the composite ones the routines rely on.
+     */
+    @Test
+    void migrationTableMetadataIsAsExpected() {
+        for (String table : List.of("migration_run", "migration_boundary", "migration_error")) {
+            for (String column : List.of("created_at", "updated_at")) {
+                Record row = dsl.fetchOne(
+                        "SELECT data_type, is_nullable FROM information_schema.columns"
+                                + " WHERE table_schema = 'dml_utils_data'"
+                                + " AND table_name = ? AND column_name = ?",
+                        table, column);
+                assertTrue(row != null, table + "." + column + " should exist");
+                assertEquals("timestamp with time zone", row.get("data_type", String.class),
+                        table + "." + column + " should be timestamptz");
+                assertEquals("NO", row.get("is_nullable", String.class),
+                        table + "." + column + " should be NOT NULL");
+            }
+        }
+
+        assertEquals(List.of("run_id"), constraintColumns("migration_run", "p"),
+                "migration_run's primary key");
+        assertEquals(List.of("run_id", "boundary_no"),
+                constraintColumns("migration_boundary", "p"),
+                "migration_boundary's composite primary key");
+        assertEquals(List.of("run_id", "boundary_no"),
+                constraintColumns("migration_error", "f"),
+                "migration_error's composite foreign key");
+    }
+
+    private List<String> constraintColumns(String table, String constraintType) {
+        return dsl.fetch(
+                "SELECT a.attname FROM pg_constraint con"
+                        + " JOIN pg_class c ON c.oid = con.conrelid"
+                        + " JOIN pg_namespace n ON n.oid = c.relnamespace"
+                        + " CROSS JOIN LATERAL unnest(con.conkey) WITH ORDINALITY AS k(attnum, ord)"
+                        + " JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = k.attnum"
+                        + " WHERE con.contype = ? AND n.nspname = 'dml_utils_data'"
+                        + " AND c.relname = ? ORDER BY k.ord",
+                constraintType, table).getValues(0, String.class);
     }
 
     /**
@@ -286,5 +339,42 @@ class MigrationTablesTest extends PostgresTestBase {
     void updatedAtTriggerIsAttachedToMigrationError() {
         assertTrue(triggerExists("dml_utils_data", "migration_error", "migration_error_set_updated_at"),
                 "migration_error_set_updated_at should be attached to dml_utils_data.migration_error");
+    }
+
+    /**
+     * The {@code updated_at} trigger overwrites a caller-supplied timestamp on
+     * UPDATE for both {@code migration_boundary} and {@code migration_error}, not
+     * merely being attached to the table.
+     */
+    @Test
+    void updatedAtIsMaintainedByTheTriggerOnBoundaryAndError() {
+        long runId = insertRunWithBoundary();
+        dsl.insertInto(MIGRATION_ERROR, MIGRATION_ERROR.RUN_ID, MIGRATION_ERROR.BOUNDARY_NO,
+                        MIGRATION_ERROR.SQLSTATE, MIGRATION_ERROR.MESSAGE)
+                .values(runId, 0L, "22012", "boom")
+                .execute();
+
+        OffsetDateTime old = OffsetDateTime.parse("2000-01-01T00:00:00Z");
+        OffsetDateTime recent = OffsetDateTime.parse("2020-01-01T00:00:00Z");
+
+        dsl.update(MIGRATION_BOUNDARY)
+                .set(MIGRATION_BOUNDARY.UPDATED_AT, old)
+                .set(MIGRATION_BOUNDARY.COMPLETED_AT, OffsetDateTime.now())
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .execute();
+        dsl.update(MIGRATION_ERROR)
+                .set(MIGRATION_ERROR.UPDATED_AT, old)
+                .set(MIGRATION_ERROR.MESSAGE, "changed")
+                .where(MIGRATION_ERROR.RUN_ID.eq(runId))
+                .execute();
+
+        assertTrue(Boolean.TRUE.equals(dsl.select(MIGRATION_BOUNDARY.UPDATED_AT.gt(recent))
+                        .from(MIGRATION_BOUNDARY).where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                        .fetchOne(0, Boolean.class)),
+                "the boundary trigger should overwrite updated_at");
+        assertTrue(Boolean.TRUE.equals(dsl.select(MIGRATION_ERROR.UPDATED_AT.gt(recent))
+                        .from(MIGRATION_ERROR).where(MIGRATION_ERROR.RUN_ID.eq(runId))
+                        .fetchOne(0, Boolean.class)),
+                "the error trigger should overwrite updated_at");
     }
 }

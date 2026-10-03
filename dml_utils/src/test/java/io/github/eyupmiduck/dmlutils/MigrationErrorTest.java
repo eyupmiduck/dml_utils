@@ -5,6 +5,8 @@ import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.udt.records.MigrationKe
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines;
 import org.junit.jupiter.api.Test;
 
+import java.util.UUID;
+
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationError.MIGRATION_ERROR;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
@@ -65,19 +67,38 @@ class MigrationErrorTest extends PostgresTestBase {
      */
     @Test
     void rejectsAnUnknownBoundary() {
-        Long runId = insertRunWithBoundary();
+        Long runId = insertRunWithBoundary(0L);
 
         assertSqlState("23503", () -> Routines.recordMigrationError(
                 dsl.configuration(), runId, 999L, "22012", "boom"));
     }
 
     /**
-     * Deleting the boundary cascades to its error rows.
+     * The boundary foreign key is composite {@code (run_id, boundary_no)}: an
+     * unknown run id, and a boundary number that exists only under another run,
+     * are both rejected with a foreign-key violation.
+     */
+    @Test
+    void rejectsAnUnknownRunOrAnotherRunsBoundary() {
+        Long runId = insertRunWithBoundary(0L);
+        insertRunWithBoundary(5L);
+
+        assertSqlState("23503", () -> Routines.recordMigrationError(
+                dsl.configuration(), -1L, 0L, "22012", "boom"));
+        assertSqlState("23503", () -> Routines.recordMigrationError(
+                dsl.configuration(), runId, 5L, "22012", "boom"));
+    }
+
+    /**
+     * Deleting the boundary cascades to its own error rows only: the parent run
+     * remains and another run's boundary and error survive.
      */
     @Test
     void cascadesWhenTheBoundaryIsDeleted() {
-        Long runId = insertRunWithBoundary();
+        Long runId = insertRunWithBoundary(0L);
         Routines.recordMigrationError(dsl.configuration(), runId, 0L, "22012", "boom");
+        Long otherRunId = insertRunWithBoundary(0L);
+        Routines.recordMigrationError(dsl.configuration(), otherRunId, 0L, "22012", "keep");
 
         dsl.deleteFrom(MIGRATION_BOUNDARY)
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
@@ -85,22 +106,30 @@ class MigrationErrorTest extends PostgresTestBase {
                 .execute();
 
         assertEquals(0, dsl.fetchCount(MIGRATION_ERROR, MIGRATION_ERROR.RUN_ID.eq(runId)),
-                "the error row should be cascaded");
+                "the deleted boundary's error should be cascaded");
+        assertEquals(1, dsl.fetchCount(MIGRATION_RUN, MIGRATION_RUN.RUN_ID.eq(runId)),
+                "the parent run should remain");
+        assertEquals(1, dsl.fetchCount(MIGRATION_ERROR, MIGRATION_ERROR.RUN_ID.eq(otherRunId)),
+                "another run's error should survive");
     }
 
     private Long insertRunWithBoundary() {
+        return insertRunWithBoundary(0L);
+    }
+
+    private Long insertRunWithBoundary(long boundaryNo) {
         Long runId = dsl.insertInto(MIGRATION_RUN)
                 .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE,
                         MIGRATION_RUN.THREADS,
                         MIGRATION_RUN.DRIVING_TABLE_SCHEMA_NAME, MIGRATION_RUN.DRIVING_TABLE_NAME)
-                .values("migration-error-test-" + System.nanoTime(), "SELECT 1", 1, 1,
+                .values("migration-error-test-" + UUID.randomUUID(), "SELECT 1", 1, 1,
                         PUBLIC_SCHEMA, "migration_error_source")
                 .returningResult(MIGRATION_RUN.RUN_ID)
                 .fetchOne(MIGRATION_RUN.RUN_ID);
         dsl.insertInto(MIGRATION_BOUNDARY)
                 .columns(MIGRATION_BOUNDARY.RUN_ID, MIGRATION_BOUNDARY.BOUNDARY_NO,
                         MIGRATION_BOUNDARY.BOUNDARY_ID)
-                .values(runId, 0L, new MigrationKeyRecord(new Long[]{1L}, null, null))
+                .values(runId, boundaryNo, new MigrationKeyRecord(new Long[]{1L}, null, null))
                 .execute();
         return runId;
     }

@@ -29,4 +29,6 @@ $$;
 
 COMMENT ON FUNCTION dml_utils.set_migration_run_sql_text IS
     'Replaces the recorded sql_text of the unfinished run for the label, so the '
-        'next run_migration_chunks call uses the adjusted SQL.';
+        'next run_migration_chunks call uses the adjusted SQL. A run already being '
+        'processed keeps the SQL it read at its start, so adjust the SQL between '
+        'runs rather than while a coordinator is processing.';

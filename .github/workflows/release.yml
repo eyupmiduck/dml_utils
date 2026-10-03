@@ -7,7 +7,9 @@ name: Release
 on:
   push:
     tags:
-      - "v*"
+      # A digit must follow the "v", so a bare "v" or a typo like "vfoo"
+      # cannot trigger a release.
+      - "v[0-9]*"
 
 concurrency:
   group: release-${{ github.ref }}

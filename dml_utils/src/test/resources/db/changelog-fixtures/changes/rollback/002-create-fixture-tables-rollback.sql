@@ -1,0 +1,15 @@
+DROP TABLE IF EXISTS
+    dml_utils_fixtures.test_bigint,
+    dml_utils_fixtures.test_other,
+    dml_utils_fixtures.test_integer,
+    dml_utils_fixtures.test_smallint,
+    dml_utils_fixtures.test_text,
+    dml_utils_fixtures.test_uuid,
+    dml_utils_fixtures.test_key,
+    dml_utils_fixtures.test_no_pk,
+    dml_utils_fixtures.test_composite_pk,
+    dml_utils_fixtures.test_composite_mixed,
+    dml_utils_fixtures.test_numeric,
+    dml_utils_fixtures.test_composite_three,
+    dml_utils_fixtures.test_composite_id1,
+    dml_utils_fixtures.test_composite_four;

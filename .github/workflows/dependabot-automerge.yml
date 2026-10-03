@@ -15,6 +15,12 @@ permissions:
   contents: write
   pull-requests: write
 
+# Serialize per pull request so concurrent events for the same Dependabot PR
+# cannot race the auto-merge API calls.
+concurrency:
+  group: dependabot-automerge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   auto-merge:
     uses: eyupmiduck/workflow_library/.github/workflows/dependabot-automerge.yml@2499e14a4533396c8318abecaa35dd2477be1f41 # main

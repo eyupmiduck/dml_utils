@@ -342,6 +342,118 @@ class RenderChunkSqlTest extends PostgresTestBase {
                 rendered);
     }
 
+    /**
+     * A NULL {@code i_is_final} is rejected with 22023 instead of silently
+     * taking the non-final (exclusive) branch.
+     */
+    @Test
+    void rejectsANullFinalFlag() {
+        assertSqlState("22023", () -> Routines.renderChunkSql(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{"id"}, new String[]{"bigint"},
+                new String[]{"1"}, new String[]{"2"}, null));
+    }
+
+    /**
+     * A boundary value that is not a valid literal for its key kind is rejected
+     * with 22023, rather than being emitted and failing when a worker parses it.
+     */
+    @Test
+    void rejectsANonNumericBigintBoundaryValue() {
+        assertSqlState("22023", () -> render(false, "bigint", "oops", "2"));
+    }
+
+    /**
+     * A UUID key with an invalid boundary value is rejected with 22023.
+     */
+    @Test
+    void rejectsAMalformedUuidBoundaryValue() {
+        assertSqlState("22023", () -> render(false, "uuid", "not-a-uuid", "2"));
+    }
+
+    /**
+     * A template that already contains a reserved substitution character is
+     * rejected with 22023.
+     */
+    @Test
+    void rejectsATemplateWithASentinelCharacter() {
+        String template = "UPDATE <driving_table> SET processed = '" + (char) 1
+                + "' WHERE <chunking_clause>";
+        assertSqlState("22023", () -> Routines.renderChunkSql(
+                dsl.configuration(), template, "public", "src", "t",
+                new String[]{"id"}, new String[]{"bigint"},
+                new String[]{"1"}, new String[]{"2"}, false));
+    }
+
+    /**
+     * A boundary array with a lower bound other than 1 is rejected with 22023,
+     * rather than reading the wrong element.
+     */
+    @Test
+    void rejectsANonOneBasedBoundaryArray() {
+        assertSqlState("22023", () -> dsl.execute(
+                "SELECT dml_utils_lib.render_chunk_sql('" + TEMPLATE + "',"
+                        + " 'public', 'src', 't',"
+                        + " ARRAY['id']::name[], ARRAY['bigint'],"
+                        + " '[0:0]={1}'::text[], '[0:0]={2}'::text[], false)"));
+    }
+
+    /**
+     * A multidimensional boundary array is rejected with 22023.
+     */
+    @Test
+    void rejectsAMultidimensionalBoundaryArray() {
+        assertSqlState("22023", () -> dsl.execute(
+                "SELECT dml_utils_lib.render_chunk_sql('" + TEMPLATE + "',"
+                        + " 'public', 'src', 't',"
+                        + " ARRAY['id']::name[], ARRAY['bigint'],"
+                        + " '{{1}}'::text[], '{{2}}'::text[], false)"));
+    }
+
+    /**
+     * An empty template is rejected up front by the non-null text domain.
+     */
+    @Test
+    void rejectsAnEmptyTemplate() {
+        assertDomainViolation(() -> Routines.assertChunkingTemplate(dsl.configuration(), ""));
+    }
+
+    /**
+     * A NULL columns/kinds/start/end array, or a NULL element inside the kinds
+     * array, is rejected with 22023.
+     */
+    @Test
+    void rejectsNullArraysAndNullKindElements() {
+        assertSqlState("22023", () -> Routines.renderChunkSql(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                null, new String[]{"bigint"}, new String[]{"1"}, new String[]{"2"}, false));
+        assertSqlState("22023", () -> Routines.renderChunkSql(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{"id"}, null, new String[]{"1"}, new String[]{"2"}, false));
+        assertSqlState("22023", () -> Routines.renderChunkSql(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{"id"}, new String[]{"bigint"}, null, new String[]{"2"}, false));
+        assertSqlState("22023", () -> Routines.renderChunkSql(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{"id"}, new String[]{"bigint"}, new String[]{"1"}, null, false));
+        assertSqlState("22023", () -> Routines.renderChunkSql(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{"id", "id2"}, new String[]{"bigint", null},
+                new String[]{"1", "2"}, new String[]{"3", "4"}, false));
+    }
+
+    /**
+     * An empty or NULL primary-key column name is rejected with 22023 instead of
+     * rendering a degenerate quoted identifier.
+     */
+    @Test
+    void rejectsAnEmptyColumnName() {
+        assertSqlState("22023", () -> Routines.renderChunkSql(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{""}, new String[]{"bigint"},
+                new String[]{"1"}, new String[]{"2"}, false));
+    }
+
     private String render(boolean isFinal, String keyKind, String startValue, String endValue) {
         return Routines.renderChunkSql(
                 dsl.configuration(), TEMPLATE, "public", "src", "t",

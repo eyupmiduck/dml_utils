@@ -22,10 +22,12 @@ DECLARE
     l_stored_threads        integer;
     l_stored_schema_name    text;
     l_stored_table_name     text;
+    l_stored_alias          text;
     l_effective_sql_text    text;
     l_effective_threads     integer;
     l_effective_schema_name text;
     l_effective_table_name  text;
+    l_effective_alias       text;
     l_boundary_no           bigint;
     l_start_values          text[];
     l_end_values            text[];
@@ -59,9 +61,10 @@ BEGIN
            chunk_size,
            threads::integer,
            driving_table_schema_name::text,
-           driving_table_name::text
+           driving_table_name::text,
+           driving_table_alias::text
     INTO l_run_id, l_completed_at, l_stored_sql_text, l_stored_chunk_size,
-        l_stored_threads, l_stored_schema_name, l_stored_table_name
+        l_stored_threads, l_stored_schema_name, l_stored_table_name, l_stored_alias
     FROM dml_utils_data.migration_run
     WHERE label = i_label
       AND archived_at IS NULL;
@@ -91,6 +94,11 @@ BEGIN
         l_effective_sql_text := l_stored_sql_text;
         l_effective_schema_name := l_stored_schema_name;
         l_effective_table_name := l_stored_table_name;
+        l_effective_alias := l_stored_alias;
+        IF l_stored_alias IS DISTINCT FROM i_driving_table_alias THEN
+            RAISE NOTICE 'run for label % already exists; using the stored driving table alias %',
+                i_label, l_stored_alias;
+        END IF;
         IF l_stored_sql_text IS DISTINCT FROM i_sql_text THEN
             RAISE NOTICE 'run for label % already exists; using the stored sql_text',
                 i_label;
@@ -113,6 +121,7 @@ BEGIN
         l_effective_sql_text := i_sql_text;
         l_effective_schema_name := i_driving_table_schema_name;
         l_effective_table_name := i_driving_table_name;
+        l_effective_alias := i_driving_table_alias;
 
         l_handle := public.pg_background_launch(pg_catalog.format(
                 'SELECT dml_utils_lib.populate_migration_boundaries(%L, %L, %L, %L, %s, %s) AS run_id',
@@ -129,6 +138,13 @@ BEGIN
         SELECT run_id
         INTO l_run_id
         FROM public.pg_background_result(l_handle.pid, l_handle.cookie) AS (run_id bigint);
+
+        -- Persist the alias with the run so a later resume renders with the same
+        -- alias the first call used; on a resume the caller's alias is ignored
+        -- like the other creation-time inputs.
+        UPDATE dml_utils_data.migration_run
+        SET driving_table_alias = i_driving_table_alias
+        WHERE run_id = l_run_id;
     END IF;
 
     -- Resolve the key from the effective driving table (the input for a new run,
@@ -153,119 +169,155 @@ BEGIN
     -- boundary (for example the terminal one) is already completed. The join on
     -- boundary_no + 1 excludes the terminal boundary, so the end key is never
     -- null.
-    LOOP
-        -- Keep launching until i_threads are in flight (or there is nothing left
-        -- to launch), unless a worker has already failed.
-        IF NOT l_aborting THEN
-            WHILE pg_catalog.cardinality(l_in_flight) < l_effective_threads
-                LOOP
-                -- Extract the per-position key values of the start and end
-                -- boundaries. Each kind populates a different position-aligned
-                -- array of migration_key; the extract below flattens them back
-                -- into a value list, in primary-key order.
-                    SELECT b.boundary_no,
-                           dml_utils_lib.migration_key_values(
-                                   i_key => b.boundary_id,
-                                   i_key_kinds => l_key_kinds),
-                           dml_utils_lib.migration_key_values(
-                                   i_key => next.boundary_id,
-                                   i_key_kinds => l_key_kinds),
-                           next.boundary_no = last.boundary_no
-                    INTO l_boundary_no, l_start_values, l_end_values, l_is_final
-                    FROM dml_utils_data.migration_boundary AS b
-                             JOIN dml_utils_data.migration_boundary AS next
-                                  ON next.run_id = b.run_id
-                                      AND next.boundary_no = b.boundary_no + 1
-                             CROSS JOIN LATERAL (
-                        SELECT max(boundary_no) AS boundary_no
-                        FROM dml_utils_data.migration_boundary
-                        WHERE run_id = b.run_id
-                        ) AS last
-                    WHERE b.run_id = l_run_id
-                      AND b.completed_at IS NULL
-                      AND b.boundary_no <> ALL (l_in_flight_boundaries)
-                    ORDER BY b.boundary_no
-                    LIMIT 1;
-
-                    EXIT WHEN NOT FOUND;
-
-                    l_chunk_sql := dml_utils_lib.render_chunk_sql(
-                            i_sql_text => l_effective_sql_text,
-                            i_schema_name => l_effective_schema_name,
-                            i_table_name => l_effective_table_name,
-                            i_table_alias => i_driving_table_alias,
-                            i_primary_key_columns => l_primary_key_columns,
-                            i_key_kinds => l_key_kinds,
-                            i_start_values => l_start_values,
-                            i_end_values => l_end_values,
-                            i_is_final => l_is_final);
-
-                    -- pg_background has no USING, so the run id, boundary number and
-                    -- chunk SQL are inlined: the first two are bigint (%s), the chunk
-                    -- SQL is a literal (%L).
-                    l_handle := public.pg_background_launch(
-                            pg_catalog.format(
-                                    'SELECT dml_utils_lib.process_migration_chunk(%s, %s, %L)',
-                                    l_run_id, l_boundary_no, l_chunk_sql),
-                            0,
-                            pg_catalog.format('run %s chunk %s', l_run_id, l_boundary_no));
-                    l_in_flight := l_in_flight || l_handle;
-                    l_in_flight_boundaries := l_in_flight_boundaries || l_boundary_no;
-                END LOOP;
-        END IF;
-
-        -- Nothing running and nothing left to launch: done (or draining is done).
-        EXIT WHEN pg_catalog.cardinality(l_in_flight) = 0;
-
-        -- Wait for any in-flight worker to finish. wait_any() with a zero timeout
-        -- does not block, so poll with a short timeout.
+    BEGIN
         LOOP
-            l_handle := public.pg_background_wait_any(l_in_flight, 1000);
-            EXIT WHEN l_handle IS NOT NULL;
+            -- Keep launching until i_threads are in flight (or there is nothing left
+            -- to launch), unless a worker has already failed.
+            IF NOT l_aborting THEN
+                WHILE pg_catalog.cardinality(l_in_flight) < l_effective_threads
+                    LOOP
+                    -- Extract the per-position key values of the start and end
+                    -- boundaries. Each kind populates a different position-aligned
+                    -- array of migration_key; the extract below flattens them back
+                    -- into a value list, in primary-key order.
+                        SELECT b.boundary_no,
+                               dml_utils_lib.migration_key_values(
+                                       i_key => b.boundary_id,
+                                       i_key_kinds => l_key_kinds),
+                               dml_utils_lib.migration_key_values(
+                                       i_key => next.boundary_id,
+                                       i_key_kinds => l_key_kinds),
+                               next.boundary_no = last.boundary_no
+                        INTO l_boundary_no, l_start_values, l_end_values, l_is_final
+                        FROM dml_utils_data.migration_boundary AS b
+                                 JOIN dml_utils_data.migration_boundary AS next
+                                      ON next.run_id = b.run_id
+                                          AND next.boundary_no = b.boundary_no + 1
+                                 CROSS JOIN LATERAL (
+                            SELECT max(boundary_no) AS boundary_no
+                            FROM dml_utils_data.migration_boundary
+                            WHERE run_id = b.run_id
+                            ) AS last
+                        WHERE b.run_id = l_run_id
+                          AND b.completed_at IS NULL
+                          AND b.boundary_no <> ALL (l_in_flight_boundaries)
+                        ORDER BY b.boundary_no
+                        LIMIT 1;
+
+                        EXIT WHEN NOT FOUND;
+
+                        l_chunk_sql := dml_utils_lib.render_chunk_sql(
+                                i_sql_text => l_effective_sql_text,
+                                i_schema_name => l_effective_schema_name,
+                                i_table_name => l_effective_table_name,
+                                i_table_alias => l_effective_alias,
+                                i_primary_key_columns => l_primary_key_columns,
+                                i_key_kinds => l_key_kinds,
+                                i_start_values => l_start_values,
+                                i_end_values => l_end_values,
+                                i_is_final => l_is_final);
+
+                        -- pg_background has no USING, so the run id, boundary number and
+                        -- chunk SQL are inlined: the first two are bigint (%s), the chunk
+                        -- SQL is a literal (%L).
+                        l_handle := public.pg_background_launch(
+                                pg_catalog.format(
+                                        'SELECT dml_utils_lib.process_migration_chunk(%s, %s, %L)',
+                                        l_run_id, l_boundary_no, l_chunk_sql),
+                                0,
+                                pg_catalog.format('run %s chunk %s', l_run_id, l_boundary_no));
+                        l_in_flight := l_in_flight || l_handle;
+                        l_in_flight_boundaries := l_in_flight_boundaries || l_boundary_no;
+                    END LOOP;
+            END IF;
+
+            -- Nothing running and nothing left to launch: done (or draining is done).
+            EXIT WHEN pg_catalog.cardinality(l_in_flight) = 0;
+
+            -- Wait for any in-flight worker to finish. wait_any() with a zero timeout
+            -- does not block, so poll with a short timeout.
+            LOOP
+                l_handle := public.pg_background_wait_any(l_in_flight, 1000);
+                EXIT WHEN l_handle IS NOT NULL;
+            END LOOP;
+
+            -- Recover the boundary the finished worker was launched for, then drop it
+            -- from the in-flight set.
+            l_worker_index := pg_catalog.array_position(l_in_flight, l_handle);
+            l_boundary_no := l_in_flight_boundaries[l_worker_index];
+            l_in_flight := l_in_flight[1:l_worker_index - 1]
+                || l_in_flight[l_worker_index + 1:];
+            l_in_flight_boundaries := l_in_flight_boundaries[1:l_worker_index - 1]
+                || l_in_flight_boundaries[l_worker_index + 1:];
+
+            SELECT *
+            INTO l_outcome
+            FROM public.pg_background_outcome(l_handle.pid, l_handle.cookie);
+            PERFORM public.pg_background_detach(l_handle.pid, l_handle.cookie);
+
+            IF l_outcome.has_error THEN
+                -- P0002 means the boundary was already claimed and completed by
+                -- another coordinator; that is benign, so do not record an error or
+                -- abort this coordinator.
+                IF l_outcome.sqlstate = 'P0002' THEN
+                    CONTINUE;
+                END IF;
+
+                -- Record the failure first, in its own worker/transaction, so the
+                -- row commits autonomously and survives the re-raise below. Recording
+                -- is best effort: if it fails (for example the recording worker cannot
+                -- be launched), the original worker error is still raised. The ids are
+                -- bigint (%s); the SQLSTATE and message are literals (%L).
+                BEGIN
+                    PERFORM public.pg_background_run(pg_catalog.format(
+                            'SELECT dml_utils_lib.record_migration_error(%s, %s, %L, %L)',
+                            l_run_id, l_boundary_no, l_outcome.sqlstate, l_outcome.error_message));
+                EXCEPTION
+                    WHEN OTHERS THEN
+                        NULL;
+                END;
+
+                -- Remember the first failure and stop launching new chunks: the
+                -- workers already in flight finish (and commit) their current chunk,
+                -- then this call exits with the error.
+                IF NOT l_aborting THEN
+                    l_error_sqlstate := l_outcome.sqlstate;
+                    l_error_message := l_outcome.error_message;
+                    l_error_boundary_no := l_boundary_no;
+                END IF;
+                l_aborting := true;
+            END IF;
         END LOOP;
 
-        -- Recover the boundary the finished worker was launched for, then drop it
-        -- from the in-flight set.
-        l_worker_index := pg_catalog.array_position(l_in_flight, l_handle);
-        l_boundary_no := l_in_flight_boundaries[l_worker_index];
-        l_in_flight := l_in_flight[1:l_worker_index - 1]
-            || l_in_flight[l_worker_index + 1:];
-        l_in_flight_boundaries := l_in_flight_boundaries[1:l_worker_index - 1]
-            || l_in_flight_boundaries[l_worker_index + 1:];
-
-        SELECT *
-        INTO l_outcome
-        FROM public.pg_background_outcome(l_handle.pid, l_handle.cookie);
-        PERFORM public.pg_background_detach(l_handle.pid, l_handle.cookie);
-
-        IF l_outcome.has_error THEN
-            -- Record the failure first, in its own worker/transaction, so the
-            -- row commits autonomously and survives the re-raise below. Recording
-            -- is best effort: the original error is always re-raised. The ids are
-            -- bigint (%s); the SQLSTATE and message are literals (%L).
-            PERFORM public.pg_background_run(pg_catalog.format(
-                    'SELECT dml_utils_lib.record_migration_error(%s, %s, %L, %L)',
-                    l_run_id, l_boundary_no, l_outcome.sqlstate, l_outcome.error_message));
-
-            -- Remember the first failure and stop launching new chunks: the
-            -- workers already in flight finish (and commit) their current chunk,
-            -- then this call exits with the error.
-            IF NOT l_aborting THEN
-                l_error_sqlstate := l_outcome.sqlstate;
-                l_error_message := l_outcome.error_message;
-                l_error_boundary_no := l_boundary_no;
-            END IF;
-            l_aborting := true;
+        -- l_aborting is the failure latch (not l_error_sqlstate, which a worker could
+        -- in principle report as NULL).
+        IF l_aborting THEN
+            RAISE EXCEPTION 'chunk % for run % failed: %', l_error_boundary_no, l_run_id,
+                l_error_message
+                USING ERRCODE = COALESCE(l_error_sqlstate, 'P0001');
         END IF;
-    END LOOP;
-
-    -- l_aborting is the failure latch (not l_error_sqlstate, which a worker could
-    -- in principle report as NULL).
-    IF l_aborting THEN
-        RAISE EXCEPTION 'chunk % for run % failed: %', l_error_boundary_no, l_run_id,
-            l_error_message
-            USING ERRCODE = COALESCE(l_error_sqlstate, 'P0001');
-    END IF;
+    EXCEPTION
+        WHEN OTHERS THEN
+            -- An unexpected error (a failed launch, a render error, ...) would
+            -- otherwise abandon the workers already in flight. Wait for each to
+            -- finish and detach it, so it commits/finishes and its handle does not
+            -- leak, then re-raise the original error.
+            FOR l_drain_index IN 1..pg_catalog.cardinality(l_in_flight)
+                LOOP
+                    BEGIN
+                        PERFORM public.pg_background_wait(
+                                l_in_flight[l_drain_index].pid,
+                                l_in_flight[l_drain_index].cookie);
+                        PERFORM public.pg_background_detach(
+                                l_in_flight[l_drain_index].pid,
+                                l_in_flight[l_drain_index].cookie);
+                    EXCEPTION
+                        WHEN OTHERS THEN
+                            NULL;
+                    END;
+                END LOOP;
+            RAISE;
+    END;
 
     -- All boundaries are claimed and every chunk SQL already ran; record the run
     -- completion in the caller's transaction.
@@ -279,6 +331,9 @@ $$;
 COMMENT ON FUNCTION dml_utils.run_migration_chunks IS
     'Runs the chunk SQL for every fixed-row chunk of the driving table, up to '
         'i_threads pg_background workers at a time, resuming an active run for '
-        'the label and recording its completion. On a failed chunk it stops '
-        'launching, lets the in-flight chunks commit, and re-raises the error; the '
-        'failure is recorded in dml_utils_data.migration_error first.';
+        'the label and recording its completion. A resumed run uses the stored '
+        'sql_text, chunk size, threads, driving table and alias. On a failed chunk '
+        'it stops launching, lets the in-flight chunks commit, drains and detaches '
+        'them, and re-raises the error; the failure is recorded (best effort) in '
+        'dml_utils_data.migration_error first. A boundary already claimed by '
+        'another coordinator (P0002) is treated as benign.';

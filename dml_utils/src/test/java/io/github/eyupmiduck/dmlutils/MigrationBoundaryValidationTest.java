@@ -36,12 +36,6 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     private static final String SQL_TEXT = "SELECT 1";
 
     /**
-     * Each test gets a distinct label so the one-active-run-per-label rule does
-     * not couple tests that populate in the same database.
-     */
-    private int labelCounter;
-
-    /**
      * Builds the ordered uuid used for key part {@code n}.
      */
     private static UUID uuid(int n) {
@@ -50,6 +44,12 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
 
     @BeforeEach
     void resetFixtures() {
+        // The class shares one database across methods, so clear both the fixture
+        // data and the migration metadata (boundaries and errors cascade); a run
+        // left by an earlier method would otherwise change count assertions or
+        // collide on the one-active-run-per-label rule. DELETE, not TRUNCATE:
+        // the test role has DML but not TRUNCATE on the migration tables.
+        dsl.deleteFrom(MIGRATION_RUN).execute();
         for (Table<?> table : List.of(TEST_BIGINT, TEST_INTEGER, TEST_SMALLINT, TEST_TEXT,
                 TEST_UUID, TEST_NO_PK, TEST_COMPOSITE_PK, TEST_COMPOSITE_THREE,
                 TEST_COMPOSITE_FOUR, TEST_NUMERIC)) {
@@ -201,6 +201,8 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
         long runId = populateTable(TEST_COMPOSITE_PK, 2);
 
         assertTrue(runId > 0, "a composite primary key should be accepted");
+        assertEquals(3, boundaries(runId).intValue(),
+                "three rows at chunk size two give two chunk starts plus a terminal boundary");
     }
 
     /**
@@ -218,6 +220,8 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
         long runId = populateTable(TEST_COMPOSITE_THREE, 2);
 
         assertTrue(runId > 0, "a three-column mixed-kind primary key should be accepted");
+        assertEquals(3, boundaries(runId).intValue(),
+                "three rows at chunk size two give two chunk starts plus a terminal boundary");
     }
 
     /**
@@ -424,14 +428,39 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     }
 
     /**
+     * An empty or NULL kinds array is rejected with {@code 22023} instead of
+     * silently returning an empty result.
+     */
+    @Test
+    void migrationKeyValuesRejectsEmptyKinds() {
+        assertSqlState("22023", () -> Routines.migrationKeyValues(
+                dsl.configuration(),
+                new MigrationKeyRecord(new Long[]{1L}, null, null),
+                new String[]{}));
+        assertSqlState("22023", () -> Routines.migrationKeyValues(
+                dsl.configuration(),
+                new MigrationKeyRecord(new Long[]{1L}, null, null),
+                (String[]) null));
+    }
+
+    /**
      * A failed validation leaves the migration tables untouched.
      */
     @Test
     void writesNothingWhenValidationFails() {
+        dsl.insertInto(TEST_BIGINT, TEST_BIGINT.ID).values(1L).execute();
         int runsBefore = dsl.fetchCount(MIGRATION_RUN);
         int boundariesBefore = dsl.fetchCount(MIGRATION_BOUNDARY);
 
+        // A domain failure, an unknown schema/table, and each catalog validation
+        // failure must all leave the migration tables untouched.
+        assertDomainViolation(() -> populateByNames(null, TEST_BIGINT.getName(), 1));
+        assertDomainViolation(() -> populateByNames(FIXTURE_SCHEMA, TEST_BIGINT.getName(), 0));
+        assertSqlState("3F000", () -> populateByNames("no_such_schema", TEST_BIGINT.getName(), 1));
         assertSqlState("42P01", () -> populateByNames(FIXTURE_SCHEMA, NO_SUCH_TABLE, 1));
+        assertSqlState("22023", () -> populateTable(TEST_NO_PK, 1));
+        assertSqlState("22023", () -> populateTable(TEST_COMPOSITE_FOUR, 1));
+        assertSqlState("22023", () -> populateTable(TEST_NUMERIC, 1));
 
         assertEquals(runsBefore, dsl.fetchCount(MIGRATION_RUN), "no run should be written");
         assertEquals(boundariesBefore, dsl.fetchCount(MIGRATION_BOUNDARY),
@@ -520,7 +549,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     }
 
     private String uniqueLabel() {
-        return "validation-run-" + ++labelCounter;
+        return "validation-run-" + UUID.randomUUID();
     }
 
     private int runCount(String label) {

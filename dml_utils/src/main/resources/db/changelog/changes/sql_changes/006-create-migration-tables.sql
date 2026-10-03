@@ -7,6 +7,7 @@ CREATE TABLE dml_utils_data.migration_run
     threads                   dml_utils_data.positive_integer NOT NULL,
     driving_table_schema_name dml_utils_data.non_null_text    NOT NULL,
     driving_table_name        dml_utils_data.non_null_text    NOT NULL,
+    driving_table_alias       dml_utils_data.non_null_text    NOT NULL DEFAULT 't',
     created_at                timestamptz                     NOT NULL DEFAULT pg_catalog.now(),
     updated_at                timestamptz                     NOT NULL DEFAULT pg_catalog.now(),
     completed_at              timestamptz,
@@ -31,6 +32,9 @@ COMMENT ON COLUMN dml_utils_data.migration_run.driving_table_schema_name IS
     'Schema of the driving table whose primary-key order defines the chunks.';
 COMMENT ON COLUMN dml_utils_data.migration_run.driving_table_name IS
     'Driving table whose primary-key order defines the chunks.';
+COMMENT ON COLUMN dml_utils_data.migration_run.driving_table_alias IS
+    'Alias the driving table is referred to as in the recorded SQL; stored at '
+        'creation so a resumed run renders with the same alias.';
 COMMENT ON COLUMN dml_utils_data.migration_run.created_at IS
     'Row creation time.';
 COMMENT ON COLUMN dml_utils_data.migration_run.updated_at IS
@@ -47,6 +51,23 @@ CREATE UNIQUE INDEX migration_run_label_active_idx
 COMMENT ON INDEX dml_utils_data.migration_run_label_active_idx IS
     'Ensures at most one active (not archived) run per label.';
 
+-- The active-run index above only covers archived_at IS NULL, so the archived-run
+-- maintenance routines cannot use it. Index the archived side for both the
+-- label-filtered and the whole-table delete.
+CREATE INDEX migration_run_label_archived_idx
+    ON dml_utils_data.migration_run (label)
+    WHERE archived_at IS NOT NULL;
+
+COMMENT ON INDEX dml_utils_data.migration_run_label_archived_idx IS
+    'Supports delete_archived_migration_runs(label) over archived runs.';
+
+CREATE INDEX migration_run_archived_idx
+    ON dml_utils_data.migration_run (archived_at)
+    WHERE archived_at IS NOT NULL;
+
+COMMENT ON INDEX dml_utils_data.migration_run_archived_idx IS
+    'Supports delete_archived_migration_runs() over archived runs.';
+
 CREATE TABLE dml_utils_data.migration_boundary
 (
     run_id       bigint                       NOT NULL,
@@ -60,6 +81,9 @@ CREATE TABLE dml_utils_data.migration_boundary
         FOREIGN KEY (run_id)
             REFERENCES dml_utils_data.migration_run (run_id)
             ON DELETE CASCADE,
+    -- Boundaries are contiguous 0..N; the runner finds the next chunk with
+    -- boundary_no + 1, so a negative number would break that arithmetic.
+    CONSTRAINT migration_boundary_no_check CHECK (boundary_no >= 0),
     -- The boundary key must be canonical; see
     -- dml_utils_lib.migration_key_is_canonical for the rule.
     CONSTRAINT migration_boundary_key_check CHECK (

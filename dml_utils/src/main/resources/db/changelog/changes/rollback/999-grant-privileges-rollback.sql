@@ -4,6 +4,16 @@ GRANT EXECUTE ON FUNCTION dml_utils_data.set_updated_at() TO public;
 GRANT EXECUTE ON FUNCTION dml_utils_data.reject_migration_run_update() TO public;
 GRANT EXECUTE ON FUNCTION dml_utils_data.reject_migration_boundary_update() TO public;
 
+-- Restore PostgreSQL's default privileges for future objects.
+ALTER DEFAULT PRIVILEGES FOR ROLE dml_utils_owner IN SCHEMA dml_utils
+    GRANT EXECUTE ON FUNCTIONS TO public;
+ALTER DEFAULT PRIVILEGES FOR ROLE dml_utils_owner IN SCHEMA dml_utils_lib
+    GRANT EXECUTE ON FUNCTIONS TO public;
+ALTER DEFAULT PRIVILEGES FOR ROLE dml_utils_owner IN SCHEMA dml_utils_data
+    GRANT EXECUTE ON FUNCTIONS TO public;
+ALTER DEFAULT PRIVILEGES FOR ROLE dml_utils_owner IN SCHEMA dml_utils_data
+    GRANT USAGE ON TYPES TO public;
+
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_schema_exists(
     dml_utils_data.non_null_text
     ) FROM dml_utils_caller;

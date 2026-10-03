@@ -22,7 +22,6 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -157,12 +156,14 @@ abstract class PostgresTestBase {
                         database);
                 fixtures.update();
             }
-            // Mark as a real template so nothing can connect to it, which
-            // keeps CREATE DATABASE ... TEMPLATE always safe.
+            // Mark as a real template and forbid connections, so a leaked session
+            // cannot make CREATE DATABASE ... TEMPLATE fail with an active
+            // connection. IS_TEMPLATE alone leaves datallowconn true.
             try (Connection admin = openConnection(POSTGRES.getDatabaseName(), POSTGRES.getUsername(), POSTGRES.getPassword());
                  Statement statement = admin.createStatement()) {
                 //noinspection Annotator
-                statement.execute("ALTER DATABASE " + TEMPLATE_DATABASE + " WITH IS_TEMPLATE TRUE");
+                statement.execute("ALTER DATABASE " + TEMPLATE_DATABASE
+                        + " WITH IS_TEMPLATE TRUE ALLOW_CONNECTIONS FALSE");
             }
         } catch (Exception e) {
             throw new IllegalStateException("Failed to prepare template database", e);
@@ -287,12 +288,13 @@ abstract class PostgresTestBase {
     }
 
     /**
-     * Returns whether a relation exists, reading the catalog directly so the
-     * lookup works for schemas the test role has no privileges on.
+     * Returns whether a base table exists (ordinary or partitioned), reading the
+     * catalog directly so the lookup works for schemas the test role has no
+     * privileges on. A view, sequence or index with the same name does not count.
      *
      * @param schema   the schema name
-     * @param relation the relation name
-     * @return {@code true} when the relation exists
+     * @param relation the table name
+     * @return {@code true} when the table exists
      */
     protected boolean relationExists(String schema, String relation) {
         return Boolean.TRUE.equals(dsl.fetchValue(
@@ -302,6 +304,7 @@ abstract class PostgresTestBase {
                             FROM pg_class c
                             JOIN pg_namespace n ON n.oid = c.relnamespace
                             WHERE n.nspname = ? AND c.relname = ?
+                              AND c.relkind IN ('r', 'p')
                         )
                         """,
                 schema, relation));
@@ -402,24 +405,33 @@ abstract class PostgresTestBase {
      */
     @AfterAll
     void dropTestDatabase() throws Exception {
-        if (connection != null) {
-            connection.close();
-        }
-        if (databaseName != null) {
-            try (Connection admin = openConnection(POSTGRES.getDatabaseName(), POSTGRES.getUsername(), POSTGRES.getPassword());
-                 Statement statement = admin.createStatement()) {
-                statement.execute("DROP DATABASE " + databaseName + " WITH (FORCE)");
+        try {
+            if (connection != null) {
+                connection.close();
+            }
+        } finally {
+            // Drop even if closing the connection failed, so the per-class
+            // database cannot be leaked by a broken connection.
+            if (databaseName != null) {
+                try (Connection admin = openConnection(POSTGRES.getDatabaseName(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                     Statement statement = admin.createStatement()) {
+                    statement.execute("DROP DATABASE " + databaseName + " WITH (FORCE)");
+                }
             }
         }
     }
 
     /**
-     * Returns whether the test class's private database name was assigned;
-     * used by tests that need to assert setup ran.
+     * Returns whether the test class's private database is still open and
+     * usable; used by tests that need to assert setup ran.
      *
-     * @return {@code true} when a database is open
+     * @return {@code true} when the database connection is open
      */
     protected boolean databaseReady() {
-        return Objects.nonNull(connection);
+        try {
+            return connection != null && !connection.isClosed();
+        } catch (SQLException e) {
+            return false;
+        }
     }
 }

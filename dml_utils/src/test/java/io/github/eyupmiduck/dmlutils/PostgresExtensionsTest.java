@@ -2,8 +2,7 @@ package io.github.eyupmiduck.dmlutils;
 
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Verifies that the extensions compiled into the custom PostgreSQL image are
@@ -37,11 +36,12 @@ class PostgresExtensionsTest extends PostgresTestBase {
      */
     @Test
     void pgBackgroundRunWorks() {
-        Boolean completed = dsl.fetchOne(
-                        "SELECT completed FROM pg_background_run('SELECT 1')")
-                .get("completed", Boolean.class);
+        org.jooq.Record row = dsl.fetchOne(
+                "SELECT completed FROM pg_background_run('SELECT 1')");
+        assertNotNull(row, "pg_background_run should return a row");
 
-        assertEquals(Boolean.TRUE, completed, "pg_background_run should complete");
+        assertEquals(Boolean.TRUE, row.get("completed", Boolean.class),
+                "pg_background_run should complete");
     }
 
     private boolean extensionAvailable(String name) {

@@ -2,11 +2,13 @@ package io.github.eyupmiduck.dmlutils;
 
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
 import org.jooq.Table;
+import org.jooq.impl.DSL;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.UUID;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
@@ -38,10 +40,13 @@ class RunFunctionOverTableTest extends PostgresTestBase {
     }
 
     /**
-     * Clears the fixture tables each test drives.
+     * Clears the fixture tables each test drives and the migration metadata, so a
+     * run left by an earlier method cannot resume or create a run with a derived
+     * label.
      */
     @BeforeEach
     void resetFixtures() {
+        dsl.deleteFrom(MIGRATION_RUN).execute();
         for (Table<?> table : List.of(TEST_BIGINT, TEST_COMPOSITE_MIXED)) {
             dsl.truncate(table).execute();
         }
@@ -126,6 +131,9 @@ class RunFunctionOverTableTest extends PostgresTestBase {
 
         assertEquals(3, payloadCount(TEST_COMPOSITE_MIXED, "second"),
                 "the run should apply the swapped-in function");
+        assertEquals(0, payloadCount(TEST_COMPOSITE_MIXED, "first"),
+                "the replaced function must not run");
+        assertTrue(runCompleted(label), "the run should be marked complete");
     }
 
     /**
@@ -230,14 +238,19 @@ class RunFunctionOverTableTest extends PostgresTestBase {
     }
 
     private void createFunction(String functionName, String value) {
+        // Append rather than overwrite: a row processed twice would then hold the
+        // value twice, so an exact match proves each row was processed once
+        // (which a plain assignment could not show). The literal is quoted by
+        // DSL.inline, so a value containing a quote cannot break the body.
         dsl.execute("CREATE OR REPLACE FUNCTION public." + functionName
                 + "(p_a bigint, p_b text) RETURNS void LANGUAGE sql AS $$"
                 + " UPDATE " + schema(TEST_COMPOSITE_MIXED) + "." + name(TEST_COMPOSITE_MIXED)
-                + " SET payload = '" + value + "' WHERE a = p_a AND b = p_b $$");
+                + " SET payload = coalesce(payload, '') || " + DSL.inline(value)
+                + " WHERE a = p_a AND b = p_b $$");
     }
 
     private String uniqueLabel(String suffix) {
-        return "function-test-" + suffix + "-" + System.nanoTime();
+        return "function-test-" + suffix + "-" + UUID.randomUUID();
     }
 
     private boolean runCompleted(String label) {

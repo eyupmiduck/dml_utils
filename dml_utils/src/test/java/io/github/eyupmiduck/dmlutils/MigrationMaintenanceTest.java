@@ -59,16 +59,28 @@ class MigrationMaintenanceTest extends PostgresTestBase {
      */
     @Test
     void deleteArchivedRunsForLabelDeletesOnlyThatLabel() {
-        populateRun("maint-label-a", 2, 1, 2);
-        populateRun("maint-label-b", 2, 1, 2);
+        // Two archived runs under label-a, plus an active and an archived run under
+        // label-b, with child rows on the runs that must survive.
+        long firstA = populateRun("maint-label-a", 2, 1, 2);
+        recordError(firstA, 0L, "22012", "boom");
         Routines.archiveMigrationRun(dsl.configuration(), "maint-label-a");
+        populateRun("maint-label-a", 2, 3, 4);
+        Routines.archiveMigrationRun(dsl.configuration(), "maint-label-a");
+
+        long archivedB = populateRun("maint-label-b", 2, 5, 6);
         Routines.archiveMigrationRun(dsl.configuration(), "maint-label-b");
+        long activeB = populateRun("maint-label-b", 2, 7, 8);
+        recordError(activeB, 0L, "22012", "keep");
 
         long deleted = Routines.deleteArchivedMigrationRuns2(dsl.configuration(), "maint-label-a");
 
-        assertEquals(1, deleted);
-        assertNull(runRow("maint-label-a"));
-        assertNotNull(runRow("maint-label-b"), "another label's archived run should remain");
+        assertEquals(2, deleted, "both archived runs for label-a should be deleted");
+        assertEquals(0, runCount("maint-label-a"), "label-a's archived runs should be gone");
+        assertEquals(2, runCount("maint-label-b"), "label-b's runs should remain");
+        assertEquals(1, dsl.fetchCount(MIGRATION_ERROR, MIGRATION_ERROR.RUN_ID.eq(activeB)),
+                "another label's error should survive");
+        assertTrue(dsl.fetchCount(MIGRATION_BOUNDARY, MIGRATION_BOUNDARY.RUN_ID.eq(archivedB)) > 0,
+                "another label's archived boundaries should survive");
     }
 
     /**
@@ -101,21 +113,40 @@ class MigrationMaintenanceTest extends PostgresTestBase {
     }
 
     /**
-     * The error listing returns the run's recorded errors, in order.
+     * The summary returns one row per run for the label, including archived runs.
+     */
+    @Test
+    void migrationRunSummaryListsEveryRunForALabel() {
+        long first = populateRun("maint-summary-multi", 2, 1, 2);
+        Routines.archiveMigrationRun(dsl.configuration(), "maint-summary-multi");
+        long second = populateRun("maint-summary-multi", 2, 3, 4);
+
+        List<MigrationRunSummaryRecord> summaries = Routines.migrationRunSummary(
+                dsl.configuration(), "maint-summary-multi");
+
+        assertEquals(2, summaries.size(), "one row per run for the label");
+        assertEquals(List.of(first, second),
+                summaries.stream().map(s -> s.getRunId().longValue()).toList(),
+                "the rows are ordered by run id");
+    }
+
+    /**
+     * The error listing returns the run's recorded errors ordered by error id
+     * (insertion order), independent of the boundary number.
      */
     @Test
     void migrationErrorsReturnsTheRecordedErrors() {
         long runId = populateRun("maint-errors", 2, 1, 2);
-        recordError(runId, 0L, "22012", "division by zero");
+        // Insert out of boundary order: the listing order is the error-id order.
         recordError(runId, 1L, "23505", "duplicate key");
+        recordError(runId, 0L, "22012", "division by zero");
 
         List<MigrationErrorsRecord> errors = Routines.migrationErrors(dsl.configuration(), runId);
 
-        assertEquals(2, errors.size());
-        assertEquals(0L, errors.get(0).getBoundaryNo().longValue());
-        assertEquals("22012", errors.get(0).getSqlstate());
-        assertEquals("division by zero", errors.get(0).getMessage());
-        assertEquals("23505", errors.get(1).getSqlstate());
+        assertEquals(List.of("1|23505|duplicate key", "0|22012|division by zero"),
+                errors.stream()
+                        .map(e -> e.getBoundaryNo() + "|" + e.getSqlstate() + "|" + e.getMessage())
+                        .toList());
     }
 
     /**
@@ -136,13 +167,14 @@ class MigrationMaintenanceTest extends PostgresTestBase {
         List<MigrationBoundariesRecord> boundaries = Routines.migrationBoundaries(
                 dsl.configuration(), runId);
 
-        assertEquals(3, boundaries.size(), "three chunk starts");
+        assertEquals(3, boundaries.size(), "two chunk starts plus the terminal boundary");
         assertEquals(List.of(0L, 1L, 2L),
                 boundaries.stream().map(b -> b.getBoundaryNo().longValue()).toList());
         assertEquals(1L, boundaries.get(0).getBoundaryId().getBigintValues()[0].longValue(),
                 "the first boundary packs the first id");
         assertNotNull(boundaries.get(0).getCompletedAt(), "the completed chunk has a timestamp");
         assertNull(boundaries.get(1).getCompletedAt(), "a pending chunk has no timestamp");
+        assertNull(boundaries.get(2).getCompletedAt(), "the terminal boundary is pending");
     }
 
     /**
@@ -167,5 +199,9 @@ class MigrationMaintenanceTest extends PostgresTestBase {
                 .from(MIGRATION_RUN)
                 .where(MIGRATION_RUN.LABEL.eq(label))
                 .fetchOne(MIGRATION_RUN.RUN_ID);
+    }
+
+    private int runCount(String label) {
+        return dsl.fetchCount(MIGRATION_RUN, MIGRATION_RUN.LABEL.eq(label));
     }
 }

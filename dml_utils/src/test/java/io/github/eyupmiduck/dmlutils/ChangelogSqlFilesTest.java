@@ -4,8 +4,12 @@ import io.github.eyupmiduck.changelogvalidator.ChangelogValidator;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -18,22 +22,38 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ChangelogSqlFilesTest {
 
     /**
-     * Traverses the changelog graph from the master file and asserts that no
-     * {@code .sql} file is orphaned (unreferenced by any reachable changelog
-     * XML).
+     * Every {@code .sql} file found by an independent filesystem walk is reached
+     * by the changelog graph, and the validator reports no orphaned files.
      */
     @Test
     void noOrphanedSqlFiles() throws IOException {
         Path changelogRoot = ChangelogTestSupport.changelogRoot();
         Path master = ChangelogTestSupport.master();
 
-        // Sanity check so the assertion below cannot pass while the graph
-        // references nothing (a misresolved root or an empty changelog).
-        List<Path> referenced = ChangelogValidator.findReferencedSqlFiles(changelogRoot, master);
+        // Enumerate the SQL files directly, rather than trusting the validator's
+        // own traversal to discover them.
+        Set<Path> allSql = new TreeSet<>();
+        try (Stream<Path> walk = Files.walk(changelogRoot)) {
+            walk.filter(path -> path.getFileName().toString().endsWith(".sql"))
+                    .map(path -> path.toAbsolutePath().normalize())
+                    .forEach(allSql::add);
+        }
+        assertFalse(allSql.isEmpty(), "expected the changelog tree to contain SQL files");
+
+        // The validator reports paths relative to the changelog root; resolve them
+        // the same way as the independent walk so the two sets are comparable.
+        Set<Path> referenced =
+                ChangelogValidator.findReferencedSqlFiles(changelogRoot, master).stream()
+                        .map(path -> path.isAbsolute() ? path : changelogRoot.resolve(path))
+                        .map(path -> path.toAbsolutePath().normalize())
+                        .collect(Collectors.toCollection(TreeSet::new));
         assertFalse(referenced.isEmpty(), "expected the changelog graph to reference SQL files");
 
-        List<Path> orphaned = ChangelogValidator.findOrphanedSqlFiles(changelogRoot, master);
+        Set<Path> unreferenced = new TreeSet<>(allSql);
+        unreferenced.removeAll(referenced);
 
-        assertTrue(orphaned.isEmpty(), "Orphaned SQL files: " + orphaned);
+        assertTrue(unreferenced.isEmpty(), "SQL files the changelog never reaches: " + unreferenced);
+        assertTrue(ChangelogValidator.findOrphanedSqlFiles(changelogRoot, master).isEmpty(),
+                "the validator should report no orphaned SQL files");
     }
 }
