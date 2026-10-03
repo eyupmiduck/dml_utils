@@ -34,7 +34,12 @@ BEGIN
 
     -- The chunk SQL is fully formed by dml_utils_lib.render_chunk_sql from
     -- validated identifiers and literal ids; this is the intended dynamic-SQL
-    -- boundary for running one chunk.
+    -- boundary for running one chunk. The routine is SECURITY INVOKER on purpose:
+    -- it executes with the caller's privileges and can do nothing the caller
+    -- could not do by running the same statement directly, so it is not an
+    -- authorization boundary. Calling it directly with arbitrary SQL is
+    -- therefore no more privileged than the caller's own SQL, and no
+    -- provenance check is needed to keep it safe.
     EXECUTE i_sql_text;
 END;
 $$;
@@ -42,4 +47,7 @@ $$;
 COMMENT ON FUNCTION dml_utils_lib.process_migration_chunk IS
     'Claims one migration boundary and runs its chunk SQL in the caller''s '
         'transaction; raises P0002 when the boundary is missing or already '
-        'completed. Intended to run inside a pg_background worker.';
+        'completed. Intended to run inside a pg_background worker. SECURITY '
+        'INVOKER by design: it runs with the caller''s privileges and is not an '
+        'authorization boundary, so it can do nothing the caller could not do '
+        'directly.';

@@ -217,6 +217,15 @@ full runnable script.
   `dml_utils_caller`).
 - The routine is `SECURITY INVOKER`: the caller needs whatever privileges the
   chunk SQL needs on the driving table (typically `UPDATE`).
+- The routines are **not an authorization boundary** by design. A routine runs
+  with the caller's privileges and can do nothing the caller could not do by
+  running its SQL directly, so the routines deliberately do not check the
+  caller's privileges. `dml_utils_caller` is granted exactly the
+  `EXECUTE`/`USAGE`/DML it needs (see `999-grant-privileges.sql`), and
+  `ALTER DEFAULT PRIVILEGES` keeps future objects off `PUBLIC`; security comes
+  from that grant set, not from per-call checks. This also means a helper that
+  executes caller-supplied SQL (such as the internal `process_migration_chunk`)
+  is no more powerful than the caller's own statements.
 - Run under `READ COMMITTED`, and do not hold locks (or uncommitted writes) on
   the driving table across the call: a worker that needs a row the caller holds
   cannot make progress.

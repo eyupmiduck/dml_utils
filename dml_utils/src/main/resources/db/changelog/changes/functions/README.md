@@ -17,6 +17,15 @@ Dependencies point downward: `dml_utils_lib` may reference `dml_utils_data`;
 changeset; the matching drop lives in `changes/functions-rollback/`. Every
 routine is `SECURITY INVOKER` unless it genuinely needs `SECURITY DEFINER`.
 
+The routines are intentionally **not an authorization boundary**: a routine runs
+with the caller's privileges and can do nothing the caller could not do by
+running its SQL directly, so no routine checks the caller's privileges. The
+caller role is granted only the `EXECUTE`/`USAGE`/DML it needs (see
+`sql_changes/999-grant-privileges.sql`), and `ALTER DEFAULT PRIVILEGES` keeps
+future objects off `PUBLIC`. A helper that executes caller-supplied SQL (for
+example `dml_utils_lib.process_migration_chunk`) is safe for the same reason — it
+is no more privileged than the caller's own statements, not a sandbox.
+
 One exception: `dml_utils_lib.migration_key_is_canonical` is loaded earlier, by
 `changes/sql_changes/005-create-migration-key-check.sql`, because the
 `migration_boundary_key_check` constraint is created with its table and calls it.
