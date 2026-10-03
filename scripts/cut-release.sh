@@ -8,9 +8,8 @@
 # The tag (v<version>) is the single source of truth for the release version:
 # the Release workflow derives -Drevision from it, so the POM is not edited.
 # The script refuses to run unless the working tree is clean, HEAD is an
-# up-to-date main (so the release lands on a commit CI has built green), and
-# the version is newer than the greatest existing tag. Pass --yes to skip the
-# confirmation prompt for non-interactive use.
+# up-to-date main, and the version is newer than the greatest existing tag.
+# Pass --yes to skip the confirmation prompt for non-interactive use.
 
 set -eu
 
@@ -116,9 +115,35 @@ fi
 # Accept either 0.1.0 or v0.1.0.
 version="${version#v}"
 
-if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+case "$version" in
+    *-*)
+        semver_core="${version%%-*}"
+        semver_pre="${version#*-}"
+        has_pre=1
+        ;;
+    *)
+        semver_core="$version"
+        semver_pre=""
+        has_pre=0
+        ;;
+esac
+
+if ! printf '%s' "$semver_core" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
     echo "invalid version '$version': expected <major>.<minor>.<patch> (optionally with a -prerelease)" >&2
     exit 1
+fi
+
+if [ "$has_pre" = "1" ]; then
+    # SemVer 2.0 prerelease: dot-separated, non-empty [0-9A-Za-z-] identifiers,
+    # and a numeric identifier must not have a leading zero.
+    if ! printf '%s' "$semver_pre" | grep -Eq '^[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*$'; then
+        echo "invalid prerelease '$semver_pre': empty or invalid identifier" >&2
+        exit 1
+    fi
+    if printf '%s' "$semver_pre" | grep -Eq '(^|\.)0[0-9]'; then
+        echo "invalid prerelease '$semver_pre': numeric identifiers must not have leading zeros" >&2
+        exit 1
+    fi
 fi
 
 tag="v$version"
@@ -129,7 +154,8 @@ if ! command -v git >/dev/null 2>&1; then
 fi
 
 # The tag is the release version, so it must point at a pristine, up-to-date
-# main: a dirty tree or a stale main could tag a commit CI has not built.
+# main: tag only a commit that is on the released branch. (This does not verify
+# CI status; rely on the protected-branch required checks for that.)
 if [ -n "$(git status --porcelain)" ]; then
     echo "working tree is not clean; commit or stash your changes first" >&2
     git status --short >&2

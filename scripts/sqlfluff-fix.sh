@@ -3,9 +3,10 @@
 #
 # Usage: scripts/sqlfluff-fix.sh
 #
-# Uses the repo's .venv sqlfluff if present, otherwise falls back to
-# `sqlfluff` on PATH. Only fixes what SQLFluff can fix automatically;
-# remaining violations are reported and must be fixed by hand.
+# Uses the repo's .venv sqlfluff. Falling back to `sqlfluff` on PATH is an
+# explicit opt-in (SQLFLUFF_FIX_ALLOW_PATH=1) because this command rewrites
+# source files. Only fixes what SQLFluff can fix automatically; remaining
+# violations are reported and must be fixed by hand.
 
 set -eu
 
@@ -24,12 +25,16 @@ fi
 
 if [ -x "$repo_root/.venv/bin/sqlfluff" ]; then
     sqlfluff="$repo_root/.venv/bin/sqlfluff"
-elif command -v sqlfluff >/dev/null 2>&1; then
+elif [ "${SQLFLUFF_FIX_ALLOW_PATH:-}" = "1" ] && command -v sqlfluff >/dev/null 2>&1; then
     sqlfluff="sqlfluff"
     echo "warning: .venv sqlfluff not found; using '$sqlfluff' from PATH" >&2
 else
-    echo "sqlfluff not found: create the repo .venv or install sqlfluff on PATH" >&2
+    echo "sqlfluff not found at $repo_root/.venv/bin/sqlfluff; create the repo .venv," >&2
+    echo "or set SQLFLUFF_FIX_ALLOW_PATH=1 to use sqlfluff from PATH" >&2
     exit 1
 fi
 
+# Run from the repo root so SQLFluff discovers the repository .sqlfluff rather
+# than config from the caller's working directory.
+cd "$repo_root"
 "$sqlfluff" fix "$sql_dir"

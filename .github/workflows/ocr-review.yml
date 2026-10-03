@@ -29,7 +29,8 @@ concurrency:
             || github.event.comment.author_association == 'OWNER'
             || github.event.comment.author_association == 'COLLABORATOR'
           )
-          && startsWith(github.event.comment.body, '/open-code-review')
+          && (github.event.comment.body == '/open-code-review'
+              || startsWith(github.event.comment.body, '/open-code-review '))
         )
       )
       && format('ocr-{0}', github.event.pull_request.number || github.event.issue.number)
@@ -57,7 +58,8 @@ jobs:
           || github.event.comment.author_association == 'OWNER'
           || github.event.comment.author_association == 'COLLABORATOR'
         )
-        && startsWith(github.event.comment.body, '/open-code-review')
+        && (github.event.comment.body == '/open-code-review'
+              || startsWith(github.event.comment.body, '/open-code-review '))
       )
     # Pinned to the workflow_library commit so a change to its default branch
     # cannot alter what runs here with pull-requests: write and the LLM secret.

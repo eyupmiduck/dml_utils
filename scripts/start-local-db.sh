@@ -3,8 +3,8 @@
 #
 # Usage: scripts/start-local-db.sh
 #
-# This starts the PostgreSQL container plus the one-shot `liquibase` service
-# that applies the changelog, and waits for the services to be healthy.
+# This starts the PostgreSQL container and applies the changelog, waiting for
+# the migration to finish successfully before returning.
 
 set -eu
 
@@ -26,4 +26,13 @@ if ! docker compose version >/dev/null 2>&1; then
     exit 1
 fi
 
-docker compose up -d --wait
+# Pin the compose file and project so an inherited COMPOSE_FILE / project name
+# cannot make this act on an unrelated stack. Bring up PostgreSQL and wait for
+# its healthcheck.
+docker compose --project-name dml_utils --file "$repo_root/compose.yaml" \
+    up -d --wait postgres
+
+# The liquibase service is one-shot with no healthcheck, so `up --wait` cannot
+# wait for the migration. Run it explicitly and propagate its exit status.
+docker compose --project-name dml_utils --file "$repo_root/compose.yaml" \
+    run --rm -T liquibase
