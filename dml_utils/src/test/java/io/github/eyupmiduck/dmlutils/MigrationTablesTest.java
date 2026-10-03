@@ -96,14 +96,14 @@ class MigrationTablesTest extends PostgresTestBase {
         dsl.insertInto(MIGRATION_BOUNDARY)
                 .columns(MIGRATION_BOUNDARY.RUN_ID, MIGRATION_BOUNDARY.BOUNDARY_NO,
                         MIGRATION_BOUNDARY.BOUNDARY_ID)
-                .values(runId, 0L, new MigrationKeyRecord(1L, null, null))
+                .values(runId, 0L, new MigrationKeyRecord(new Long[]{1L}, null, null))
                 .execute();
         return runId;
     }
 
     /**
-     * The boundary key check constraint accepts a key with exactly one
-     * populated attribute.
+     * The boundary key check constraint accepts a key with at least one
+     * populated array.
      */
     @Test
     void acceptsASingleAttributeBoundaryKey() {
@@ -112,22 +112,22 @@ class MigrationTablesTest extends PostgresTestBase {
         dsl.insertInto(MIGRATION_BOUNDARY)
                 .columns(MIGRATION_BOUNDARY.RUN_ID, MIGRATION_BOUNDARY.BOUNDARY_NO,
                         MIGRATION_BOUNDARY.BOUNDARY_ID)
-                .values(runId, 0L, new MigrationKeyRecord(null, "abc", null))
+                .values(runId, 0L, new MigrationKeyRecord(null, new String[]{"abc"}, null))
                 .execute();
 
         assertEquals("abc", dsl.select(MIGRATION_BOUNDARY.BOUNDARY_ID)
                 .from(MIGRATION_BOUNDARY)
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
                 .fetchOne(MIGRATION_BOUNDARY.BOUNDARY_ID)
-                .getTextValue());
+                .getTextValues()[0]);
     }
 
     /**
-     * A boundary key with no populated attribute or more than one populated
-     * attribute violates the check constraint.
+     * A boundary key with no populated array violates the check constraint, and
+     * so does an empty array (it carries no key value).
      */
     @Test
-    void rejectsBoundaryKeysWithZeroOrMultipleAttributes() {
+    void rejectsBoundaryKeysWithNoPopulatedOrEmptyArray() {
         Long runId = insertRun();
 
         assertDomainViolation(() -> dsl.insertInto(MIGRATION_BOUNDARY)
@@ -138,7 +138,65 @@ class MigrationTablesTest extends PostgresTestBase {
         assertDomainViolation(() -> dsl.insertInto(MIGRATION_BOUNDARY)
                 .columns(MIGRATION_BOUNDARY.RUN_ID, MIGRATION_BOUNDARY.BOUNDARY_NO,
                         MIGRATION_BOUNDARY.BOUNDARY_ID)
-                .values(runId, 0L, new MigrationKeyRecord(1L, "abc", null))
+                .values(runId, 0L, new MigrationKeyRecord(new Long[]{}, null, null))
+                .execute());
+    }
+
+    /**
+     * The boundary key check rejects present arrays of differing lengths, even
+     * when no single index holds two values (the second case below passes the
+     * per-index rule but not the shared-arity rule).
+     */
+    @Test
+    void rejectsBoundaryKeysWithMismatchedArrayLengths() {
+        Long runId = insertRun();
+
+        assertDomainViolation(() -> dsl.insertInto(MIGRATION_BOUNDARY)
+                .columns(MIGRATION_BOUNDARY.RUN_ID, MIGRATION_BOUNDARY.BOUNDARY_NO,
+                        MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .values(runId, 0L, new MigrationKeyRecord(new Long[]{1L, 2L}, new String[]{"x"}, null))
+                .execute());
+        assertDomainViolation(() -> dsl.insertInto(MIGRATION_BOUNDARY)
+                .columns(MIGRATION_BOUNDARY.RUN_ID, MIGRATION_BOUNDARY.BOUNDARY_NO,
+                        MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .values(runId, 0L,
+                        new MigrationKeyRecord(new Long[]{1L, null, 3L}, new String[]{null, "x"}, null))
+                .execute());
+    }
+
+    /**
+     * The boundary key check rejects an equal-length key with two values at the
+     * same index: exactly one array may hold a value per position.
+     */
+    @Test
+    void rejectsBoundaryKeysWithTwoValuesAtOneIndex() {
+        Long runId = insertRun();
+
+        assertDomainViolation(() -> dsl.insertInto(MIGRATION_BOUNDARY)
+                .columns(MIGRATION_BOUNDARY.RUN_ID, MIGRATION_BOUNDARY.BOUNDARY_NO,
+                        MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .values(runId, 0L, new MigrationKeyRecord(new Long[]{1L}, new String[]{"abc"}, null))
+                .execute());
+    }
+
+    /**
+     * The boundary key check rejects a key of more than three columns (the
+     * arity cap) and a present-but-all-NULL array, which only the non-emptiness
+     * guard rejects.
+     */
+    @Test
+    void rejectsBoundaryKeysOverTheArityCapOrWithAnAllNullArray() {
+        Long runId = insertRun();
+
+        assertDomainViolation(() -> dsl.insertInto(MIGRATION_BOUNDARY)
+                .columns(MIGRATION_BOUNDARY.RUN_ID, MIGRATION_BOUNDARY.BOUNDARY_NO,
+                        MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .values(runId, 0L, new MigrationKeyRecord(new Long[]{1L, 2L, 3L, 4L}, null, null))
+                .execute());
+        assertDomainViolation(() -> dsl.insertInto(MIGRATION_BOUNDARY)
+                .columns(MIGRATION_BOUNDARY.RUN_ID, MIGRATION_BOUNDARY.BOUNDARY_NO,
+                        MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .values(runId, 0L, new MigrationKeyRecord(new Long[]{1L}, new String[]{null}, null))
                 .execute());
     }
 
@@ -197,7 +255,7 @@ class MigrationTablesTest extends PostgresTestBase {
         long runId = insertRunWithBoundary();
 
         assertSqlState("22023", () -> dsl.update(MIGRATION_BOUNDARY)
-                .set(MIGRATION_BOUNDARY.BOUNDARY_ID, new MigrationKeyRecord(999L, null, null))
+                .set(MIGRATION_BOUNDARY.BOUNDARY_ID, new MigrationKeyRecord(new Long[]{999L}, null, null))
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
                 .execute());
         assertSqlState("22023", () -> dsl.update(MIGRATION_BOUNDARY)

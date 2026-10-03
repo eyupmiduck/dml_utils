@@ -4,6 +4,7 @@ import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.routines.RunMigrationChunks;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.records.MigrationBoundaryRecord;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.records.MigrationErrorRecord;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.udt.records.MigrationKeyRecord;
 import org.jooq.Table;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -16,6 +17,8 @@ import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.Migration
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationError.MIGRATION_ERROR;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeMixed.TEST_COMPOSITE_MIXED;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeThree.TEST_COMPOSITE_THREE;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestInteger.TEST_INTEGER;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestKey.TEST_KEY;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestOther.TEST_OTHER;
@@ -51,15 +54,93 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     /**
+     * Asserts a boundary key's position-aligned parts for the fixture's
+     * {@code (b integer, a text, c uuid)} primary key.
+     */
+    private static void assertCompositeKey(MigrationKeyRecord key, long b, String a, UUID c) {
+        assertEquals(b, key.getBigintValues()[0].longValue(), "key part b");
+        assertEquals(a, key.getTextValues()[1], "key part a");
+        assertEquals(c, key.getUuidValues()[2], "key part c");
+    }
+
+    /**
+     * Asserts a boundary key's position-aligned parts for the fixture's
+     * {@code (a bigint, b text)} primary key.
+     */
+    private static void assertMixedKey(MigrationKeyRecord key, long a, String b) {
+        assertEquals(a, key.getBigintValues()[0].longValue(), "key part a");
+        assertEquals(b, key.getTextValues()[1], "key part b");
+    }
+
+    /**
      * Clears the fixture tables this class drives a run over, so each test
      * starts from a known state.
      */
     @BeforeEach
     void resetFixtures() {
         for (Table<?> table : List.of(TEST_BIGINT, TEST_OTHER, TEST_INTEGER, TEST_SMALLINT,
-                TEST_TEXT, TEST_UUID, TEST_KEY)) {
+                TEST_TEXT, TEST_UUID, TEST_KEY, TEST_COMPOSITE_MIXED, TEST_COMPOSITE_THREE)) {
             dsl.truncate(table).execute();
         }
+    }
+
+    /**
+     * A composite-primary-key table is chunked and every row is processed.
+     */
+    @Test
+    void processesACompositeKeyedTable() {
+        dsl.insertInto(TEST_COMPOSITE_THREE, TEST_COMPOSITE_THREE.B, TEST_COMPOSITE_THREE.A,
+                        TEST_COMPOSITE_THREE.C)
+                .values(1, "x", uuid(1))
+                .values(1, "y", uuid(2))
+                .values(2, "x", uuid(3))
+                .execute();
+
+        String label = label("composite");
+        run(label, 2, TEST_COMPOSITE_THREE);
+
+        long runId = runId(label);
+        assertEquals(3, payloadCount(TEST_COMPOSITE_THREE, "done"),
+                "all rows of the composite-keyed table should be updated");
+        assertTrue(runCompleted(runId), "the run should be marked complete");
+
+        // Key order (b, a, c); chunk size 2 starts chunks at (1,x,u1) and
+        // (2,x,u3), and the terminal high-water boundary captures (2,x,u3).
+        List<MigrationKeyRecord> keys = boundaryKeys(runId);
+        assertEquals(3, keys.size(), "two chunk boundaries plus the terminal boundary");
+        assertCompositeKey(keys.get(0), 1L, "x", uuid(1));
+        assertCompositeKey(keys.get(1), 2L, "x", uuid(3));
+        assertCompositeKey(keys.get(2), 2L, "x", uuid(3));
+    }
+
+    /**
+     * A two-column, mixed-kind (bigint, text) primary key is chunked end to
+     * end: every row is processed and the boundary keys land in the right
+     * arrays.
+     */
+    @Test
+    void processesAMixedCompositeKeyedTable() {
+        dsl.insertInto(TEST_COMPOSITE_MIXED, TEST_COMPOSITE_MIXED.A, TEST_COMPOSITE_MIXED.B)
+                .values(1L, "x")
+                .values(1L, "y")
+                .values(2L, "x")
+                .execute();
+
+        String label = label("composite-mixed");
+        run(label, 2, TEST_COMPOSITE_MIXED);
+
+        long runId = runId(label);
+        assertEquals(3, payloadCount(TEST_COMPOSITE_MIXED, "done"),
+                "all rows of the mixed composite-keyed table should be updated");
+        assertTrue(runCompleted(runId), "the run should be marked complete");
+
+        // Key order (a bigint, b text); chunk size 2 starts chunks at (1,x) and
+        // (2,x), and the terminal high-water boundary captures (2,x).
+        List<MigrationKeyRecord> keys = boundaryKeys(runId);
+        assertEquals(3, keys.size(), "two chunk boundaries plus the terminal boundary");
+        assertMixedKey(keys.get(0), 1L, "x");
+        assertMixedKey(keys.get(1), 2L, "x");
+        assertMixedKey(keys.get(2), 2L, "x");
     }
 
     /**
@@ -714,7 +795,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
                 .orderBy(MIGRATION_BOUNDARY.BOUNDARY_NO)
                 .fetch(MIGRATION_BOUNDARY.BOUNDARY_ID)
                 .stream()
-                .map(key -> key.getTextValue())
+                .map(key -> key.getTextValues()[0])
                 .toList();
     }
 
@@ -728,7 +809,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
                 .orderBy(MIGRATION_BOUNDARY.BOUNDARY_NO)
                 .fetch(MIGRATION_BOUNDARY.BOUNDARY_ID)
                 .stream()
-                .map(key -> key.getUuidValue())
+                .map(key -> key.getUuidValues()[0])
                 .toList();
     }
 
@@ -792,6 +873,17 @@ class RunMigrationChunksTest extends PostgresTestBase {
                 .fetchOne(MIGRATION_BOUNDARY.COMPLETED_AT.isNotNull()));
     }
 
+    /**
+     * Returns the run's boundary keys in boundary order.
+     */
+    private List<MigrationKeyRecord> boundaryKeys(long runId) {
+        return dsl.select(MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .from(MIGRATION_BOUNDARY)
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .orderBy(MIGRATION_BOUNDARY.BOUNDARY_NO)
+                .fetch(MIGRATION_BOUNDARY.BOUNDARY_ID);
+    }
+
     private void assertBoundaries(long runId, long[][] expected) {
         List<MigrationBoundaryRecord> actual = dsl.selectFrom(MIGRATION_BOUNDARY)
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
@@ -801,7 +893,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
         for (int i = 0; i < expected.length; i++) {
             assertEquals(expected[i][0], actual.get(i).getBoundaryNo().longValue(),
                     "boundary_no " + i);
-            assertEquals(expected[i][1], actual.get(i).getBoundaryId().getBigintValue().longValue(),
+            assertEquals(expected[i][1], actual.get(i).getBoundaryId().getBigintValues()[0].longValue(),
                     "boundary_id " + i);
         }
     }

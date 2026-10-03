@@ -13,6 +13,9 @@ import java.util.UUID;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeId1.TEST_COMPOSITE_ID1;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositePk.TEST_COMPOSITE_PK;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeThree.TEST_COMPOSITE_THREE;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestInteger.TEST_INTEGER;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestKey.TEST_KEY;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestText.TEST_TEXT;
@@ -40,7 +43,8 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
      */
     @BeforeEach
     void resetFixtures() {
-        for (Table<?> table : List.of(TEST_BIGINT, TEST_TEXT, TEST_UUID, TEST_INTEGER, TEST_KEY)) {
+        for (Table<?> table : List.of(TEST_BIGINT, TEST_TEXT, TEST_UUID, TEST_INTEGER, TEST_KEY,
+                TEST_COMPOSITE_PK, TEST_COMPOSITE_ID1, TEST_COMPOSITE_THREE)) {
             dsl.truncate(table).execute();
         }
     }
@@ -182,10 +186,10 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
 
         List<MigrationBoundaryRecord> actual = boundaries(runId);
         assertEquals(4, actual.size(), "ten rows at chunk size four yield four boundaries");
-        assertEquals("k01", actual.get(0).getBoundaryId().getTextValue());
-        assertEquals("k05", actual.get(1).getBoundaryId().getTextValue());
-        assertEquals("k09", actual.get(2).getBoundaryId().getTextValue());
-        assertEquals("k10", actual.get(3).getBoundaryId().getTextValue());
+        assertEquals("k01", actual.get(0).getBoundaryId().getTextValues()[0]);
+        assertEquals("k05", actual.get(1).getBoundaryId().getTextValues()[0]);
+        assertEquals("k09", actual.get(2).getBoundaryId().getTextValues()[0]);
+        assertEquals("k10", actual.get(3).getBoundaryId().getTextValues()[0]);
     }
 
     /**
@@ -203,10 +207,10 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
 
         List<MigrationBoundaryRecord> actual = boundaries(runId);
         assertEquals(4, actual.size(), "ten rows at chunk size four yield four boundaries");
-        assertEquals(uuid(1), actual.get(0).getBoundaryId().getUuidValue());
-        assertEquals(uuid(5), actual.get(1).getBoundaryId().getUuidValue());
-        assertEquals(uuid(9), actual.get(2).getBoundaryId().getUuidValue());
-        assertEquals(uuid(10), actual.get(3).getBoundaryId().getUuidValue());
+        assertEquals(uuid(1), actual.get(0).getBoundaryId().getUuidValues()[0]);
+        assertEquals(uuid(5), actual.get(1).getBoundaryId().getUuidValues()[0]);
+        assertEquals(uuid(9), actual.get(2).getBoundaryId().getUuidValues()[0]);
+        assertEquals(uuid(10), actual.get(3).getBoundaryId().getUuidValues()[0]);
     }
 
     /**
@@ -223,10 +227,79 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
 
         List<MigrationBoundaryRecord> actual = boundaries(runId);
         assertEquals(4, actual.size(), "ten rows at chunk size four yield four boundaries");
-        assertEquals(1L, actual.get(0).getBoundaryId().getBigintValue());
-        assertEquals(5L, actual.get(1).getBoundaryId().getBigintValue());
-        assertEquals(9L, actual.get(2).getBoundaryId().getBigintValue());
-        assertEquals(10L, actual.get(3).getBoundaryId().getBigintValue());
+        assertEquals(1L, actual.get(0).getBoundaryId().getBigintValues()[0]);
+        assertEquals(5L, actual.get(1).getBoundaryId().getBigintValues()[0]);
+        assertEquals(9L, actual.get(2).getBoundaryId().getBigintValues()[0]);
+        assertEquals(10L, actual.get(3).getBoundaryId().getBigintValues()[0]);
+    }
+
+    /**
+     * A mixed-kind composite primary key (integer, text, uuid) packs each value
+     * into the array for its kind, position-aligned: the matching index holds
+     * the value and the other positions are NULL, with no compaction of the
+     * NULL holes.
+     */
+    @Test
+    void packsAMixedKindCompositeKeyPositionAligned() {
+        UUID c1 = uuid(1);
+        dsl.insertInto(TEST_COMPOSITE_THREE, TEST_COMPOSITE_THREE.B, TEST_COMPOSITE_THREE.A,
+                        TEST_COMPOSITE_THREE.C)
+                .values(7, "x", c1)
+                .execute();
+
+        long runId = populate(TEST_COMPOSITE_THREE, 4);
+
+        List<MigrationBoundaryRecord> actual = boundaries(runId);
+        MigrationBoundaryRecord first = actual.get(0);
+        assertArrayEquals(new Long[]{7L, null, null}, first.getBoundaryId().getBigintValues(),
+                "the integer (first key part) lands at array index 0; the other positions stay NULL");
+        assertArrayEquals(new String[]{null, "x", null}, first.getBoundaryId().getTextValues(),
+                "the text (second key part) lands at array index 1");
+        assertArrayEquals(new UUID[]{null, null, c1}, first.getBoundaryId().getUuidValues(),
+                "the uuid (third key part) lands at array index 2");
+    }
+
+    /**
+     * A duplicate-kind composite key (two bigints) packs both values into the
+     * single bigint array, leaving the unused text and uuid arrays NULL.
+     */
+    @Test
+    void packsADuplicateKindCompositeKeyIntoOneArray() {
+        dsl.insertInto(TEST_COMPOSITE_PK, TEST_COMPOSITE_PK.A, TEST_COMPOSITE_PK.B)
+                .values(1L, 2L)
+                .execute();
+
+        long runId = populate(TEST_COMPOSITE_PK, 4);
+
+        MigrationBoundaryRecord first = boundaries(runId).get(0);
+        assertArrayEquals(new Long[]{1L, 2L}, first.getBoundaryId().getBigintValues(),
+                "both bigint key parts share the bigint array, in key order");
+        assertNull(first.getBoundaryId().getTextValues(), "the unused text array stays NULL");
+        assertNull(first.getBoundaryId().getUuidValues(), "the unused uuid array stays NULL");
+    }
+
+    /**
+     * A key column literally named {@code id1} at a non-matching position is
+     * ordered by its own value, not by the output alias {@code id1} (which is
+     * the first key column). The terminal boundary must capture the true
+     * maximum tuple, so this catches the alias/column ORDER BY collision.
+     */
+    @Test
+    void ordersByKeyColumnsWhenAKeyColumnIsNamedId1() {
+        dsl.insertInto(TEST_COMPOSITE_ID1, TEST_COMPOSITE_ID1.X, TEST_COMPOSITE_ID1.ID1)
+                .values(1L, 5L)
+                .values(2L, 1L)
+                .execute();
+
+        long runId = populate(TEST_COMPOSITE_ID1, 10);
+
+        List<MigrationBoundaryRecord> actual = boundaries(runId);
+        // One chunk start at (1,5) plus the terminal high-water boundary (2,1).
+        assertEquals(2, actual.size(), "one chunk boundary plus the terminal boundary");
+        assertArrayEquals(new Long[]{1L, 5L}, actual.get(0).getBoundaryId().getBigintValues(),
+                "the first chunk starts at the smallest key tuple (1,5)");
+        assertArrayEquals(new Long[]{2L, 1L}, actual.get(1).getBoundaryId().getBigintValues(),
+                "the terminal boundary is the maximum tuple (2,1), not (2,5)");
     }
 
     /**
@@ -382,7 +455,7 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
         for (int i = 0; i < expected.length; i++) {
             assertEquals(expected[i][0], actual.get(i).getBoundaryNo().longValue(),
                     "boundary_no " + i);
-            assertEquals(expected[i][1], actual.get(i).getBoundaryId().getBigintValue().longValue(),
+            assertEquals(expected[i][1], actual.get(i).getBoundaryId().getBigintValues()[0].longValue(),
                     "boundary_id " + i);
         }
     }

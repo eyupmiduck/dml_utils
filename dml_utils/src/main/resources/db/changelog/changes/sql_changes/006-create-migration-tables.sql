@@ -60,12 +60,10 @@ CREATE TABLE dml_utils_data.migration_boundary
         FOREIGN KEY (run_id)
             REFERENCES dml_utils_data.migration_run (run_id)
             ON DELETE CASCADE,
+    -- The boundary key must be canonical; see
+    -- dml_utils_lib.migration_key_is_canonical for the rule.
     CONSTRAINT migration_boundary_key_check CHECK (
-        pg_catalog.num_nonnulls(
-                (boundary_id).bigint_value,
-                (boundary_id).text_value,
-                (boundary_id).uuid_value
-        ) = 1
+        dml_utils_lib.migration_key_is_canonical(boundary_id)
         )
 );
 
@@ -78,9 +76,9 @@ COMMENT ON COLUMN dml_utils_data.migration_boundary.run_id IS
 COMMENT ON COLUMN dml_utils_data.migration_boundary.boundary_no IS
     'Boundary order within the run; 0 is the first chunk start.';
 COMMENT ON COLUMN dml_utils_data.migration_boundary.boundary_id IS
-    'Packed primary-key value (one of bigint_value, text_value or uuid_value in '
-        'migration_key) of the first row in the chunk, or the captured maximum '
-        'for the final high-water boundary.';
+    'Packed primary-key value (position-aligned arrays in migration_key) of the '
+        'first row in the chunk, or the captured maximum for the final high-water '
+        'boundary.';
 COMMENT ON COLUMN dml_utils_data.migration_boundary.created_at IS
     'Row creation time.';
 COMMENT ON COLUMN dml_utils_data.migration_boundary.updated_at IS

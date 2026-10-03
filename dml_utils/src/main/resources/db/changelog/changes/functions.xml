@@ -64,22 +64,32 @@
         </rollback>
     </changeSet>
 
-    <changeSet id="function-dml_utils_lib.single_column_primary_key" author="dml_utils"
+    <changeSet id="function-dml_utils_lib.primary_key_columns" author="dml_utils"
                dbms="postgresql" runOnChange="true">
-        <createProcedure path="functions/dml_utils_lib/single_column_primary_key.sql"
+        <createProcedure path="functions/dml_utils_lib/primary_key_columns.sql"
                          relativeToChangelogFile="true"/>
         <rollback>
-            <sqlFile path="functions-rollback/dml_utils_lib/single_column_primary_key-rollback.sql"
+            <sqlFile path="functions-rollback/dml_utils_lib/primary_key_columns-rollback.sql"
                      relativeToChangelogFile="true"/>
         </rollback>
     </changeSet>
 
-    <changeSet id="function-dml_utils_lib.primary_key_kind" author="dml_utils"
+    <changeSet id="function-dml_utils_lib.primary_key_kinds" author="dml_utils"
                dbms="postgresql" runOnChange="true">
-        <createProcedure path="functions/dml_utils_lib/primary_key_kind.sql"
+        <createProcedure path="functions/dml_utils_lib/primary_key_kinds.sql"
                          relativeToChangelogFile="true"/>
         <rollback>
-            <sqlFile path="functions-rollback/dml_utils_lib/primary_key_kind-rollback.sql"
+            <sqlFile path="functions-rollback/dml_utils_lib/primary_key_kinds-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="function-dml_utils_lib.migration_key_values" author="dml_utils"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils_lib/migration_key_values.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils_lib/migration_key_values-rollback.sql"
                      relativeToChangelogFile="true"/>
         </rollback>
     </changeSet>

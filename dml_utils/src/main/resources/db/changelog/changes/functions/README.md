@@ -17,6 +17,11 @@ Dependencies point downward: `dml_utils_lib` may reference `dml_utils_data`;
 changeset; the matching drop lives in `changes/functions-rollback/`. Every
 routine is `SECURITY INVOKER` unless it genuinely needs `SECURITY DEFINER`.
 
+One exception: `dml_utils_lib.migration_key_is_canonical` is loaded earlier, by
+`changes/sql_changes/005-create-migration-key-check.sql`, because the
+`migration_boundary_key_check` constraint is created with its table and calls it.
+Its drop lives in `changes/rollback/`.
+
 Each routine file ends with a `COMMENT ON FUNCTION` (or `COMMENT ON PROCEDURE`)
 for the routine it creates, using the short form (`schema.name`, no argument
 list). If a routine is ever overloaded, include its argument types so the
@@ -127,12 +132,11 @@ changeset (`function-dml_utils.delete_archived_migration_runs`).
 
 ```sql
 i_label dml_utils_data.non_null_text
-RETURNS TABLE (
-    run_id, label, chunk_size, threads,
+RETURNS TABLE
+( run_id, label, chunk_size, threads,
     driving_table_schema_name, driving_table_name,
     created_at, completed_at, archived_at,
-    boundary_count, completed_boundary_count, error_count
-)
+    boundary_count, completed_boundary_count, error_count)
 ```
 
 `STABLE`, `SECURITY INVOKER`. Returns one high-level row per run for the label,
@@ -144,7 +148,8 @@ how many are completed, and the number of recorded errors. Use
 
 ```sql
 i_run_id bigint
-RETURNS TABLE (error_id, boundary_no, sqlstate, message, created_at)
+RETURNS TABLE
+    (error_id, boundary_no, sqlstate, message, created_at)
 ```
 
 `STABLE`, `SECURITY INVOKER`. Returns the run's recorded errors, ordered by
@@ -154,13 +159,15 @@ RETURNS TABLE (error_id, boundary_no, sqlstate, message, created_at)
 
 ```sql
 i_run_id bigint
-RETURNS TABLE (boundary_no, boundary_id, completed_at)
+RETURNS TABLE
+    (boundary_no, boundary_id, completed_at)
 ```
 
 `STABLE`, `SECURITY INVOKER`. Returns the run's chunk boundaries in order.
-`boundary_id` is a `dml_utils_data.migration_key`; read the attribute for the
-driving table's key type, for example `(boundary_id).bigint_value`. A
-`completed_at` of `NULL` means the chunk is still to process.
+`boundary_id` is a `dml_utils_data.migration_key`: position-aligned arrays, one
+per key kind. Index i is the i-th primary-key column, so a bigint key's first
+column is `(boundary_id).bigint_values[1]`. A `completed_at` of `NULL` means the
+chunk is still to process.
 
 ## `dml_utils_lib`
 
@@ -188,30 +195,56 @@ RETURNS void
 `STABLE`, `SECURITY INVOKER`. Raises `undefined_table` (`42P01`) when the table
 does not exist in the schema.
 
-### `dml_utils_lib.single_column_primary_key(i_schema_name, i_table_name)`
+### `dml_utils_lib.primary_key_columns(i_schema_name, i_table_name)`
 
 ```sql
 i_schema_name dml_utils_data.non_null_text
 i_table_name  dml_utils_data.non_null_text
-RETURNS name
+RETURNS name[]
 ```
 
-`STABLE`, `SECURITY INVOKER`. Returns the table's single primary-key column,
-raising `invalid_parameter_value` (`22023`) when the table has no primary key or
-a composite primary key.
+`STABLE`, `SECURITY INVOKER`. Returns the table's primary-key columns in key
+order (from the index, so a key declared `(b, a)` returns `{b, a}`), raising
+`invalid_parameter_value` (`22023`) when the table has no primary key or more
+than 3 key columns.
 
-### `dml_utils_lib.primary_key_kind(i_schema_name, i_table_name)`
+### `dml_utils_lib.primary_key_kinds(i_schema_name, i_table_name)`
 
 ```sql
 i_schema_name dml_utils_data.non_null_text
 i_table_name  dml_utils_data.non_null_text
-RETURNS text
+RETURNS text[]
 ```
 
-`STABLE`, `SECURITY INVOKER`. Returns the boundary key kind of the table's single
-primary-key column: `bigint` for `smallint`/`integer`/`bigint`, `text` for a
+`STABLE`, `SECURITY INVOKER`. Returns the boundary key kind of each primary-key
+column, in key order: `bigint` for `smallint`/`integer`/`bigint`, `text` for a
 `text` key, and `uuid` for a `uuid` key. Raises `invalid_parameter_value`
 (`22023`) for any other type.
+
+### `dml_utils_lib.migration_key_is_canonical(i_key)`
+
+```sql
+i_key dml_utils_data.migration_key
+RETURNS boolean
+```
+
+`IMMUTABLE`, `SECURITY INVOKER`. True when the key is a canonical boundary key:
+its arity is one to three, every present array shares that arity, exactly one
+array holds a non-NULL element at each index, and no present array is empty or
+all-NULL. The `migration_boundary_key_check` constraint calls it.
+
+### `dml_utils_lib.migration_key_values(i_key, i_key_kinds)`
+
+```sql
+i_key       dml_utils_data.migration_key
+i_key_kinds text[]
+RETURNS text[]
+```
+
+`IMMUTABLE`, `SECURITY INVOKER`. Flattens a position-aligned `migration_key`
+into one text value per primary-key column, in key order, using `i_key_kinds` to
+pick the array for each position. The chunk predicate re-casts each value. Pure
+casts and array element access, so it is `IMMUTABLE`.
 
 ### `dml_utils_lib.assert_chunking_template(i_sql_text)`
 
@@ -226,31 +259,34 @@ once each.
 
 ###
 
-`dml_utils_lib.render_chunk_sql(i_sql_text, i_schema_name, i_table_name, i_table_alias, i_primary_key_name, i_key_kind, i_start_value, i_end_value, i_is_final)`
+`dml_utils_lib.render_chunk_sql(i_sql_text, i_schema_name, i_table_name, i_table_alias, i_primary_key_columns, i_key_kinds, i_start_values, i_end_values, i_is_final)`
 
 ```sql
-i_sql_text         dml_utils_data.non_null_text
-i_schema_name      dml_utils_data.non_null_text
-i_table_name       dml_utils_data.non_null_text
-i_table_alias      dml_utils_data.non_null_text
-i_primary_key_name name
-i_key_kind         dml_utils_data.non_null_text
-i_start_value      text
-i_end_value        text
-i_is_final         boolean
+i_sql_text          dml_utils_data.non_null_text
+i_schema_name       dml_utils_data.non_null_text
+i_table_name        dml_utils_data.non_null_text
+i_table_alias       dml_utils_data.non_null_text
+i_primary_key_columns name[]
+i_key_kinds         text[]
+i_start_values      text[]
+i_end_values        text[]
+i_is_final          boolean
 RETURNS text
 ```
 
 `STABLE`, `SECURITY INVOKER`. Validates the template (see
 `assert_chunking_template`) and returns it with `<driving_table>` replaced by
 `"<schema>"."<table>" "<alias>"` and `<chunking_clause>` replaced by the
-parenthesized range predicate `(<alias>.<pk> >= '<start>'::<kind> AND
-<alias>.<pk> <op> '<end>'::<kind>)`, where `<op>` is `<` normally and `<=` for
-the final chunk. `i_key_kind` must be `bigint`, `text` or `uuid`; it is
-interpolated as the literal's cast, so any other value raises `22023`. The start
-and end values are the text form of the packed boundary key. Identifiers are
-quoted with `%I` and values with `%L`, so neither substitution can reintroduce a
-token.
+parenthesized row-value range predicate
+`((<alias>.<pk1>, ...) >= ('<start1>'::<kind1>, ...) AND (<alias>.<pk1>, ...)
+<op> ('<end1>'::<kind1>, ...))`, where `<op>` is `<` normally and `<=` for the
+final chunk; a one-column key degenerates to an ordinary scalar comparison. Each
+`i_key_kinds` entry must be `bigint`, `text` or `uuid` and is interpolated as the
+literal's cast, so any other value raises `22023`; the arrays must all have the
+same length, and a NULL start or end value raises `22023` (a NULL would render
+as an unquoted `NULL`, making the predicate match no rows). The start and end
+values are the text form of the packed boundary key. Identifiers are quoted with
+`%I` and values with `%L`, so neither substitution can reintroduce a token.
 
 ### `dml_utils_lib.assert_no_active_run_for_label(i_label)`
 
@@ -280,16 +316,20 @@ RETURNS bigint
 with the recorded SQL text, chunk size, threads and driving table, then inserts one
 fixed-row chunk boundary per chunk plus a terminal high-water boundary at the
 captured maximum primary key; returns the new `run_id`. The source table must
-exist and have a single primary-key column of a supported type (`smallint`,
-`integer`, `bigint`, `text` or `uuid`); the column is identified from the
-catalog, not assumed to be `id`. Each boundary is stored as
-`dml_utils_data.migration_key`, with the populated attribute selected by the key
-kind (`bigint_value` for integer keys, `text_value` for text, `uuid_value` for
-uuid); the `migration_boundary_key_check` constraint allows exactly one. Raises
-`23505` when an active (not archived) run already exists for the label.
-Boundaries are inserted with `completed_at` null. An empty source produces a run
-with no boundaries. Later inserts above the captured maximum fall outside the
-terminal boundary and are not processed.
+exist and have a primary key of one to three columns, each of a supported type (`smallint`, `integer`, `bigint`, `text`
+or `uuid`); the columns are identified
+from the catalog in key order, not assumed to be `id`. Each boundary is stored as
+`dml_utils_data.migration_key`, which holds position-aligned arrays — index i is
+the value of primary-key column i in the array matching that column's kind, and
+exactly one array element is non-NULL per index. The `migration_boundary_key_check`
+constraint enforces that: each present array must have a non-NULL element (so an
+all-NULL or empty array is rejected), present arrays must share one length of one
+to three, and exactly one of the three arrays holds a non-NULL value at each
+index. Raises `23505` when
+an active (not archived) run already exists for the label. Boundaries are
+inserted with `completed_at` null. An empty source produces a run with no
+boundaries. Later inserts above the captured maximum fall outside the terminal
+boundary and are not processed.
 
 ### `dml_utils_lib.process_migration_chunk(i_run_id, i_boundary_no, i_sql_text)`
 
@@ -333,7 +373,7 @@ RETURNS trigger
 `SECURITY INVOKER`. The shared `BEFORE UPDATE ... FOR EACH ROW` trigger function
 that stamps `NEW.updated_at := now()` on every table, so no caller can bypass
 it. Attach it to each table with a trigger named `<table>_set_updated_at`; see
-`changes/sql_changes/005-create-migration-tables.sql`.
+`changes/sql_changes/006-create-migration-tables.sql`.
 
 ### `dml_utils_data.reject_migration_run_update()`
 

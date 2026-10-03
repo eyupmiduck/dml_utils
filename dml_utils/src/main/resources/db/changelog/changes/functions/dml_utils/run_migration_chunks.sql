@@ -13,7 +13,8 @@ CREATE OR REPLACE FUNCTION dml_utils.run_migration_chunks(
 AS
 $$
 DECLARE
-    l_primary_key_name      name;
+    l_primary_key_columns   name[];
+    l_key_kinds             text[];
     l_run_id                bigint;
     l_completed_at          timestamptz;
     l_stored_sql_text       text;
@@ -25,10 +26,9 @@ DECLARE
     l_effective_threads     integer;
     l_effective_schema_name text;
     l_effective_table_name  text;
-    l_key_kind              text;
     l_boundary_no           bigint;
-    l_start_value           text;
-    l_end_value             text;
+    l_start_values          text[];
+    l_end_values            text[];
     l_is_final              boolean;
     l_chunk_sql             text;
     -- The workers kept in flight, and the boundary each one was launched for
@@ -133,21 +133,12 @@ BEGIN
 
     -- Resolve the key from the effective driving table (the input for a new run,
     -- the stored table for a resumed one) before any chunk worker is launched.
-    l_primary_key_name := dml_utils_lib.single_column_primary_key(
+    l_primary_key_columns := dml_utils_lib.primary_key_columns(
             i_schema_name => l_effective_schema_name,
             i_table_name => l_effective_table_name);
-    l_key_kind := dml_utils_lib.primary_key_kind(
+    l_key_kinds := dml_utils_lib.primary_key_kinds(
             i_schema_name => l_effective_schema_name,
             i_table_name => l_effective_table_name);
-
-    -- The key extraction below has one arm per known kind. Fail loudly here if
-    -- primary_key_kind ever returns a kind this routine does not understand,
-    -- rather than letting the extraction fall through to NULL and rendering a
-    -- predicate that matches no rows.
-    IF l_key_kind NOT IN ('bigint', 'text', 'uuid') THEN
-        RAISE EXCEPTION 'unsupported key kind %', l_key_kind
-            USING ERRCODE = '22023';
-    END IF;
 
     -- Process every unclaimed boundary, up to i_threads workers at a time. Each
     -- worker claims its boundary and runs its chunk SQL in its own transaction,
@@ -168,19 +159,19 @@ BEGIN
         IF NOT l_aborting THEN
             WHILE pg_catalog.cardinality(l_in_flight) < l_effective_threads
                 LOOP
+                -- Extract the per-position key values of the start and end
+                -- boundaries. Each kind populates a different position-aligned
+                -- array of migration_key; the extract below flattens them back
+                -- into a value list, in primary-key order.
                     SELECT b.boundary_no,
-                           CASE l_key_kind
-                               WHEN 'bigint' THEN (b.boundary_id).bigint_value::text
-                               WHEN 'text' THEN (b.boundary_id).text_value
-                               WHEN 'uuid' THEN (b.boundary_id).uuid_value::text
-                               END,
-                           CASE l_key_kind
-                               WHEN 'bigint' THEN (next.boundary_id).bigint_value::text
-                               WHEN 'text' THEN (next.boundary_id).text_value
-                               WHEN 'uuid' THEN (next.boundary_id).uuid_value::text
-                               END,
+                           dml_utils_lib.migration_key_values(
+                                   i_key => b.boundary_id,
+                                   i_key_kinds => l_key_kinds),
+                           dml_utils_lib.migration_key_values(
+                                   i_key => next.boundary_id,
+                                   i_key_kinds => l_key_kinds),
                            next.boundary_no = last.boundary_no
-                    INTO l_boundary_no, l_start_value, l_end_value, l_is_final
+                    INTO l_boundary_no, l_start_values, l_end_values, l_is_final
                     FROM dml_utils_data.migration_boundary AS b
                              JOIN dml_utils_data.migration_boundary AS next
                                   ON next.run_id = b.run_id
@@ -203,10 +194,10 @@ BEGIN
                             i_schema_name => l_effective_schema_name,
                             i_table_name => l_effective_table_name,
                             i_table_alias => i_driving_table_alias,
-                            i_primary_key_name => l_primary_key_name,
-                            i_key_kind => l_key_kind,
-                            i_start_value => l_start_value,
-                            i_end_value => l_end_value,
+                            i_primary_key_columns => l_primary_key_columns,
+                            i_key_kinds => l_key_kinds,
+                            i_start_values => l_start_values,
+                            i_end_values => l_end_values,
                             i_is_final => l_is_final);
 
                     -- pg_background has no USING, so the run id, boundary number and
