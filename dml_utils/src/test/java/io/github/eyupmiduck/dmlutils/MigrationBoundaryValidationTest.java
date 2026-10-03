@@ -444,10 +444,19 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
      */
     @Test
     void writesNothingWhenValidationFails() {
+        dsl.insertInto(TEST_BIGINT, TEST_BIGINT.ID).values(1L).execute();
         int runsBefore = dsl.fetchCount(MIGRATION_RUN);
         int boundariesBefore = dsl.fetchCount(MIGRATION_BOUNDARY);
 
+        // A domain failure, an unknown schema/table, and each catalog validation
+        // failure must all leave the migration tables untouched.
+        assertDomainViolation(() -> populateByNames(null, TEST_BIGINT.getName(), 1));
+        assertDomainViolation(() -> populateByNames(FIXTURE_SCHEMA, TEST_BIGINT.getName(), 0));
+        assertSqlState("3F000", () -> populateByNames("no_such_schema", TEST_BIGINT.getName(), 1));
         assertSqlState("42P01", () -> populateByNames(FIXTURE_SCHEMA, NO_SUCH_TABLE, 1));
+        assertSqlState("22023", () -> populateTable(TEST_NO_PK, 1));
+        assertSqlState("22023", () -> populateTable(TEST_COMPOSITE_FOUR, 1));
+        assertSqlState("22023", () -> populateTable(TEST_NUMERIC, 1));
 
         assertEquals(runsBefore, dsl.fetchCount(MIGRATION_RUN), "no run should be written");
         assertEquals(boundariesBefore, dsl.fetchCount(MIGRATION_BOUNDARY),

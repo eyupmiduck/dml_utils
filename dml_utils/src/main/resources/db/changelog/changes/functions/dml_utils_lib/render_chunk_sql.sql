@@ -77,10 +77,12 @@ BEGIN
                     USING ERRCODE = '22023';
             END IF;
 
-            -- A NULL column name would render a degenerate %I token and only
-            -- fail later when a worker parses the chunk SQL; reject it here.
-            IF i_primary_key_columns[l_position] IS NULL THEN
-                RAISE EXCEPTION 'primary-key column name must not be NULL at position %',
+            -- A NULL or empty column name would render a degenerate %I token and
+            -- only fail later when a worker parses the chunk SQL; reject it here.
+            IF i_primary_key_columns[l_position] IS NULL
+                OR i_primary_key_columns[l_position] = ''
+            THEN
+                RAISE EXCEPTION 'primary-key column name must not be NULL or empty at position %',
                     l_position
                     USING ERRCODE = '22023';
             END IF;

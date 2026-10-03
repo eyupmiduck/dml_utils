@@ -410,6 +410,50 @@ class RenderChunkSqlTest extends PostgresTestBase {
                         + " '{{1}}'::text[], '{{2}}'::text[], false)"));
     }
 
+    /**
+     * An empty template is rejected up front by the non-null text domain.
+     */
+    @Test
+    void rejectsAnEmptyTemplate() {
+        assertDomainViolation(() -> Routines.assertChunkingTemplate(dsl.configuration(), ""));
+    }
+
+    /**
+     * A NULL columns/kinds/start/end array, or a NULL element inside the kinds
+     * array, is rejected with 22023.
+     */
+    @Test
+    void rejectsNullArraysAndNullKindElements() {
+        assertSqlState("22023", () -> Routines.renderChunkSql(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                null, new String[]{"bigint"}, new String[]{"1"}, new String[]{"2"}, false));
+        assertSqlState("22023", () -> Routines.renderChunkSql(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{"id"}, null, new String[]{"1"}, new String[]{"2"}, false));
+        assertSqlState("22023", () -> Routines.renderChunkSql(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{"id"}, new String[]{"bigint"}, null, new String[]{"2"}, false));
+        assertSqlState("22023", () -> Routines.renderChunkSql(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{"id"}, new String[]{"bigint"}, new String[]{"1"}, null, false));
+        assertSqlState("22023", () -> Routines.renderChunkSql(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{"id", "id2"}, new String[]{"bigint", null},
+                new String[]{"1", "2"}, new String[]{"3", "4"}, false));
+    }
+
+    /**
+     * An empty or NULL primary-key column name is rejected with 22023 instead of
+     * rendering a degenerate quoted identifier.
+     */
+    @Test
+    void rejectsAnEmptyColumnName() {
+        assertSqlState("22023", () -> Routines.renderChunkSql(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{""}, new String[]{"bigint"},
+                new String[]{"1"}, new String[]{"2"}, false));
+    }
+
     private String render(boolean isFinal, String keyKind, String startValue, String endValue) {
         return Routines.renderChunkSql(
                 dsl.configuration(), TEMPLATE, "public", "src", "t",

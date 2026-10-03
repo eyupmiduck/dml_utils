@@ -7,6 +7,7 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationError.MIGRATION_ERROR;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -293,5 +294,42 @@ class MigrationTablesTest extends PostgresTestBase {
     void updatedAtTriggerIsAttachedToMigrationError() {
         assertTrue(triggerExists("dml_utils_data", "migration_error", "migration_error_set_updated_at"),
                 "migration_error_set_updated_at should be attached to dml_utils_data.migration_error");
+    }
+
+    /**
+     * The {@code updated_at} trigger overwrites a caller-supplied timestamp on
+     * UPDATE for both {@code migration_boundary} and {@code migration_error}, not
+     * merely being attached to the table.
+     */
+    @Test
+    void updatedAtIsMaintainedByTheTriggerOnBoundaryAndError() {
+        long runId = insertRunWithBoundary();
+        dsl.insertInto(MIGRATION_ERROR, MIGRATION_ERROR.RUN_ID, MIGRATION_ERROR.BOUNDARY_NO,
+                        MIGRATION_ERROR.SQLSTATE, MIGRATION_ERROR.MESSAGE)
+                .values(runId, 0L, "22012", "boom")
+                .execute();
+
+        OffsetDateTime old = OffsetDateTime.parse("2000-01-01T00:00:00Z");
+        OffsetDateTime recent = OffsetDateTime.parse("2020-01-01T00:00:00Z");
+
+        dsl.update(MIGRATION_BOUNDARY)
+                .set(MIGRATION_BOUNDARY.UPDATED_AT, old)
+                .set(MIGRATION_BOUNDARY.COMPLETED_AT, OffsetDateTime.now())
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .execute();
+        dsl.update(MIGRATION_ERROR)
+                .set(MIGRATION_ERROR.UPDATED_AT, old)
+                .set(MIGRATION_ERROR.MESSAGE, "changed")
+                .where(MIGRATION_ERROR.RUN_ID.eq(runId))
+                .execute();
+
+        assertTrue(Boolean.TRUE.equals(dsl.select(MIGRATION_BOUNDARY.UPDATED_AT.gt(recent))
+                        .from(MIGRATION_BOUNDARY).where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                        .fetchOne(0, Boolean.class)),
+                "the boundary trigger should overwrite updated_at");
+        assertTrue(Boolean.TRUE.equals(dsl.select(MIGRATION_ERROR.UPDATED_AT.gt(recent))
+                        .from(MIGRATION_ERROR).where(MIGRATION_ERROR.RUN_ID.eq(runId))
+                        .fetchOne(0, Boolean.class)),
+                "the error trigger should overwrite updated_at");
     }
 }

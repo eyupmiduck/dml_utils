@@ -28,7 +28,8 @@ class ChangelogNamingTest {
      * {@code procedure-<schema>.<name>} / {@code trigger-<schema>.<name>}.
      */
     private static final Pattern CHANGE_SET_ID = Pattern.compile(
-            "\\d{3}[-_].+|(function|procedure|trigger)-[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*");
+            "^(?:\\d{3}[-_].+|(?:function|procedure|trigger)-[A-Za-z_][A-Za-z0-9_]*"
+                    + "\\.[A-Za-z_][A-Za-z0-9_]*)$");
 
     /**
      * Scans the changelog changes directory and asserts that no SQL file name

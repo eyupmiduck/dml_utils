@@ -4,10 +4,13 @@ import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.UUID;
+
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -43,6 +46,28 @@ class ProcessMigrationChunkTest extends PostgresTestBase {
 
         assertTrue(boundaryCompleted(runId, 0), "the first chunk should set completed_at");
         assertEquals(4, payloadCount(), "rows 1..4 should be updated");
+        assertEquals(6, dsl.fetchCount(TEST_BIGINT, TEST_BIGINT.PAYLOAD.isNull()),
+                "rows outside the chunk range must be untouched");
+    }
+
+    /**
+     * A chunk whose SQL raises rolls back both the data change and the claim, so
+     * the boundary is left unclaimed and a later call can retry it.
+     */
+    @Test
+    void rollsBackAFailedChunkAndAllowsARetry() {
+        createSource(1, 2, 3, 4);
+        long runId = populate(2);
+
+        assertSqlState("42P01", () -> processChunk(runId, 0,
+                "UPDATE public.no_such_table SET payload = 'done'"));
+        assertFalse(boundaryCompleted(runId, 0),
+                "a failed chunk must not leave the boundary claimed");
+
+        processChunk(runId, 0, "UPDATE " + qualified(TEST_BIGINT)
+                + " SET payload = 'done' WHERE id >= 1 AND id < 3");
+        assertTrue(boundaryCompleted(runId, 0), "the retry should claim the boundary");
+        assertEquals(2, payloadCount(), "the retry should update the chunk rows");
     }
 
     /**
@@ -82,7 +107,7 @@ class ProcessMigrationChunkTest extends PostgresTestBase {
     private long populate(int chunkSize) {
         return Routines.populateMigrationBoundaries(
                 dsl.configuration(), TEST_BIGINT.getSchema().getName(), TEST_BIGINT.getName(),
-                "process-chunk-test-" + System.nanoTime(), "SELECT 1", chunkSize, 1);
+                "process-chunk-test-" + UUID.randomUUID(), "SELECT 1", chunkSize, 1);
     }
 
     private void processChunk(long runId, long boundaryNo, String sql) {
