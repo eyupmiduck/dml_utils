@@ -251,11 +251,11 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
         List<MigrationBoundaryRecord> actual = boundaries(runId);
         MigrationBoundaryRecord first = actual.get(0);
         assertArrayEquals(new Long[]{7L, null, null}, first.getBoundaryId().getBigintValues(),
-                "the integer column lands at index 1; the other positions stay NULL");
+                "the integer (first key part) lands at array index 0; the other positions stay NULL");
         assertArrayEquals(new String[]{null, "x", null}, first.getBoundaryId().getTextValues(),
-                "the text column lands at index 2");
+                "the text (second key part) lands at array index 1");
         assertArrayEquals(new UUID[]{null, null, c1}, first.getBoundaryId().getUuidValues(),
-                "the uuid column lands at index 3");
+                "the uuid (third key part) lands at array index 2");
     }
 
     /**

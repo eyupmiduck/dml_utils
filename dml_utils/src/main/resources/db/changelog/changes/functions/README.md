@@ -17,6 +17,11 @@ Dependencies point downward: `dml_utils_lib` may reference `dml_utils_data`;
 changeset; the matching drop lives in `changes/functions-rollback/`. Every
 routine is `SECURITY INVOKER` unless it genuinely needs `SECURITY DEFINER`.
 
+One exception: `dml_utils_lib.migration_key_is_canonical` is loaded earlier, by
+`changes/sql_changes/004-b-create-migration-key-check.sql`, because the
+`migration_boundary_key_check` constraint is created with its table and calls it.
+Its drop lives in `changes/rollback/`.
+
 Each routine file ends with a `COMMENT ON FUNCTION` (or `COMMENT ON PROCEDURE`)
 for the routine it creates, using the short form (`schema.name`, no argument
 list). If a routine is ever overloaded, include its argument types so the
@@ -216,6 +221,18 @@ column, in key order: `bigint` for `smallint`/`integer`/`bigint`, `text` for a
 `text` key, and `uuid` for a `uuid` key. Raises `invalid_parameter_value`
 (`22023`) for any other type.
 
+### `dml_utils_lib.migration_key_is_canonical(i_key)`
+
+```sql
+i_key dml_utils_data.migration_key
+RETURNS boolean
+```
+
+`IMMUTABLE`, `SECURITY INVOKER`. True when the key is a canonical boundary key:
+its arity is one to three, every present array shares that arity, exactly one
+array holds a non-NULL element at each index, and no present array is empty or
+all-NULL. The `migration_boundary_key_check` constraint calls it.
+
 ### `dml_utils_lib.migration_key_values(i_key, i_key_kinds)`
 
 ```sql
@@ -266,9 +283,10 @@ parenthesized row-value range predicate
 final chunk; a one-column key degenerates to an ordinary scalar comparison. Each
 `i_key_kinds` entry must be `bigint`, `text` or `uuid` and is interpolated as the
 literal's cast, so any other value raises `22023`; the arrays must all have the
-same length. The start and end values are the text form of the packed boundary
-key. Identifiers are quoted with `%I` and values with `%L`, so neither
-substitution can reintroduce a token.
+same length, and a NULL start or end value raises `22023` (a NULL would render
+as an unquoted `NULL`, making the predicate match no rows). The start and end
+values are the text form of the packed boundary key. Identifiers are quoted with
+`%I` and values with `%L`, so neither substitution can reintroduce a token.
 
 ### `dml_utils_lib.assert_no_active_run_for_label(i_label)`
 

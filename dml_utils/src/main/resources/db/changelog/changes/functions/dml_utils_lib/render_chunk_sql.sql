@@ -60,6 +60,16 @@ BEGIN
                     USING ERRCODE = '22023';
             END IF;
 
+            -- %L renders a NULL as an unquoted NULL, so a missing boundary value
+            -- would render a predicate that silently matches no rows (or narrows a
+            -- partial row) while the chunk is still marked complete; fail loudly.
+            IF i_start_values[l_position] IS NULL OR i_end_values[l_position] IS NULL THEN
+                RAISE EXCEPTION 'boundary % value for primary-key column % must not be NULL',
+                    CASE WHEN i_start_values[l_position] IS NULL THEN 'start' ELSE 'end' END,
+                    i_primary_key_columns[l_position]
+                    USING ERRCODE = '22023';
+            END IF;
+
             l_column_tuple := l_column_tuple || pg_catalog.format('%s%I.%I',
                                                                   CASE WHEN l_position > 1 THEN ', ' ELSE '' END,
                                                                   i_table_alias,
@@ -116,4 +126,5 @@ COMMENT ON FUNCTION dml_utils_lib.render_chunk_sql IS
     'Returns the SQL template with <driving_table> and <chunking_clause> '
         'substituted for the given table, alias, primary-key columns and chunk '
         'range; each key kind (bigint, text or uuid) selects the explicit cast. '
-        'The final chunk uses an inclusive upper bound.';
+        'The final chunk uses an inclusive upper bound, and a NULL boundary value '
+        'is rejected.';

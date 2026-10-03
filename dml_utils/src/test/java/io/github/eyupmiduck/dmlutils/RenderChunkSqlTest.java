@@ -199,6 +199,24 @@ class RenderChunkSqlTest extends PostgresTestBase {
     }
 
     /**
+     * A NULL boundary value is rejected: {@code format('%L', NULL)} would render
+     * an unquoted NULL, so the predicate would silently match no rows while the
+     * chunk is still marked complete.
+     */
+    @Test
+    void rejectsNullBoundaryValues() {
+        assertSqlState("22023", () -> Routines.renderChunkSql(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{"a", "b"}, new String[]{"bigint", "text"},
+                new String[]{"1", null}, new String[]{"2", "y"}, false));
+
+        assertSqlState("22023", () -> Routines.renderChunkSql(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{"a"}, new String[]{"bigint"},
+                new String[]{"1"}, new String[]{null}, false));
+    }
+
+    /**
      * Arrays of differing length (columns, kinds or values) are rejected, since
      * they cannot be zipped into one row-value comparison.
      */

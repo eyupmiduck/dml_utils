@@ -60,66 +60,10 @@ CREATE TABLE dml_utils_data.migration_boundary
         FOREIGN KEY (run_id)
             REFERENCES dml_utils_data.migration_run (run_id)
             ON DELETE CASCADE,
+    -- The boundary key must be canonical; see
+    -- dml_utils_lib.migration_key_is_canonical for the rule.
     CONSTRAINT migration_boundary_key_check CHECK (
-        -- The key has one to three columns. The arity is the greatest present
-        -- array length (least/greatest ignore NULLs, so absent kinds do not
-        -- participate); coalescing it to 0 makes an all-absent key false rather
-        -- than NULL, and a CHECK accepts NULL.
-        coalesce(greatest(
-                         pg_catalog.array_length((boundary_id).bigint_values, 1),
-                         pg_catalog.array_length((boundary_id).text_values, 1),
-                         pg_catalog.array_length((boundary_id).uuid_values, 1)), 0)
-            BETWEEN 1 AND 3
-            -- Every present array shares the arity: least = greatest rejects a
-            -- key whose present arrays have differing lengths.
-            AND least(
-                        pg_catalog.array_length((boundary_id).bigint_values, 1),
-                        pg_catalog.array_length((boundary_id).text_values, 1),
-                        pg_catalog.array_length((boundary_id).uuid_values, 1))
-            = greatest(
-                        pg_catalog.array_length((boundary_id).bigint_values, 1),
-                        pg_catalog.array_length((boundary_id).text_values, 1),
-                        pg_catalog.array_length((boundary_id).uuid_values, 1))
-            -- Exactly one array holds a non-NULL element at each index, so every
-            -- position names one unambiguous key column. The guard is the common
-            -- arity, not any single array: a guard on one array would
-            -- short-circuit and skip the check when that array is NULL. Indexing
-            -- past an array's end yields NULL, so positions beyond the arity are
-            -- not compared.
-            AND (greatest(
-                         pg_catalog.array_length((boundary_id).bigint_values, 1),
-                         pg_catalog.array_length((boundary_id).text_values, 1),
-                         pg_catalog.array_length((boundary_id).uuid_values, 1)) < 1
-            OR pg_catalog.num_nonnulls((boundary_id).bigint_values[1],
-                                       (boundary_id).text_values[1],
-                                       (boundary_id).uuid_values[1]) = 1)
-            AND (greatest(
-                         pg_catalog.array_length((boundary_id).bigint_values, 1),
-                         pg_catalog.array_length((boundary_id).text_values, 1),
-                         pg_catalog.array_length((boundary_id).uuid_values, 1)) < 2
-            OR pg_catalog.num_nonnulls((boundary_id).bigint_values[2],
-                                       (boundary_id).text_values[2],
-                                       (boundary_id).uuid_values[2]) = 1)
-            AND (greatest(
-                         pg_catalog.array_length((boundary_id).bigint_values, 1),
-                         pg_catalog.array_length((boundary_id).text_values, 1),
-                         pg_catalog.array_length((boundary_id).uuid_values, 1)) < 3
-            OR pg_catalog.num_nonnulls((boundary_id).bigint_values[3],
-                                       (boundary_id).text_values[3],
-                                       (boundary_id).uuid_values[3]) = 1)
-            -- A present array must hold at least one real value: array_length
-            -- counts an all-NULL array as populated and reports an empty array as
-            -- NULL, so both would otherwise slip through, yet neither carries a
-            -- key value.
-            AND ((boundary_id).bigint_values IS NULL
-            OR pg_catalog.cardinality(
-                       pg_catalog.array_remove((boundary_id).bigint_values, NULL::bigint)) >= 1)
-            AND ((boundary_id).text_values IS NULL
-            OR pg_catalog.cardinality(
-                       pg_catalog.array_remove((boundary_id).text_values, NULL::text)) >= 1)
-            AND ((boundary_id).uuid_values IS NULL
-            OR pg_catalog.cardinality(
-                       pg_catalog.array_remove((boundary_id).uuid_values, NULL::uuid)) >= 1)
+        dml_utils_lib.migration_key_is_canonical(boundary_id)
         )
 );
 

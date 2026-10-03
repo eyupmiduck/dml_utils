@@ -210,9 +210,9 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     void acceptsAThreeColumnMixedKindPrimaryKey() {
         dsl.insertInto(TEST_COMPOSITE_THREE,
                         TEST_COMPOSITE_THREE.B, TEST_COMPOSITE_THREE.A, TEST_COMPOSITE_THREE.C)
-                .values(1, "x", java.util.UUID.randomUUID())
-                .values(1, "y", java.util.UUID.randomUUID())
-                .values(2, "x", java.util.UUID.randomUUID())
+                .values(1, "x", UUID.randomUUID())
+                .values(1, "y", UUID.randomUUID())
+                .values(2, "x", UUID.randomUUID())
                 .execute();
 
         long runId = populateTable(TEST_COMPOSITE_THREE, 2);

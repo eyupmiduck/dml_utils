@@ -165,6 +165,21 @@ class MigrationTablesTest extends PostgresTestBase {
     }
 
     /**
+     * The boundary key check rejects an equal-length key with two values at the
+     * same index: exactly one array may hold a value per position.
+     */
+    @Test
+    void rejectsBoundaryKeysWithTwoValuesAtOneIndex() {
+        Long runId = insertRun();
+
+        assertDomainViolation(() -> dsl.insertInto(MIGRATION_BOUNDARY)
+                .columns(MIGRATION_BOUNDARY.RUN_ID, MIGRATION_BOUNDARY.BOUNDARY_NO,
+                        MIGRATION_BOUNDARY.BOUNDARY_ID)
+                .values(runId, 0L, new MigrationKeyRecord(new Long[]{1L}, new String[]{"abc"}, null))
+                .execute());
+    }
+
+    /**
      * A non-positive {@code chunk_size} is rejected by the check constraint.
      */
     @Test

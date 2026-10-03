@@ -42,6 +42,12 @@ GRANT EXECUTE ON FUNCTION dml_utils_lib.migration_key_values(
     dml_utils_data.migration_key,
     text[]
     ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.migration_key_is_canonical(
+    dml_utils_data.migration_key
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.migration_key_is_canonical(
+    dml_utils_data.migration_key
+    ) TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_chunking_template(
     dml_utils_data.non_null_text
     ) FROM dml_utils_caller;

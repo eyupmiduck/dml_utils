@@ -164,8 +164,12 @@ BEGIN
                 -- array of migration_key; the extract below flattens them back
                 -- into a value list, in primary-key order.
                     SELECT b.boundary_no,
-                           dml_utils_lib.migration_key_values(b.boundary_id, l_key_kinds),
-                           dml_utils_lib.migration_key_values(next.boundary_id, l_key_kinds),
+                           dml_utils_lib.migration_key_values(
+                                   i_key => b.boundary_id,
+                                   i_key_kinds => l_key_kinds),
+                           dml_utils_lib.migration_key_values(
+                                   i_key => next.boundary_id,
+                                   i_key_kinds => l_key_kinds),
                            next.boundary_no = last.boundary_no
                     INTO l_boundary_no, l_start_values, l_end_values, l_is_final
                     FROM dml_utils_data.migration_boundary AS b
