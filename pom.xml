@@ -40,6 +40,9 @@
         <skip.sqlfluff>false</skip.sqlfluff>
         <sqlfluff.executable>sqlfluff</sqlfluff.executable>
         <skip.liquibase-linter>false</skip.liquibase-linter>
+        <!-- jOOQ codegen requires Docker and the custom image; skip only when
+             generated sources already exist (see dml_utils/pom.xml). -->
+        <testcontainers.jooq.codegen.skip>false</testcontainers.jooq.codegen.skip>
 
         <!-- The PostgreSQL version the build runs against. It is the single
              knob for choosing that version: the jOOQ codegen container and the

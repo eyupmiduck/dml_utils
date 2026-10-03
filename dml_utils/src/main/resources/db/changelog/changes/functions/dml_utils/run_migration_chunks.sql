@@ -75,8 +75,11 @@ BEGIN
     END IF;
 
     -- The stored thread count wins for a resumed run. Each chunk is one
-    -- background worker, and more workers than the server allows would fail at
-    -- launch, so validate before creating a run or scheduling any worker.
+    -- background worker; max_worker_processes is a cluster-wide ceiling, not the
+    -- free capacity for this call (other workers may hold slots), so this is a
+    -- cheap early sanity check, not a capacity guarantee. A launch that still
+    -- fails partway leaves the launched chunks committed and the run resumable,
+    -- which the caller retries.
     l_effective_threads := CASE WHEN FOUND THEN l_stored_threads ELSE i_threads::integer END;
     IF l_effective_threads > pg_catalog.current_setting('max_worker_processes')::integer THEN
         RAISE EXCEPTION 'threads (%) exceeds max_worker_processes (%)',
