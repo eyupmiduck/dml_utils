@@ -105,8 +105,7 @@ BEGIN
             -- expression and which therefore misfires in this loop).
             IF l_kind = 'bigint' THEN
                 BEGIN
-                    PERFORM i_start_values[l_position]::bigint,
-                            i_end_values[l_position]::bigint;
+                    PERFORM i_start_values[l_position]::bigint, i_end_values[l_position]::bigint;
                 EXCEPTION
                     WHEN OTHERS THEN
                         RAISE EXCEPTION
@@ -116,8 +115,7 @@ BEGIN
                 END;
             ELSIF l_kind = 'uuid' THEN
                 BEGIN
-                    PERFORM i_start_values[l_position]::uuid,
-                            i_end_values[l_position]::uuid;
+                    PERFORM i_start_values[l_position]::uuid, i_end_values[l_position]::uuid;
                 EXCEPTION
                     WHEN OTHERS THEN
                         RAISE EXCEPTION
