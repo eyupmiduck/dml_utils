@@ -247,12 +247,14 @@ class MigrationTablesTest extends PostgresTestBase {
     }
 
     /**
-     * {@code boundary_no} and {@code boundary_id} are immutable: updating either
-     * is rejected, while updating the mutable {@code completed_at} is allowed.
+     * {@code run_id}, {@code boundary_no} and {@code boundary_id} are immutable:
+     * updating any of them is rejected, while updating the mutable
+     * {@code completed_at} is allowed.
      */
     @Test
-    void rejectsUpdatesToBoundaryNoAndBoundaryId() {
+    void rejectsUpdatesToImmutableBoundaryColumns() {
         long runId = insertRunWithBoundary();
+        long otherRunId = insertRun();
 
         assertSqlState("22023", () -> dsl.update(MIGRATION_BOUNDARY)
                 .set(MIGRATION_BOUNDARY.BOUNDARY_ID, new MigrationKeyRecord(new Long[]{999L}, null, null))
@@ -260,6 +262,10 @@ class MigrationTablesTest extends PostgresTestBase {
                 .execute());
         assertSqlState("22023", () -> dsl.update(MIGRATION_BOUNDARY)
                 .set(MIGRATION_BOUNDARY.BOUNDARY_NO, 999L)
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .execute());
+        assertSqlState("22023", () -> dsl.update(MIGRATION_BOUNDARY)
+                .set(MIGRATION_BOUNDARY.RUN_ID, otherRunId)
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
                 .execute());
 

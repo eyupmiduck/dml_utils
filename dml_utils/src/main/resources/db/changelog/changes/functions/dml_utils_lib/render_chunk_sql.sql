@@ -31,15 +31,32 @@ DECLARE
 BEGIN
     PERFORM dml_utils_lib.assert_chunking_template(i_sql_text => i_sql_text);
 
-    -- array_length of an empty array is NULL, so a NULL length here means empty
-    -- (or NULL); reject it explicitly, otherwise all four arguments agree on
-    -- NULL and the loop below builds an empty, malformed predicate.
-    IF pg_catalog.array_length(i_primary_key_columns, 1) IS NULL
+    -- i_is_final selects the upper bound (inclusive for the final chunk, exclusive
+    -- otherwise); a NULL would silently take the non-final branch, so reject it.
+    IF i_is_final IS NULL THEN
+        RAISE EXCEPTION 'i_is_final must not be NULL'
+            USING ERRCODE = '22023';
+    END IF;
+
+    -- All four arrays are indexed from 1 below, so they must be one-dimensional
+    -- with a lower bound of 1 and the same non-zero length. A different lower
+    -- bound (or a multidimensional array) would make the loop read the wrong
+    -- element or a NULL; array_length of an empty/NULL array is NULL, which the
+    -- length comparisons below reject.
+    IF pg_catalog.array_ndims(i_primary_key_columns) IS DISTINCT FROM 1
+        OR pg_catalog.array_lower(i_primary_key_columns, 1) IS DISTINCT FROM 1
+        OR pg_catalog.array_ndims(i_key_kinds) IS DISTINCT FROM 1
+        OR pg_catalog.array_lower(i_key_kinds, 1) IS DISTINCT FROM 1
+        OR pg_catalog.array_ndims(i_start_values) IS DISTINCT FROM 1
+        OR pg_catalog.array_lower(i_start_values, 1) IS DISTINCT FROM 1
+        OR pg_catalog.array_ndims(i_end_values) IS DISTINCT FROM 1
+        OR pg_catalog.array_lower(i_end_values, 1) IS DISTINCT FROM 1
+        OR pg_catalog.array_length(i_primary_key_columns, 1) IS NULL
         OR pg_catalog.array_length(i_primary_key_columns, 1) IS DISTINCT FROM pg_catalog.array_length(i_key_kinds, 1)
         OR pg_catalog.array_length(i_primary_key_columns, 1) IS DISTINCT FROM pg_catalog.array_length(i_start_values, 1)
         OR pg_catalog.array_length(i_primary_key_columns, 1) IS DISTINCT FROM pg_catalog.array_length(i_end_values, 1)
     THEN
-        RAISE EXCEPTION 'primary key columns, kinds and boundary values must have the same, non-zero length'
+        RAISE EXCEPTION 'primary key columns, kinds and boundary values must be one-dimensional, 1-based, same-length and non-empty'
             USING ERRCODE = '22023';
     END IF;
 
@@ -78,6 +95,36 @@ BEGIN
                     USING ERRCODE = '22023';
             END IF;
 
+            -- A non-NULL value that is not a valid literal for its kind would be
+            -- emitted into the chunk SQL and only fail when a worker parses it;
+            -- validate by casting here so the failure is not deferred. text accepts
+            -- any value, so only bigint and uuid need a cast (literals, not
+            -- pg_input_is_valid, whose type-name argument PL/pgSQL caches per
+            -- expression and which therefore misfires in this loop).
+            IF l_kind = 'bigint' THEN
+                BEGIN
+                    PERFORM i_start_values[l_position]::bigint,
+                            i_end_values[l_position]::bigint;
+                EXCEPTION
+                    WHEN OTHERS THEN
+                        RAISE EXCEPTION
+                            'boundary value for primary-key column % is not a valid bigint',
+                            i_primary_key_columns[l_position]
+                            USING ERRCODE = '22023';
+                END;
+            ELSIF l_kind = 'uuid' THEN
+                BEGIN
+                    PERFORM i_start_values[l_position]::uuid,
+                            i_end_values[l_position]::uuid;
+                EXCEPTION
+                    WHEN OTHERS THEN
+                        RAISE EXCEPTION
+                            'boundary value for primary-key column % is not a valid uuid',
+                            i_primary_key_columns[l_position]
+                            USING ERRCODE = '22023';
+                END;
+            END IF;
+
             l_column_tuple := l_column_tuple || pg_catalog.format('%s%I.%I',
                                                                   CASE WHEN l_position > 1 THEN ', ' ELSE '' END,
                                                                   i_table_alias,
@@ -107,14 +154,16 @@ BEGIN
             CASE WHEN i_is_final THEN '<=' ELSE '<' END,
             l_end_tuple);
 
-    -- A quoted identifier could in principle contain a sentinel character;
-    -- reject that so the substitution below stays unambiguous.
+    -- A quoted identifier, or the caller's template, could in principle contain a
+    -- sentinel character; reject that so the substitution below stays unambiguous.
     IF pg_catalog.strpos(l_driving_table, l_driving_table_sentinel) > 0
         OR pg_catalog.strpos(l_driving_table, l_chunking_clause_sentinel) > 0
         OR pg_catalog.strpos(l_chunking_clause, l_driving_table_sentinel) > 0
         OR pg_catalog.strpos(l_chunking_clause, l_chunking_clause_sentinel) > 0
+        OR pg_catalog.strpos(i_sql_text, l_driving_table_sentinel) > 0
+        OR pg_catalog.strpos(i_sql_text, l_chunking_clause_sentinel) > 0
     THEN
-        RAISE EXCEPTION 'identifier contains a reserved substitution character'
+        RAISE EXCEPTION 'template or identifier contains a reserved substitution character'
             USING ERRCODE = '22023';
     END IF;
 

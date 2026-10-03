@@ -14,6 +14,19 @@ GRANT USAGE ON DOMAIN dml_utils_data.positive_integer TO dml_utils_caller;
 REVOKE USAGE ON TYPE dml_utils_data.migration_key FROM public;
 GRANT USAGE ON TYPE dml_utils_data.migration_key TO dml_utils_caller;
 
+-- Same rule for objects created later: PostgreSQL grants EXECUTE on functions
+-- and USAGE on types to PUBLIC by default, so revoke those defaults for the
+-- owner. Every future routine/type then needs an explicit grant, like the ones
+-- above, instead of silently becoming world-executable.
+ALTER DEFAULT PRIVILEGES FOR ROLE dml_utils_owner IN SCHEMA dml_utils
+    REVOKE EXECUTE ON FUNCTIONS FROM public;
+ALTER DEFAULT PRIVILEGES FOR ROLE dml_utils_owner IN SCHEMA dml_utils_lib
+    REVOKE EXECUTE ON FUNCTIONS FROM public;
+ALTER DEFAULT PRIVILEGES FOR ROLE dml_utils_owner IN SCHEMA dml_utils_data
+    REVOKE EXECUTE ON FUNCTIONS FROM public;
+ALTER DEFAULT PRIVILEGES FOR ROLE dml_utils_owner IN SCHEMA dml_utils_data
+    REVOKE USAGE ON TYPES FROM public;
+
 REVOKE ALL ON dml_utils_data.migration_run FROM public;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dml_utils_data.migration_run TO dml_utils_caller;
 REVOKE ALL ON dml_utils_data.migration_boundary FROM public;

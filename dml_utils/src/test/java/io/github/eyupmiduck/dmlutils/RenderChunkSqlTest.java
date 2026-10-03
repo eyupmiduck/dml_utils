@@ -342,6 +342,74 @@ class RenderChunkSqlTest extends PostgresTestBase {
                 rendered);
     }
 
+    /**
+     * A NULL {@code i_is_final} is rejected with 22023 instead of silently
+     * taking the non-final (exclusive) branch.
+     */
+    @Test
+    void rejectsANullFinalFlag() {
+        assertSqlState("22023", () -> Routines.renderChunkSql(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{"id"}, new String[]{"bigint"},
+                new String[]{"1"}, new String[]{"2"}, null));
+    }
+
+    /**
+     * A boundary value that is not a valid literal for its key kind is rejected
+     * with 22023, rather than being emitted and failing when a worker parses it.
+     */
+    @Test
+    void rejectsANonNumericBigintBoundaryValue() {
+        assertSqlState("22023", () -> render(false, "bigint", "oops", "2"));
+    }
+
+    /**
+     * A UUID key with an invalid boundary value is rejected with 22023.
+     */
+    @Test
+    void rejectsAMalformedUuidBoundaryValue() {
+        assertSqlState("22023", () -> render(false, "uuid", "not-a-uuid", "2"));
+    }
+
+    /**
+     * A template that already contains a reserved substitution character is
+     * rejected with 22023.
+     */
+    @Test
+    void rejectsATemplateWithASentinelCharacter() {
+        String template = "UPDATE <driving_table> SET processed = '" + (char) 1
+                + "' WHERE <chunking_clause>";
+        assertSqlState("22023", () -> Routines.renderChunkSql(
+                dsl.configuration(), template, "public", "src", "t",
+                new String[]{"id"}, new String[]{"bigint"},
+                new String[]{"1"}, new String[]{"2"}, false));
+    }
+
+    /**
+     * A boundary array with a lower bound other than 1 is rejected with 22023,
+     * rather than reading the wrong element.
+     */
+    @Test
+    void rejectsANonOneBasedBoundaryArray() {
+        assertSqlState("22023", () -> dsl.execute(
+                "SELECT dml_utils_lib.render_chunk_sql('" + TEMPLATE + "',"
+                        + " 'public', 'src', 't',"
+                        + " ARRAY['id']::name[], ARRAY['bigint'],"
+                        + " '[0:0]={1}'::text[], '[0:0]={2}'::text[], false)"));
+    }
+
+    /**
+     * A multidimensional boundary array is rejected with 22023.
+     */
+    @Test
+    void rejectsAMultidimensionalBoundaryArray() {
+        assertSqlState("22023", () -> dsl.execute(
+                "SELECT dml_utils_lib.render_chunk_sql('" + TEMPLATE + "',"
+                        + " 'public', 'src', 't',"
+                        + " ARRAY['id']::name[], ARRAY['bigint'],"
+                        + " '{{1}}'::text[], '{{2}}'::text[], false)"));
+    }
+
     private String render(boolean isFinal, String keyKind, String startValue, String endValue) {
         return Routines.renderChunkSql(
                 dsl.configuration(), TEMPLATE, "public", "src", "t",

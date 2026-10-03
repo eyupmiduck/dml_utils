@@ -424,6 +424,22 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     }
 
     /**
+     * An empty or NULL kinds array is rejected with {@code 22023} instead of
+     * silently returning an empty result.
+     */
+    @Test
+    void migrationKeyValuesRejectsEmptyKinds() {
+        assertSqlState("22023", () -> Routines.migrationKeyValues(
+                dsl.configuration(),
+                new MigrationKeyRecord(new Long[]{1L}, null, null),
+                new String[]{}));
+        assertSqlState("22023", () -> Routines.migrationKeyValues(
+                dsl.configuration(),
+                new MigrationKeyRecord(new Long[]{1L}, null, null),
+                (String[]) null));
+    }
+
+    /**
      * A failed validation leaves the migration tables untouched.
      */
     @Test
