@@ -100,6 +100,11 @@ jOOQ codegen and tests; `docker_java_config` is a build shim. CI: GitHub Actions
 - Do not assume a globally installed Maven version.
 - Changes should pass:
   `./mvnw verify`
+- `mvnw` is the upstream Maven Wrapper script; keep it in sync with upstream
+  rather than patching it. Its download path checks `distributionSha256Sum`
+  from `.mvn/wrapper/maven-wrapper.properties` when set, and it refuses a
+  non-HTTPS `distributionUrl`; leave that pin in place so the wrapper cannot be
+  silently repointed at an unverified artifact.
 
 ## PostgreSQL
 

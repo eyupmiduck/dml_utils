@@ -8,12 +8,11 @@
 
 set -eu
 
-script_path="$0"
-if command -v readlink >/dev/null 2>&1; then
-    resolved="$(readlink -f "$script_path" 2>/dev/null || true)"
-    [ -n "$resolved" ] && script_path="$resolved"
-fi
-repo_root="$(cd "$(dirname "$script_path")/.." && pwd)"
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+. "$script_dir/lib.sh"
+
+repo_root="$(resolve_repo_root "$0")"
+project="$(compose_project_name "$repo_root")"
 
 cd "$repo_root"
 
@@ -26,13 +25,14 @@ if ! docker compose version >/dev/null 2>&1; then
     exit 1
 fi
 
-# Pin the compose file and project so an inherited COMPOSE_FILE / project name
-# cannot make this act on an unrelated stack. Bring up PostgreSQL and wait for
-# its healthcheck.
-docker compose --project-name dml_utils --file "$repo_root/compose.yaml" \
+# Pin the compose file and a per-checkout project name so an inherited
+# COMPOSE_FILE / project name cannot make this act on an unrelated stack, and
+# two checkouts do not share one stack. Bring up PostgreSQL and wait for its
+# healthcheck.
+docker compose --project-name "$project" --file "$repo_root/compose.yaml" \
     up -d --wait postgres
 
 # The liquibase service is one-shot with no healthcheck, so `up --wait` cannot
 # wait for the migration. Run it explicitly and propagate its exit status.
-docker compose --project-name dml_utils --file "$repo_root/compose.yaml" \
+docker compose --project-name "$project" --file "$repo_root/compose.yaml" \
     run --rm -T liquibase

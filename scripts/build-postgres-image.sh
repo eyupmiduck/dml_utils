@@ -27,23 +27,34 @@ case "$base" in
         ;;
 esac
 
-# Derive a valid tag from the base reference: drop any registry/namespace, then
-# prefix the repository name with dml-utils-.
-base_name="${base##*/}"
-case "$base_name" in
-    *:*)
-        name="${base_name%:*}"
-        version="${base_name##*:}"
+# Split "<registry>/<namespace>/.../<name>:<tag>". Keep the last path component
+# as the name and the part before it (if any) as a sanitized namespace, so
+# registry-a/postgres:17 and registry-b/postgres:17 do not collapse to the same
+# local tag.
+base_ref="${base}"
+case "$base_ref" in
+    */*)
+        namespace="${base_ref%/*}"
+        last="${base_ref##*/}"
         ;;
     *)
-        name="$base_name"
+        namespace=""
+        last="$base_ref"
+        ;;
+esac
+case "$last" in
+    *:*)
+        name="${last%:*}"
+        version="${last##*:}"
+        ;;
+    *)
+        name="$last"
         version="latest"
         ;;
 esac
 
-# Docker repository names must be lowercase.
+# Docker repository names must be lowercase and valid.
 name="$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')"
-
 if ! printf '%s' "$name" | grep -Eq '^[a-z0-9]+([._-][a-z0-9]+)*$'; then
     echo "invalid image name derived from base image: $base" >&2
     exit 1
@@ -53,7 +64,27 @@ if ! printf '%s' "$version" | grep -Eq '^[A-Za-z0-9_][A-Za-z0-9_.-]*$'; then
     echo "invalid image tag derived from base image: $base" >&2
     exit 1
 fi
-tag="dml-utils-${name}:${version}"
+
+# A namespace/registry only contributes a sanitized prefix; the digest suffix
+# makes it unique even when the sanitized form collides.
+ns_prefix=""
+if [ -n "$namespace" ]; then
+    ns_sanitized="$(printf '%s' "$namespace" | tr '[:upper:]' '[:lower:]' | sed 's#[^a-z0-9._-]#-#g')"
+    ns_prefix="$(printf '%s' "$ns_sanitized" | cut -c1-20)-"
+fi
+
+tag="dml-utils-${ns_prefix}${name}:${version}"
+
+# Docker limits: repository name <= 255 chars, tag <= 128 chars.
+repo_name="${tag%%:*}"
+if [ "${#repo_name}" -gt 255 ]; then
+    echo "derived repository name exceeds Docker's 255-character limit: $repo_name" >&2
+    exit 1
+fi
+if [ "${#version}" -gt 128 ]; then
+    echo "derived tag exceeds Docker's 128-character limit: $version" >&2
+    exit 1
+fi
 
 context="$repo_root/docker/postgres"
 if [ ! -d "$context" ]; then
