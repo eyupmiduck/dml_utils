@@ -37,12 +37,12 @@
     <!-- The boundary-key check helper. It needs only the migration_key type
          (created above), so it is defined before the table whose CHECK calls
          it. -->
-    <changeSet id="004-b-create-migration-key-check" author="dml_utils" dbms="postgresql"
+    <changeSet id="005-create-migration-key-check" author="dml_utils" dbms="postgresql"
                runOnChange="true">
-        <sqlFile path="sql_changes/004-b-create-migration-key-check.sql"
+        <sqlFile path="sql_changes/005-create-migration-key-check.sql"
                  relativeToChangelogFile="true" splitStatements="false"/>
         <rollback>
-            <sqlFile path="rollback/004-b-create-migration-key-check-rollback.sql"
+            <sqlFile path="rollback/005-create-migration-key-check-rollback.sql"
                      relativeToChangelogFile="true"/>
         </rollback>
     </changeSet>
@@ -50,10 +50,10 @@
     <!-- The migration tables. No triggers yet: the tables do not depend on any
          routine, and the routines below reference them, so the tables come
          first. -->
-    <changeSet id="005-create-migration-tables" author="dml_utils" dbms="postgresql">
-        <sqlFile path="sql_changes/005-create-migration-tables.sql" relativeToChangelogFile="true"/>
+    <changeSet id="006-create-migration-tables" author="dml_utils" dbms="postgresql">
+        <sqlFile path="sql_changes/006-create-migration-tables.sql" relativeToChangelogFile="true"/>
         <rollback>
-            <sqlFile path="rollback/005-create-migration-tables-rollback.sql" relativeToChangelogFile="true"/>
+            <sqlFile path="rollback/006-create-migration-tables-rollback.sql" relativeToChangelogFile="true"/>
         </rollback>
     </changeSet>
 
