@@ -36,12 +36,6 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     private static final String SQL_TEXT = "SELECT 1";
 
     /**
-     * Each test gets a distinct label so the one-active-run-per-label rule does
-     * not couple tests that populate in the same database.
-     */
-    private int labelCounter;
-
-    /**
      * Builds the ordered uuid used for key part {@code n}.
      */
     private static UUID uuid(int n) {
@@ -50,6 +44,12 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
 
     @BeforeEach
     void resetFixtures() {
+        // The class shares one database across methods, so clear both the fixture
+        // data and the migration metadata (boundaries and errors cascade); a run
+        // left by an earlier method would otherwise change count assertions or
+        // collide on the one-active-run-per-label rule. DELETE, not TRUNCATE:
+        // the test role has DML but not TRUNCATE on the migration tables.
+        dsl.deleteFrom(MIGRATION_RUN).execute();
         for (Table<?> table : List.of(TEST_BIGINT, TEST_INTEGER, TEST_SMALLINT, TEST_TEXT,
                 TEST_UUID, TEST_NO_PK, TEST_COMPOSITE_PK, TEST_COMPOSITE_THREE,
                 TEST_COMPOSITE_FOUR, TEST_NUMERIC)) {
@@ -536,7 +536,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     }
 
     private String uniqueLabel() {
-        return "validation-run-" + ++labelCounter;
+        return "validation-run-" + UUID.randomUUID();
     }
 
     private int runCount(String label) {

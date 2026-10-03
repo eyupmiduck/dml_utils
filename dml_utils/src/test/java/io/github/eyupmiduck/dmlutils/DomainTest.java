@@ -73,4 +73,19 @@ class DomainTest extends PostgresTestBase {
     void nonNullTextRejectsVerticalTab() {
         assertDomainViolation(() -> evaluate("E'\\013'::dml_utils_data.non_null_text", String.class));
     }
+
+    /**
+     * The text domain accepts whitespace as long as the value also contains
+     * non-whitespace text, and preserves it exactly: only an all-whitespace
+     * value is rejected.
+     */
+    @Test
+    void nonNullTextAcceptsAndPreservesWhitespaceAroundText() {
+        assertEquals(" \t hello \r ",
+                evaluate("E' \\t hello \\r '::dml_utils_data.non_null_text", String.class),
+                "surrounding whitespace is preserved");
+        assertEquals("a\u000bb",
+                evaluate("E'a\\013b'::dml_utils_data.non_null_text", String.class),
+                "an embedded vertical tab next to text is preserved");
+    }
 }

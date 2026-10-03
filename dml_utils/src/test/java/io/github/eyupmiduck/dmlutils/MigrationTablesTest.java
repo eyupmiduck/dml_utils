@@ -4,6 +4,7 @@ import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.udt.records.MigrationKe
 import org.junit.jupiter.api.Test;
 
 import java.time.OffsetDateTime;
+import java.util.UUID;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
@@ -82,7 +83,7 @@ class MigrationTablesTest extends PostgresTestBase {
                 .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE,
                         MIGRATION_RUN.THREADS,
                         MIGRATION_RUN.DRIVING_TABLE_SCHEMA_NAME, MIGRATION_RUN.DRIVING_TABLE_NAME)
-                .values("migration-tables-test-" + System.nanoTime(), "SELECT 1", 1, 1,
+                .values("migration-tables-test-" + UUID.randomUUID(), "SELECT 1", 1, 1,
                         PUBLIC_SCHEMA, "migration_tables_source")
                 .returningResult(MIGRATION_RUN.RUN_ID)
                 .fetchOne(MIGRATION_RUN.RUN_ID);

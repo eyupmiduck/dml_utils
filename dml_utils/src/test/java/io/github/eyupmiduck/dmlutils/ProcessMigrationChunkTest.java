@@ -5,6 +5,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -22,6 +23,9 @@ class ProcessMigrationChunkTest extends PostgresTestBase {
 
     @BeforeEach
     void resetFixtures() {
+        // Clear the metadata each test creates, so runs and boundaries from an
+        // earlier method cannot leak into this one (boundaries and errors cascade).
+        dsl.deleteFrom(MIGRATION_RUN).execute();
         dsl.truncate(TEST_BIGINT).execute();
     }
 
