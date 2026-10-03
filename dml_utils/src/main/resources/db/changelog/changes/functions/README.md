@@ -86,6 +86,51 @@ this to adjust the SQL of an existing run (for example to fix a bad execution
 plan) instead of passing a changed template to a resumed `run_migration_chunks`
 call, which would ignore it.
 
+###
+`dml_utils.run_function_over_table(i_driving_table_schema_name, i_driving_table_name, i_function_schema_name, i_function_name [, i_chunk_size, i_threads, i_label])`
+
+```sql
+i_driving_table_schema_name dml_utils_data.non_null_text
+i_driving_table_name        dml_utils_data.non_null_text
+i_function_schema_name      dml_utils_data.non_null_text
+i_function_name             dml_utils_data.non_null_text
+i_chunk_size                dml_utils_data.positive_integer DEFAULT 1000
+i_threads                   dml_utils_data.positive_integer DEFAULT 1
+i_label                     text DEFAULT NULL
+RETURNS void
+```
+
+`VOLATILE`, `SECURITY INVOKER`. A wrapper for `run_migration_chunks` that calls
+a user-supplied function once per row of the driving table, chunk by chunk.
+Instead of a hand-written template, the caller supplies a function whose
+arguments are the driving table's primary-key columns, in key order, and which
+returns `void`. The wrapper builds the per-row template
+(`SELECT <fn>(t.<pk1>, ...) FROM <driving_table> WHERE <chunking_clause>`) and
+delegates to `run_migration_chunks`, so it resumes by label exactly like a base
+run. The function's argument types must equal the primary-key column types in key
+order and it must return `void`; a missing function, a non-`void` return, or
+mismatched argument types raise `invalid_parameter_value` (`22023`) before any
+run is created. When `i_label` is NULL a deterministic label is derived from the
+driving table and function, so re-running the same call resumes the same run.
+Because a resumed run uses the recorded SQL text, use
+`set_migration_run_function` to point an unfinished run at a different function.
+
+### `dml_utils.set_migration_run_function(i_label, i_function_schema_name, i_function_name)`
+
+```sql
+i_label               dml_utils_data.non_null_text
+i_function_schema_name dml_utils_data.non_null_text
+i_function_name       dml_utils_data.non_null_text
+RETURNS void
+```
+
+`SECURITY INVOKER`. Replaces the recorded `sql_text` of the unfinished run for
+the label with the template that calls the given function over the run's driving
+table (which is immutable), so the next `run_function_over_table` call uses the
+adjusted function. Validates the function against the driving table's primary
+key (raising `invalid_parameter_value`, `22023`, on a mismatch) and raises
+`no_data_found` (`P0002`) when there is no unfinished run for the label.
+
 ### `dml_utils.set_migration_run_threads(i_label, i_threads)`
 
 ```sql
@@ -245,6 +290,24 @@ RETURNS text[]
 into one text value per primary-key column, in key order, using `i_key_kinds` to
 pick the array for each position. The chunk predicate re-casts each value. Pure
 casts and array element access, so it is `IMMUTABLE`.
+
+### `dml_utils_lib.build_function_chunk_template(i_table_schema_name, i_table_name, i_function_schema_name, i_function_name)`
+
+```sql
+i_table_schema_name    dml_utils_data.non_null_text
+i_table_name           dml_utils_data.non_null_text
+i_function_schema_name dml_utils_data.non_null_text
+i_function_name        dml_utils_data.non_null_text
+RETURNS text
+```
+
+`STABLE`, `SECURITY INVOKER`. Returns the `<driving_table>`/`<chunking_clause>`
+template that calls the given function once per row, passing the driving table's
+primary-key columns in key order
+(`SELECT <fn>(t.<pk1>, ...) FROM <driving_table> WHERE <chunking_clause>`).
+Resolves the primary key via `primary_key_columns` and validates that the
+function exists and returns `void` with argument types equal to the primary-key
+column types in key order; raises `invalid_parameter_value` (`22023`) otherwise.
 
 ### `dml_utils_lib.assert_chunking_template(i_sql_text)`
 
