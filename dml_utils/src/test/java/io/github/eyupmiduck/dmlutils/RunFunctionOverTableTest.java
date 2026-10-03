@@ -14,6 +14,7 @@ import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.Migration
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeMixed.TEST_COMPOSITE_MIXED;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -98,12 +99,30 @@ class RunFunctionOverTableTest extends PostgresTestBase {
         Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_COMPOSITE_MIXED),
                 name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 99, 4, null);
 
-        String derivedLabel = "function:" + schema(TEST_COMPOSITE_MIXED) + "."
-                + name(TEST_COMPOSITE_MIXED) + ":" + FN_SCHEMA + ".mark_mixed";
+        String derivedLabel = "function:"
+                + dsl.fetchOne("SELECT pg_catalog.json_build_array(?, ?, ?, ?)::text",
+                        schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
+                        FN_SCHEMA, "mark_mixed").get(0, String.class);
         assertEquals(1, dsl.fetchCount(MIGRATION_RUN, MIGRATION_RUN.LABEL.eq(derivedLabel)),
                 "both calls share one derived run");
         assertEquals(3, payloadCount(TEST_COMPOSITE_MIXED, "done"),
                 "every row should still be updated exactly once");
+    }
+
+    /**
+     * The derived label distinguishes inputs that the old delimiter-joined format
+     * would have conflated: a name containing a '.' does not shift the component
+     * boundaries, so two different table/function tuples derive different labels.
+     */
+    @Test
+    void derivedLabelIsUnambiguousForNamesContainingDelimiters() {
+        String first = dsl.fetchOne("SELECT 'function:' || pg_catalog.json_build_array(?, ?, ?, ?)::text",
+                "dml_utils_fixtures", "t.a", "public", "fn").get(0, String.class);
+        String second = dsl.fetchOne("SELECT 'function:' || pg_catalog.json_build_array(?, ?, ?, ?)::text",
+                "dml_utils_fixtures", "t", "public", "fn.a").get(0, String.class);
+
+        assertNotEquals(first, second,
+                "tuples with '.' in different components must derive different labels");
     }
 
     /**

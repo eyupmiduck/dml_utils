@@ -30,14 +30,17 @@ BEGIN
 
     -- Derive a deterministic label from the driving table and function when the
     -- caller does not supply one, so re-running the same call resumes the same
-    -- run instead of creating a new one.
+    -- run instead of creating a new one. The components are joined as a JSON
+    -- array, which is unambiguous even when a (quoted) name contains a '.', ':'
+    -- or other delimiter: JSON escapes and quotes each element, so distinct
+    -- inputs cannot collide.
     l_label := coalesce(
             i_label,
-            pg_catalog.format('function:%s.%s:%s.%s',
-                              i_driving_table_schema_name,
-                              i_driving_table_name,
-                              i_function_schema_name,
-                              i_function_name));
+            'function:' || pg_catalog.json_build_array(
+                    i_driving_table_schema_name,
+                    i_driving_table_name,
+                    i_function_schema_name,
+                    i_function_name)::text);
 
     -- Delegate to the base engine: it owns resume, chunk scheduling, error
     -- recording and run completion. The generated template is a valid
