@@ -110,18 +110,9 @@ COMMENT ON FUNCTION public.review_dog IS
 --    pg_background worker and the call resumes at the first unprocessed chunk if
 --    it is interrupted. The label identifies the run; re-running with the same
 --    label resumes it, and an already-complete run is a no-op. Archive any
---    previous run with the label first so the example can be re-run from scratch.
-DO
-$$
-    BEGIN
-        PERFORM dml_utils.archive_migration_run(i_label => 'dogs-review-function');
-    EXCEPTION
-        WHEN OTHERS THEN
-            -- Archive is a no-op when there is no active run; ignore anything
-            -- else here (a fresh database has no run at all).
-            NULL;
-    END;
-$$;
+--    previous run with the label first so the example can be re-run from
+--    scratch; archive_migration_run returns NULL when there is no active run.
+SELECT dml_utils.archive_migration_run(i_label => 'dogs-review-function');
 
 SELECT dml_utils.run_function_over_table(
                i_driving_table_schema_name => 'public',

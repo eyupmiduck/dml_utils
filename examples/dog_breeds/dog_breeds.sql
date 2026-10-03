@@ -87,18 +87,9 @@ VALUES ('Affenpinscher', 'Germany', 'toy', 14),
 --
 --    The label identifies the run; re-running with the same label resumes it,
 --    and an already-complete run is a no-op. Here we archive any previous run
---    with the label first so the example can be re-run from scratch.
-DO
-$$
-    BEGIN
-        PERFORM dml_utils.archive_migration_run(i_label => 'dogs-status-backfill');
-    EXCEPTION
-        WHEN OTHERS THEN
-            -- Archive is a no-op when there is no active run; ignore anything
-            -- else here (a fresh database has no run at all).
-            NULL;
-    END;
-$$;
+--    with the label first so the example can be re-run from scratch;
+--    archive_migration_run returns NULL when there is no active run.
+SELECT dml_utils.archive_migration_run(i_label => 'dogs-status-backfill');
 
 SELECT dml_utils.run_migration_chunks(
                i_sql_text => 'UPDATE <driving_table> SET status = ''reviewed'' WHERE <chunking_clause>',

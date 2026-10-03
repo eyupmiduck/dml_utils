@@ -17,6 +17,11 @@ BEGIN
     -- non_null_text arguments with no hidden domain-to-text cast into a local.
     -- With no matching run the function is never evaluated and NOT FOUND below
     -- raises P0002.
+    --
+    -- FOR UPDATE locks the selected run for the rest of the transaction, so the
+    -- set_migration_run_sql_text call below cannot be retargeted by a concurrent
+    -- session that archives this run and creates a new one for the same label:
+    -- archiving this row blocks on the lock until this transaction ends.
     SELECT dml_utils_lib.build_function_chunk_template(
                    i_table_schema_name => driving_table_schema_name,
                    i_table_name => driving_table_name,
@@ -26,7 +31,8 @@ BEGIN
     FROM dml_utils_data.migration_run
     WHERE label = i_label
       AND archived_at IS NULL
-      AND completed_at IS NULL;
+      AND completed_at IS NULL
+        FOR UPDATE;
 
     IF NOT FOUND THEN
         RAISE EXCEPTION 'no unfinished migration run for label %', i_label

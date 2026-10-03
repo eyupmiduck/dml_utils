@@ -14,7 +14,6 @@ DECLARE
     l_primary_key_columns name[];
     l_call_arguments      text;
     l_argument_oids       oid[];
-    l_function_oids       oid[];
     l_function_not_void   boolean;
     l_argument_type_list  text;
 BEGIN
@@ -50,22 +49,23 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
 
-    -- Look up the function by exact name and arity. proargtypes is a 0-based
-    -- oidvector of the input argument types (IN/INOUT/VARIADIC); compare it to
-    -- the primary-key column types position by position.
-    -- proargtypes is a 0-based oidvector; normalise it to a 1-based array so it
-    -- can be compared with the array_agg-built list of column types (PostgreSQL
-    -- array equality is by dimensions, so mismatched lower bounds compare
-    -- unequal even when the elements match).
-    SELECT (SELECT pg_catalog.array_agg(x ORDER BY o)
-            FROM pg_catalog.unnest(p.proargtypes::oid[]) WITH ORDINALITY AS u(x, o)),
-           p.prorettype <> 'void'::pg_catalog.regtype
-    INTO l_function_oids, l_function_not_void
+    -- Look up the function by exact name, arity and argument types. proargtypes
+    -- is a 0-based oidvector of the input argument types (IN/INOUT/VARIADIC);
+    -- normalise it to a 1-based array before comparing, because PostgreSQL array
+    -- equality is by dimensions and l_argument_oids comes from array_agg (lower
+    -- bound 1). Matching the types in the predicate, not after the fact, also
+    -- resolves overloads: a same-name/same-arity sibling with different argument
+    -- types is not selected, so a valid overload is still found when others
+    -- exist. Duplicate signatures are impossible, so this yields at most one row.
+    SELECT p.prorettype <> 'void'::pg_catalog.regtype
+    INTO l_function_not_void
     FROM pg_catalog.pg_proc AS p
              JOIN pg_catalog.pg_namespace AS n ON n.oid = p.pronamespace
     WHERE n.nspname = i_function_schema_name
       AND p.proname = i_function_name
-      AND p.pronargs = pg_catalog.cardinality(l_argument_oids);
+      AND p.pronargs = pg_catalog.cardinality(l_argument_oids)
+      AND (SELECT pg_catalog.array_agg(x ORDER BY o)
+           FROM pg_catalog.unnest(p.proargtypes::oid[]) WITH ORDINALITY AS u(x, o)) IS NOT DISTINCT FROM l_argument_oids;
 
     IF NOT FOUND THEN
         SELECT pg_catalog.string_agg(t::pg_catalog.regtype::text, ', ' ORDER BY o)
@@ -80,12 +80,6 @@ BEGIN
     IF l_function_not_void THEN
         RAISE EXCEPTION 'function %.% must return void',
             i_function_schema_name, i_function_name
-            USING ERRCODE = '22023';
-    END IF;
-
-    IF l_function_oids IS DISTINCT FROM l_argument_oids THEN
-        RAISE EXCEPTION 'function %.% arguments do not match the primary-key column types of %.% in key order',
-            i_function_schema_name, i_function_name, i_table_schema_name, i_table_name
             USING ERRCODE = '22023';
     END IF;
 
