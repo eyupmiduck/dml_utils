@@ -124,54 +124,50 @@ $$
 $$;
 
 SELECT dml_utils.run_function_over_table(
-        i_driving_table_schema_name => 'public',
-        i_driving_table_name => 'dogs',
-        i_function_schema_name => 'public',
-        i_function_name => 'review_dog',
-        i_chunk_size => 10,
-        i_threads => 2,
-        i_label => 'dogs-review-function');
+               i_driving_table_schema_name => 'public',
+               i_driving_table_name => 'dogs',
+               i_function_schema_name => 'public',
+               i_function_name => 'review_dog',
+               i_chunk_size => 10,
+               i_threads => 2,
+               i_label => 'dogs-review-function');
 
 -- 5. Inspect the result: run summary, stored boundaries, status counts.
 \echo '--- migration run summary ---'
-SELECT
-    run_id,
-    label,
-    chunk_size,
-    threads,
-    boundary_count,
-    completed_boundary_count,
-    error_count,
-    completed_at IS NOT NULL AS completed
+SELECT run_id,
+       label,
+       chunk_size,
+       threads,
+       boundary_count,
+       completed_boundary_count,
+       error_count,
+       completed_at IS NOT NULL AS completed
 FROM dml_utils.migration_run_summary(i_label => 'dogs-review-function');
 
 \echo '--- stored chunk boundaries (boundary_id as text values) ---'
-SELECT
-    b.boundary_no,
-    dml_utils_lib.migration_key_values(b.boundary_id, ARRAY['text']) AS key_values,
-    b.completed_at IS NOT NULL AS completed
+SELECT b.boundary_no,
+       dml_utils_lib.migration_key_values(b.boundary_id, ARRAY ['text']) AS key_values,
+       b.completed_at IS NOT NULL                                        AS completed
 -- noqa:disable=AM05,ST09
 FROM dml_utils_data.migration_run AS r
-JOIN dml_utils_data.migration_boundary AS b ON b.run_id = r.run_id
+         JOIN dml_utils_data.migration_boundary AS b ON b.run_id = r.run_id
 -- noqa:enable=AM05,ST09
 WHERE r.label = 'dogs-review-function'
 ORDER BY b.boundary_no;
 
 \echo '--- rows by status ---'
-SELECT
-    status,
-    count(*) AS dogs
+SELECT status,
+       count(*) AS dogs
 FROM public.dogs
 GROUP BY status
 ORDER BY status;
 
 \echo '--- a few processed rows ---'
-SELECT
-    breed,
-    origin,
-    size,
-    lifespan,
-    status
+SELECT breed,
+       origin,
+       size,
+       lifespan,
+       status
 FROM public.dogs
 ORDER BY breed
 LIMIT 10;

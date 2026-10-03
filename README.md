@@ -27,8 +27,8 @@ Liquibase loads three application schemas, layered so nothing lower depends on
 anything above it:
 
 - **`dml_utils`** — the caller-facing API: `dml_utils.run_migration_chunks` and
-  the `run_function_over_table` wrapper, plus the run controls
-  (`set_migration_run_sql_text`, `set_migration_run_function`,
+  the `run_function_over_table` wrapper, plus the run controls (`set_migration_run_sql_text`,
+  `set_migration_run_function`,
   `set_migration_run_threads`, `archive_migration_run`) and the inspection and
   cleanup helpers (`migration_run_summary`, `migration_errors`,
   `delete_archived_migration_runs`). It depends on the two schemas below.

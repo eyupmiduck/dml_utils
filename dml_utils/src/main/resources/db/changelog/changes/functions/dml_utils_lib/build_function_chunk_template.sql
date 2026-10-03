@@ -43,8 +43,7 @@ BEGIN
       AND c.relname = i_table_name
       AND k.ordinality <= i.indnkeyatts;
 
-    IF pg_catalog.cardinality(l_argument_oids)
-        IS DISTINCT FROM pg_catalog.array_length(l_primary_key_columns, 1)
+    IF pg_catalog.cardinality(l_argument_oids) IS DISTINCT FROM pg_catalog.array_length(l_primary_key_columns, 1)
     THEN
         RAISE EXCEPTION 'primary key of table %.% changed while reading its columns',
             i_table_schema_name, i_table_name

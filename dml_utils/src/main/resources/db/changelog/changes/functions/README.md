@@ -87,6 +87,7 @@ plan) instead of passing a changed template to a resumed `run_migration_chunks`
 call, which would ignore it.
 
 ###
+
 `dml_utils.run_function_over_table(i_driving_table_schema_name, i_driving_table_name, i_function_schema_name, i_function_name [, i_chunk_size, i_threads, i_label])`
 
 ```sql
@@ -291,7 +292,9 @@ into one text value per primary-key column, in key order, using `i_key_kinds` to
 pick the array for each position. The chunk predicate re-casts each value. Pure
 casts and array element access, so it is `IMMUTABLE`.
 
-### `dml_utils_lib.build_function_chunk_template(i_table_schema_name, i_table_name, i_function_schema_name, i_function_name)`
+###
+
+`dml_utils_lib.build_function_chunk_template(i_table_schema_name, i_table_name, i_function_schema_name, i_function_name)`
 
 ```sql
 i_table_schema_name    dml_utils_data.non_null_text
@@ -303,8 +306,7 @@ RETURNS text
 
 `STABLE`, `SECURITY INVOKER`. Returns the `<driving_table>`/`<chunking_clause>`
 template that calls the given function once per row, passing the driving table's
-primary-key columns in key order
-(`SELECT <fn>(t.<pk1>, ...) FROM <driving_table> WHERE <chunking_clause>`).
+primary-key columns in key order (`SELECT <fn>(t.<pk1>, ...) FROM <driving_table> WHERE <chunking_clause>`).
 Resolves the primary key via `primary_key_columns` and validates that the
 function exists and returns `void` with argument types equal to the primary-key
 column types in key order; raises `invalid_parameter_value` (`22023`) otherwise.

@@ -11,7 +11,8 @@ import java.util.List;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeMixed.TEST_COMPOSITE_MIXED;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Verifies {@code dml_utils.run_function_over_table}: it validates the
@@ -22,6 +23,19 @@ import static org.junit.jupiter.api.Assertions.*;
 class RunFunctionOverTableTest extends PostgresTestBase {
 
     private static final String FN_SCHEMA = PUBLIC_SCHEMA;
+
+    private static String TEMPLATE(String functionName) {
+        return "SELECT public." + functionName + "(t.a, t.b) FROM <driving_table>"
+                + " WHERE <chunking_clause>";
+    }
+
+    private static String schema(Table<?> table) {
+        return table.getSchema().getName();
+    }
+
+    private static String name(Table<?> table) {
+        return table.getName();
+    }
 
     /**
      * Clears the fixture tables each test drives.
@@ -178,19 +192,6 @@ class RunFunctionOverTableTest extends PostgresTestBase {
 
         assertEquals("SELECT public.mark_mixed(t.a, t.b) FROM <driving_table>"
                 + " WHERE <chunking_clause>", template);
-    }
-
-    private static String TEMPLATE(String functionName) {
-        return "SELECT public." + functionName + "(t.a, t.b) FROM <driving_table>"
-                + " WHERE <chunking_clause>";
-    }
-
-    private static String schema(Table<?> table) {
-        return table.getSchema().getName();
-    }
-
-    private static String name(Table<?> table) {
-        return table.getName();
     }
 
     private void createMixed() {
