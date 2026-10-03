@@ -51,6 +51,14 @@ CREATE UNIQUE INDEX migration_run_label_active_idx
 COMMENT ON INDEX dml_utils_data.migration_run_label_active_idx IS
     'Ensures at most one active (not archived) run per label.';
 
+-- migration_run_summary(label) has no archived_at predicate, so neither partial
+-- label index can serve it; a non-partial index does.
+CREATE INDEX migration_run_label_idx
+    ON dml_utils_data.migration_run (label);
+
+COMMENT ON INDEX dml_utils_data.migration_run_label_idx IS
+    'Supports migration_run_summary(label), which matches active and archived runs.';
+
 -- The active-run index above only covers archived_at IS NULL, so the archived-run
 -- maintenance routines cannot use it. Index the archived side for both the
 -- label-filtered and the whole-table delete.
@@ -147,3 +155,8 @@ COMMENT ON COLUMN dml_utils_data.migration_error.updated_at IS
 -- scan migration_error for every cascaded row.
 CREATE INDEX migration_error_boundary_idx
     ON dml_utils_data.migration_error (run_id, boundary_no);
+
+-- migration_errors(run_id) orders by error_id; the FK index above is keyed by
+-- boundary_no, so it cannot provide that order.
+CREATE INDEX migration_error_run_error_idx
+    ON dml_utils_data.migration_error (run_id, error_id);

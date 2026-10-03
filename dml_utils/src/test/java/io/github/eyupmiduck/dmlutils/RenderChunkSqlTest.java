@@ -87,6 +87,22 @@ class RenderChunkSqlTest extends PostgresTestBase {
     }
 
     /**
+     * A final chunk may cover a single row (start equals end), while a non-final
+     * chunk with start equal to end, and any reversed range, are rejected: the
+     * predicate would match no rows yet the worker still marks the boundary done.
+     */
+    @Test
+    void rejectsEqualNonFinalOrReversedRanges() {
+        assertEquals(
+                "UPDATE public.src t SET processed = true"
+                        + " WHERE ((t.id) >= ('40'::bigint) AND (t.id) <= ('40'::bigint))",
+                render(true, "bigint", "40", "40"));
+        assertSqlState("22023", () -> render(false, "bigint", "40", "40"));
+        assertSqlState("22023", () -> render(false, "bigint", "40", "30"));
+        assertSqlState("22023", () -> render(true, "bigint", "40", "30"));
+    }
+
+    /**
      * A text key is rendered as a quoted literal cast to text.
      */
     @Test

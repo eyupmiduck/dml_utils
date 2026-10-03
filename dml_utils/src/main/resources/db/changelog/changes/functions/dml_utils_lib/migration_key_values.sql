@@ -16,13 +16,17 @@ BEGIN
     -- Flatten a position-aligned migration_key back into one text value per
     -- primary-key column, in key order, using i_key_kinds to select the array
     -- for each position. The values are the text form the chunk predicate
-    -- re-casts. A NULL/empty kinds array would make the loop below iterate a
-    -- NULL bound and silently return an empty result, so reject it explicitly;
-    -- the migration_key type has one array per supported kind, so at most three.
+    -- re-casts. Reject a NULL, empty, over-long, non-1-dimensional or non-1-based
+    -- kinds array: cardinality alone does not catch the last two, and indexing a
+    -- non-1-based or multidimensional array would read a slice or an out-of-range
+    -- subscript. The migration_key type has one array per supported kind, so at
+    -- most three.
     IF i_key_kinds IS NULL
+        OR pg_catalog.array_ndims(i_key_kinds) IS DISTINCT FROM 1
+        OR pg_catalog.array_lower(i_key_kinds, 1) IS DISTINCT FROM 1
         OR pg_catalog.cardinality(i_key_kinds) NOT BETWEEN 1 AND 3
     THEN
-        RAISE EXCEPTION 'key kinds must contain one to three entries'
+        RAISE EXCEPTION 'key kinds must be a one-dimensional, 1-based array of one to three entries'
             USING ERRCODE = '22023';
     END IF;
 
