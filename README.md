@@ -185,9 +185,12 @@ primary-key columns, in key order, and let
 
 ```sql
 CREATE FUNCTION app.review_dog(p_breed text)
-RETURNS void LANGUAGE sql AS
+    RETURNS void
+    LANGUAGE sql AS
 $$
-UPDATE app.dogs SET status = 'reviewed' WHERE breed = p_breed;
+UPDATE app.dogs
+SET status = 'reviewed'
+WHERE breed = p_breed;
 $$;
 ```
 
