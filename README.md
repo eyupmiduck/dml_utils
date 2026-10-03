@@ -360,6 +360,15 @@ CREATE SCHEMA liquibase AUTHORIZATION dml_utils_owner;
 create its tracking tables and the `dml_utils`, `dml_utils_lib` and
 `dml_utils_data` schemas. Never run the migration as `postgres`.
 
+**Ownership policy.** The migration role is the permanent owner of the three
+application schemas and their objects: it is the role enumerated in
+`999-grant-privileges.sql` and in the `ALTER DEFAULT PRIVILEGES` statements, so
+run every migration/upgrade as that same stable role (not a transient admin
+account). `dml_utils_caller` only holds `USAGE`/`EXECUTE`/DML and can never
+`ALTER` or `DROP` an object, so ownership stays separate from the caller grants.
+Creating objects otherwise (as a different role) leaves them with that role's
+default privileges, which the least-privilege grants do not cover.
+
 ### 2. Run the changelog
 
 From the repository root, connect as the owner:

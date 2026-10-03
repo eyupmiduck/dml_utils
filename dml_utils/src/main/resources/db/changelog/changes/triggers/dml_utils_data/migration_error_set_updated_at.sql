@@ -5,4 +5,7 @@ CREATE OR REPLACE TRIGGER migration_error_set_updated_at
 EXECUTE FUNCTION dml_utils_data.set_updated_at();
 
 COMMENT ON TRIGGER migration_error_set_updated_at ON dml_utils_data.migration_error IS
-    'Refreshes updated_at on every update of migration_error, regardless of the caller.';
+    'Refreshes updated_at on update of migration_error. An application caller '
+        'cannot bypass it, but a table owner can DISABLE TRIGGER and a superuser '
+        '(or a session with session_replication_role=replica) can bypass triggers, '
+        'so it is not refreshed unconditionally.';
