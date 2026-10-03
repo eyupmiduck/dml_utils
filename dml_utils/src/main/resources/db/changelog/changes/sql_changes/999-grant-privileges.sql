@@ -64,6 +64,14 @@ GRANT EXECUTE ON FUNCTION dml_utils_lib.primary_key_columns(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text
     ) TO dml_utils_caller;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.primary_key_attributes(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text
+    ) FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.primary_key_attributes(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text
+    ) TO dml_utils_caller;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.primary_key_kinds(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text

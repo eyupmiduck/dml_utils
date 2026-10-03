@@ -250,6 +250,23 @@ RETURNS void
 `STABLE`, `SECURITY INVOKER`. Raises `undefined_table` (`42P01`) when the table
 does not exist in the schema.
 
+### `dml_utils_lib.primary_key_attributes(i_schema_name, i_table_name)`
+
+```sql
+i_schema_name dml_utils_data.non_null_text
+i_table_name  dml_utils_data.non_null_text
+RETURNS TABLE (ordinality integer, column_name name, column_oid oid,
+               column_type regtype, key_kind text)
+```
+
+`STABLE`, `SECURITY INVOKER`. The single catalog reader for a table's primary
+key: `primary_key_columns` and `primary_key_kinds` delegate to it, so the key
+order and the one-to-three-column validation live in one place. Each row is one
+key column in key order, with its ordinal position, name, type oid, type and
+collapsed boundary kind (`bigint`/`text`/`uuid`, or NULL for an unsupported
+type). Raises `invalid_parameter_value` (`22023`) when the table has no primary
+key or more than 3 key columns.
+
 ### `dml_utils_lib.primary_key_columns(i_schema_name, i_table_name)`
 
 ```sql
@@ -261,7 +278,7 @@ RETURNS name[]
 `STABLE`, `SECURITY INVOKER`. Returns the table's primary-key columns in key
 order (from the index, so a key declared `(b, a)` returns `{b, a}`), raising
 `invalid_parameter_value` (`22023`) when the table has no primary key or more
-than 3 key columns.
+than 3 key columns. Delegates the column read to `primary_key_attributes`.
 
 ### `dml_utils_lib.primary_key_kinds(i_schema_name, i_table_name)`
 

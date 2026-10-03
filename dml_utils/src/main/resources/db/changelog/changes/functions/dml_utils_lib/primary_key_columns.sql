@@ -37,22 +37,13 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
 
-    -- indkey lists the key columns in key order; unnest WITH ORDINALITY keeps
-    -- that order (attnum order would not, for example a primary key declared as
-    -- (b, a)).
-    SELECT pg_catalog.array_agg(a.attname ORDER BY k.ordinality)
+    -- The columns, in key order, come from the shared catalog reader so all
+    -- callers agree on the key order.
+    SELECT pg_catalog.array_agg(a.column_name ORDER BY a.ordinality)
     INTO l_primary_key_columns
-    FROM pg_catalog.pg_index AS i
-             JOIN pg_catalog.pg_class AS c ON c.oid = i.indrelid
-             JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
-             JOIN pg_catalog.unnest(i.indkey) WITH ORDINALITY AS k(attnum, ordinality)
-                  ON true
-             JOIN pg_catalog.pg_attribute AS a
-                  ON a.attrelid = c.oid AND a.attnum = k.attnum
-    WHERE i.indisprimary
-      AND n.nspname = i_schema_name
-      AND c.relname = i_table_name
-      AND k.ordinality <= i.indnkeyatts;
+    FROM dml_utils_lib.primary_key_attributes(
+            i_schema_name => i_schema_name,
+            i_table_name => i_table_name) AS a;
 
     -- A concurrent drop of the primary key between the count read above and this
     -- one would leave the aggregate NULL (or short); fail loudly instead of

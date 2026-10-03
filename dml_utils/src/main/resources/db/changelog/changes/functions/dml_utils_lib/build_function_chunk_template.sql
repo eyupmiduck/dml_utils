@@ -24,23 +24,15 @@ BEGIN
             i_table_name => i_table_name);
 
     -- The function's argument types must equal the primary-key column types, in
-    -- key order, and it must return void. Read the column types straight from
-    -- the catalog (atttypid), because the engine's key *kinds* collapse the
-    -- integer family to bigint while a function's declared argument type must
-    -- match the column's actual type.
-    SELECT pg_catalog.array_agg(a.atttypid ORDER BY k.ordinality)
+    -- key order, and it must return void. Read the column type oids (atttypid)
+    -- from the catalog, because the engine's key *kinds* collapse the integer
+    -- family to bigint while a function's declared argument type must match the
+    -- column's actual type.
+    SELECT pg_catalog.array_agg(a.column_oid ORDER BY a.ordinality)
     INTO l_argument_oids
-    FROM pg_catalog.pg_index AS i
-             JOIN pg_catalog.pg_class AS c ON c.oid = i.indrelid
-             JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
-             JOIN pg_catalog.unnest(i.indkey) WITH ORDINALITY AS k(attnum, ordinality)
-                  ON true
-             JOIN pg_catalog.pg_attribute AS a
-                  ON a.attrelid = c.oid AND a.attnum = k.attnum
-    WHERE i.indisprimary
-      AND n.nspname = i_table_schema_name
-      AND c.relname = i_table_name
-      AND k.ordinality <= i.indnkeyatts;
+    FROM dml_utils_lib.primary_key_attributes(
+            i_schema_name => i_table_schema_name,
+            i_table_name => i_table_name) AS a;
 
     IF pg_catalog.cardinality(l_argument_oids) IS DISTINCT FROM pg_catalog.array_length(l_primary_key_columns, 1)
     THEN
