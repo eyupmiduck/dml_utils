@@ -57,6 +57,7 @@ class RunFunctionOverTableTest extends PostgresTestBase {
         dsl.execute("DROP FUNCTION IF EXISTS public.mark_bigint(bigint)");
         dsl.execute("DROP FUNCTION IF EXISTS public.wrong_order(text, bigint)");
         dsl.execute("DROP FUNCTION IF EXISTS public.bad_return(bigint, text)");
+        dsl.execute("DROP PROCEDURE IF EXISTS public.mark_mixed_proc(bigint, text)");
     }
 
     /**
@@ -166,6 +167,24 @@ class RunFunctionOverTableTest extends PostgresTestBase {
         assertSqlState("22023", () -> Routines.runFunctionOverTable(dsl.configuration(),
                 schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED), FN_SCHEMA,
                 "bad_return", 2, 1, null));
+    }
+
+    /**
+     * A procedure that shares the function name and signature is rejected with
+     * {@code 22023}: it cannot be called as {@code SELECT schema.name(...)}, so
+     * it must not pass validation.
+     */
+    @Test
+    void rejectsAProcedureWithAMatchingSignature() {
+        dsl.execute("CREATE PROCEDURE public.mark_mixed_proc(p_a bigint, p_b text)"
+                + " LANGUAGE sql AS $$ SELECT 1 $$");
+
+        int runsBefore = dsl.fetchCount(MIGRATION_RUN);
+        assertSqlState("22023", () -> Routines.runFunctionOverTable(dsl.configuration(),
+                schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED), FN_SCHEMA,
+                "mark_mixed_proc", 2, 1, null));
+        assertEquals(runsBefore, dsl.fetchCount(MIGRATION_RUN),
+                "a rejected procedure must not create a run");
     }
 
     /**
