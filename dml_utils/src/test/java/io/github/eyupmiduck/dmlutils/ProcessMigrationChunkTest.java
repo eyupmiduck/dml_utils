@@ -1,10 +1,21 @@
 package io.github.eyupmiduck.dmlutils;
 
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines;
+import org.jooq.DSLContext;
+import org.jooq.SQLDialect;
+import org.jooq.exception.DataAccessException;
+import org.jooq.impl.DSL;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
@@ -94,6 +105,63 @@ class ProcessMigrationChunkTest extends PostgresTestBase {
         assertSqlState("P0002", () -> processChunk(runId, 0, "UPDATE " + qualified(TEST_BIGINT)
                 + " SET payload = 'again' WHERE id >= 1 AND id < 3"));
         assertEquals(2, payloadCount(), "the second call must not run the SQL");
+    }
+
+    /**
+     * Two concurrent claims for the same boundary: the atomic claim lets exactly
+     * one caller run the chunk SQL, and the other receives {@code P0002} without
+     * running it.
+     */
+    @Test
+    void claimsABoundaryOnlyOnceUnderConcurrency() throws Exception {
+        createSource(1, 2, 3, 4);
+        long runId = populate(2);
+
+        String sql = "UPDATE " + qualified(TEST_BIGINT)
+                + " SET payload = 'done' WHERE id >= 1 AND id < 3";
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Callable<Boolean> claim = () -> {
+                try (Connection connection = openTestConnection()) {
+                    DSLContext context = DSL.using(connection, SQLDialect.POSTGRES);
+                    start.await();
+                    try {
+                        Routines.processMigrationChunk(
+                                context.configuration(), runId, 0L, sql);
+                        return true;
+                    } catch (DataAccessException e) {
+                        if ("P0002".equals(sqlStateOf(e))) {
+                            return false;
+                        }
+                        throw e;
+                    }
+                }
+            };
+            Future<Boolean> first = pool.submit(claim);
+            Future<Boolean> second = pool.submit(claim);
+            start.countDown();
+
+            boolean firstClaimed = first.get();
+            boolean secondClaimed = second.get();
+
+            assertNotEquals(firstClaimed, secondClaimed,
+                    "exactly one caller should claim the boundary");
+        } finally {
+            pool.shutdownNow();
+        }
+
+        assertTrue(boundaryCompleted(runId, 0), "the boundary should be completed once");
+        assertEquals(2, payloadCount(), "the chunk SQL should run exactly once");
+    }
+
+    private static String sqlStateOf(Throwable throwable) {
+        for (Throwable cause = throwable; cause != null; cause = cause.getCause()) {
+            if (cause instanceof SQLException sqlException) {
+                return sqlException.getSQLState();
+            }
+        }
+        return null;
     }
 
     private void createSource(long... ids) {

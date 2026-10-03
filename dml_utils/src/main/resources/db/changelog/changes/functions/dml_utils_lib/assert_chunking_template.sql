@@ -39,4 +39,6 @@ $$;
 
 COMMENT ON FUNCTION dml_utils_lib.assert_chunking_template IS
     'Raises invalid_parameter_value (22023) unless the SQL template contains '
-        '<driving_table> and <chunking_clause> exactly once each.';
+        '<driving_table> and <chunking_clause> exactly once each. The count is a '
+        'raw substring count, so the tokens must appear in executable SQL, not '
+        'inside comments or string literals.';
