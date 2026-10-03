@@ -49,20 +49,26 @@ BEGIN
     -- Resolve or create the run and the effective inputs (stored values for a
     -- resumed run, the call's inputs for a new one); a new run's boundaries are
     -- populated in a pg_background worker so they commit autonomously.
-    SELECT r.o_run_id, r.o_already_completed, r.o_effective_sql_text,
-           r.o_effective_schema_name, r.o_effective_table_name, r.o_effective_alias,
-           r.o_effective_threads, r.o_primary_key_columns, r.o_key_kinds
+    SELECT r.o_run_id,
+           r.o_already_completed,
+           r.o_effective_sql_text,
+           r.o_effective_schema_name,
+           r.o_effective_table_name,
+           r.o_effective_alias,
+           r.o_effective_threads,
+           r.o_primary_key_columns,
+           r.o_key_kinds
     INTO l_run_id, l_already_completed, l_effective_sql_text,
         l_effective_schema_name, l_effective_table_name, l_effective_alias,
         l_effective_threads, l_primary_key_columns, l_key_kinds
     FROM dml_utils_lib.resolve_migration_run(
-            i_sql_text => i_sql_text,
-            i_driving_table_schema_name => i_driving_table_schema_name,
-            i_driving_table_name => i_driving_table_name,
-            i_label => i_label,
-            i_chunk_size => i_chunk_size,
-            i_threads => i_threads,
-            i_driving_table_alias => i_driving_table_alias) AS r;
+                 i_sql_text => i_sql_text,
+                 i_driving_table_schema_name => i_driving_table_schema_name,
+                 i_driving_table_name => i_driving_table_name,
+                 i_label => i_label,
+                 i_chunk_size => i_chunk_size,
+                 i_threads => i_threads,
+                 i_driving_table_alias => i_driving_table_alias) AS r;
 
     IF l_already_completed THEN
         RETURN;

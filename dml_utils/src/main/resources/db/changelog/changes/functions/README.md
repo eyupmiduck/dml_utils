@@ -339,7 +339,8 @@ Resolves the primary key via `primary_key_columns` and validates that the
 function exists and returns `void` with argument types equal to the primary-key
 column types in key order; raises `invalid_parameter_value` (`22023`) otherwise.
 
-### `dml_utils_lib.resolve_migration_run(i_sql_text, i_driving_table_schema_name, i_driving_table_name, i_label, i_chunk_size, i_threads, i_driving_table_alias)`
+###
+`dml_utils_lib.resolve_migration_run(i_sql_text, i_driving_table_schema_name, i_driving_table_name, i_label, i_chunk_size, i_threads, i_driving_table_alias)`
 
 ```sql
 i_sql_text                  dml_utils_data.non_null_text

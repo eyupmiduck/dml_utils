@@ -31,8 +31,8 @@ BEGIN
     SELECT pg_catalog.array_agg(a.column_oid ORDER BY a.ordinality)
     INTO l_argument_oids
     FROM dml_utils_lib.primary_key_attributes(
-            i_schema_name => i_table_schema_name,
-            i_table_name => i_table_name) AS a;
+                 i_schema_name => i_table_schema_name,
+                 i_table_name => i_table_name) AS a;
 
     IF pg_catalog.cardinality(l_argument_oids) IS DISTINCT FROM pg_catalog.array_length(l_primary_key_columns, 1)
     THEN

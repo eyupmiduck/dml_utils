@@ -13,9 +13,7 @@ import java.util.UUID;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeMixed.TEST_COMPOSITE_MIXED;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Verifies {@code dml_utils.run_function_over_table}: it validates the
@@ -101,8 +99,8 @@ class RunFunctionOverTableTest extends PostgresTestBase {
 
         String derivedLabel = "function:"
                 + dsl.fetchOne("SELECT pg_catalog.json_build_array(?, ?, ?, ?)::text",
-                        schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
-                        FN_SCHEMA, "mark_mixed").get(0, String.class);
+                schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
+                FN_SCHEMA, "mark_mixed").get(0, String.class);
         assertEquals(1, dsl.fetchCount(MIGRATION_RUN, MIGRATION_RUN.LABEL.eq(derivedLabel)),
                 "both calls share one derived run");
         assertEquals(3, payloadCount(TEST_COMPOSITE_MIXED, "done"),

@@ -17,8 +17,8 @@ BEGIN
     FOR l_key IN
         SELECT a.column_name, a.column_type, a.key_kind
         FROM dml_utils_lib.primary_key_attributes(
-                i_schema_name => i_schema_name,
-                i_table_name => i_table_name) AS a
+                     i_schema_name => i_schema_name,
+                     i_table_name => i_table_name) AS a
         ORDER BY a.ordinality
         LOOP
             IF l_key.key_kind IS NULL THEN

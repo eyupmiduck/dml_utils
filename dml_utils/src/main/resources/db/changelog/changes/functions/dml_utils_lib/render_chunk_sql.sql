@@ -19,8 +19,8 @@ DECLARE
     -- Control-character sentinels that stand in for one token each while the
     -- other token is being replaced, so a substituted value can never be
     -- re-scanned or rewritten.
-    l_driving_table_sentinel   constant text := pg_catalog.chr(1);
-    l_chunking_clause_sentinel constant text := pg_catalog.chr(2);
+    l_driving_table_sentinel   constant text    := pg_catalog.chr(1);
+    l_chunking_clause_sentinel constant text    := pg_catalog.chr(2);
     l_driving_table                     text;
     l_start_tuple                       text;
     l_end_tuple                         text;
@@ -136,7 +136,7 @@ BEGIN
                         AND i_start_values[l_position] IS DISTINCT FROM i_end_values[l_position]
                     THEN
                         l_first_difference :=
-                            CASE WHEN i_start_values[l_position] < i_end_values[l_position] THEN -1 ELSE 1 END;
+                                CASE WHEN i_start_values[l_position] < i_end_values[l_position] THEN -1 ELSE 1 END;
                     END IF;
                 END IF;
             EXCEPTION

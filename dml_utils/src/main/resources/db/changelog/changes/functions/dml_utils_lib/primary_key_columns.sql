@@ -42,8 +42,8 @@ BEGIN
     SELECT pg_catalog.array_agg(a.column_name ORDER BY a.ordinality)
     INTO l_primary_key_columns
     FROM dml_utils_lib.primary_key_attributes(
-            i_schema_name => i_schema_name,
-            i_table_name => i_table_name) AS a;
+                 i_schema_name => i_schema_name,
+                 i_table_name => i_table_name) AS a;
 
     -- A concurrent drop of the primary key between the count read above and this
     -- one would leave the aggregate NULL (or short); fail loudly instead of
