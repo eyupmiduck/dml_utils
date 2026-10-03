@@ -113,6 +113,37 @@ class MigrationMaintenanceTest extends PostgresTestBase {
     }
 
     /**
+     * The summary reflects a run whose boundaries are partly completed and which
+     * is then completed and archived: the completed-boundary count, completed_at
+     * and archived_at all come through.
+     */
+    @Test
+    void migrationRunSummaryReportsCompletedAndArchivedState() {
+        String label = "maint-summary-done";
+        long runId = populateRun(label, 2, 1, 2, 3, 4);
+        // Complete two of the three boundaries and finish the run.
+        dsl.update(MIGRATION_BOUNDARY)
+                .set(MIGRATION_BOUNDARY.COMPLETED_AT, OffsetDateTime.now())
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .and(MIGRATION_BOUNDARY.BOUNDARY_NO.in(0L, 1L))
+                .execute();
+        dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.COMPLETED_AT, OffsetDateTime.now())
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute();
+        Routines.archiveMigrationRun(dsl.configuration(), label);
+
+        MigrationRunSummaryRecord summary = Routines.migrationRunSummary(
+                dsl.configuration(), label).get(0);
+
+        assertEquals(3L, summary.getBoundaryCount().longValue());
+        assertEquals(2L, summary.getCompletedBoundaryCount().longValue(),
+                "two of the three boundaries are completed");
+        assertNotNull(summary.getCompletedAt(), "the run is completed");
+        assertNotNull(summary.getArchivedAt(), "the run is archived");
+    }
+
+    /**
      * The summary returns one row per run for the label, including archived runs.
      */
     @Test

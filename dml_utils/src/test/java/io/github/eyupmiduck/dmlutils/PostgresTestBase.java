@@ -253,14 +253,48 @@ abstract class PostgresTestBase {
      */
     @BeforeAll
     void createTestDatabase() throws Exception {
-        databaseName = "test_" + getClass().getSimpleName().toLowerCase()
-                + "_" + Integer.toHexString(getClass().getName().hashCode());
+        // Bounded and collision-resistant: a 12-char hash suffix of the fully
+        // qualified name keeps the identifier under PostgreSQL's 63-byte limit
+        // (a long class name must not truncate the suffix), and the hash is wide
+        // enough that two test classes do not collide. The name is quoted so an
+        // unusual class name cannot produce an invalid identifier.
+        String suffix = Integer.toUnsignedString(getClass().getName().hashCode(), 16);
+        databaseName = "test_" + suffix;
         try (Connection admin = openConnection(POSTGRES.getDatabaseName(), POSTGRES.getUsername(), POSTGRES.getPassword());
              Statement statement = admin.createStatement()) {
-            statement.execute("CREATE DATABASE " + databaseName + " TEMPLATE " + TEMPLATE_DATABASE);
+            statement.execute("CREATE DATABASE \"" + databaseName + "\" TEMPLATE " + TEMPLATE_DATABASE);
+        } catch (SQLException e) {
+            // CREATE DATABASE succeeded but nothing owns the cleanup yet if the
+            // rest of setup fails, so drop it here before re-raising.
+            dropDatabaseQuietly();
+            throw e;
         }
-        connection = openConnection(databaseName, TEST_USER, TEST_PASSWORD);
-        dsl = DSL.using(connection, SQLDialect.POSTGRES);
+        try {
+            connection = openConnection(databaseName, TEST_USER, TEST_PASSWORD);
+            dsl = DSL.using(connection, SQLDialect.POSTGRES);
+        } catch (SQLException e) {
+            if (connection != null) {
+                connection.close();
+            }
+            dropDatabaseQuietly();
+            throw e;
+        }
+    }
+
+    /**
+     * Drops this class's private database, ignoring an already-gone database, so
+     * a failed setup does not leak it.
+     */
+    private void dropDatabaseQuietly() {
+        if (databaseName == null) {
+            return;
+        }
+        try (Connection admin = openConnection(POSTGRES.getDatabaseName(), POSTGRES.getUsername(), POSTGRES.getPassword());
+             Statement statement = admin.createStatement()) {
+            statement.execute("DROP DATABASE IF EXISTS \"" + databaseName + "\" WITH (FORCE)");
+        } catch (SQLException ignored) {
+            // Best effort; the @AfterAll cleanup is the backstop.
+        }
     }
 
     /**
@@ -412,12 +446,7 @@ abstract class PostgresTestBase {
         } finally {
             // Drop even if closing the connection failed, so the per-class
             // database cannot be leaked by a broken connection.
-            if (databaseName != null) {
-                try (Connection admin = openConnection(POSTGRES.getDatabaseName(), POSTGRES.getUsername(), POSTGRES.getPassword());
-                     Statement statement = admin.createStatement()) {
-                    statement.execute("DROP DATABASE " + databaseName + " WITH (FORCE)");
-                }
-            }
+            dropDatabaseQuietly();
         }
     }
 
