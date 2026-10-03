@@ -180,6 +180,27 @@ COMMENT ON COLUMN dml_utils_fixtures.test_composite_three.c IS
 COMMENT ON COLUMN dml_utils_fixtures.test_composite_three.payload IS
     'Fixture payload column.';
 
+-- A two-column key whose second column is literally named id1, so the top-level
+-- ORDER BY in populate_migration_boundaries would resolve the output alias id1
+-- (the first key column) instead of the input column if the terminal scan were
+-- built from raw column names rather than the idN aliases.
+CREATE TABLE dml_utils_fixtures.test_composite_id1
+(
+    x       bigint,
+    id1     bigint,
+    payload text,
+    PRIMARY KEY (x, id1)
+);
+
+COMMENT ON TABLE dml_utils_fixtures.test_composite_id1 IS
+    'Fixture: a two-column key whose second column is named id1, to catch alias/column ORDER BY collisions.';
+COMMENT ON COLUMN dml_utils_fixtures.test_composite_id1.x IS
+    'Fixture first primary-key column.';
+COMMENT ON COLUMN dml_utils_fixtures.test_composite_id1.id1 IS
+    'Fixture second primary-key column, deliberately named id1.';
+COMMENT ON COLUMN dml_utils_fixtures.test_composite_id1.payload IS
+    'Fixture payload column.';
+
 -- Four primary-key columns, one more than the supported maximum.
 CREATE TABLE dml_utils_fixtures.test_composite_four
 (

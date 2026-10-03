@@ -13,6 +13,7 @@ import java.util.UUID;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeId1.TEST_COMPOSITE_ID1;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositePk.TEST_COMPOSITE_PK;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeThree.TEST_COMPOSITE_THREE;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestInteger.TEST_INTEGER;
@@ -43,7 +44,7 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
     @BeforeEach
     void resetFixtures() {
         for (Table<?> table : List.of(TEST_BIGINT, TEST_TEXT, TEST_UUID, TEST_INTEGER, TEST_KEY,
-                TEST_COMPOSITE_PK, TEST_COMPOSITE_THREE)) {
+                TEST_COMPOSITE_PK, TEST_COMPOSITE_ID1, TEST_COMPOSITE_THREE)) {
             dsl.truncate(table).execute();
         }
     }
@@ -275,6 +276,30 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
                 "both bigint key parts share the bigint array, in key order");
         assertNull(first.getBoundaryId().getTextValues(), "the unused text array stays NULL");
         assertNull(first.getBoundaryId().getUuidValues(), "the unused uuid array stays NULL");
+    }
+
+    /**
+     * A key column literally named {@code id1} at a non-matching position is
+     * ordered by its own value, not by the output alias {@code id1} (which is
+     * the first key column). The terminal boundary must capture the true
+     * maximum tuple, so this catches the alias/column ORDER BY collision.
+     */
+    @Test
+    void ordersByKeyColumnsWhenAKeyColumnIsNamedId1() {
+        dsl.insertInto(TEST_COMPOSITE_ID1, TEST_COMPOSITE_ID1.X, TEST_COMPOSITE_ID1.ID1)
+                .values(1L, 5L)
+                .values(2L, 1L)
+                .execute();
+
+        long runId = populate(TEST_COMPOSITE_ID1, 10);
+
+        List<MigrationBoundaryRecord> actual = boundaries(runId);
+        // One chunk start at (1,5) plus the terminal high-water boundary (2,1).
+        assertEquals(2, actual.size(), "one chunk boundary plus the terminal boundary");
+        assertArrayEquals(new Long[]{1L, 5L}, actual.get(0).getBoundaryId().getBigintValues(),
+                "the first chunk starts at the smallest key tuple (1,5)");
+        assertArrayEquals(new Long[]{2L, 1L}, actual.get(1).getBoundaryId().getBigintValues(),
+                "the terminal boundary is the maximum tuple (2,1), not (2,5)");
     }
 
     /**

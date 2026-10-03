@@ -60,6 +60,14 @@ BEGIN
                     USING ERRCODE = '22023';
             END IF;
 
+            -- A NULL column name would render a degenerate %I token and only
+            -- fail later when a worker parses the chunk SQL; reject it here.
+            IF i_primary_key_columns[l_position] IS NULL THEN
+                RAISE EXCEPTION 'primary-key column name must not be NULL at position %',
+                    l_position
+                    USING ERRCODE = '22023';
+            END IF;
+
             -- %L renders a NULL as an unquoted NULL, so a missing boundary value
             -- would render a predicate that silently matches no rows (or narrows a
             -- partial row) while the chunk is still marked complete; fail loudly.

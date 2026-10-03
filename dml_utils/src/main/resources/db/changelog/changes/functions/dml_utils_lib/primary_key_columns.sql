@@ -54,6 +54,16 @@ BEGIN
       AND c.relname = i_table_name
       AND k.ordinality <= i.indnkeyatts;
 
+    -- A concurrent drop of the primary key between the count read above and this
+    -- one would leave the aggregate NULL (or short); fail loudly instead of
+    -- returning a NULL/partial list to callers that zip it with the kinds.
+    IF pg_catalog.cardinality(l_primary_key_columns) IS DISTINCT FROM l_key_column_count::integer
+    THEN
+        RAISE EXCEPTION 'primary key of table %.% changed while reading its columns',
+            i_schema_name, i_table_name
+            USING ERRCODE = '22023';
+    END IF;
+
     RETURN l_primary_key_columns;
 END;
 $$;

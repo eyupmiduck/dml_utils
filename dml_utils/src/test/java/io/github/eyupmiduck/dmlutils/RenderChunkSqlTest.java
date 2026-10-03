@@ -217,6 +217,19 @@ class RenderChunkSqlTest extends PostgresTestBase {
     }
 
     /**
+     * A NULL primary-key column name is rejected: {@code %I} on NULL would
+     * render a degenerate identifier that only fails when a worker parses the
+     * chunk SQL.
+     */
+    @Test
+    void rejectsANullPrimaryKeyColumnName() {
+        assertSqlState("22023", () -> Routines.renderChunkSql(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{null}, new String[]{"bigint"},
+                new String[]{"1"}, new String[]{"2"}, false));
+    }
+
+    /**
      * Arrays of differing length (columns, kinds or values) are rejected, since
      * they cannot be zipped into one row-value comparison.
      */
