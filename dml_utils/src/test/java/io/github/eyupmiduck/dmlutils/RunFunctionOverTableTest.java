@@ -8,7 +8,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.UUID;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
@@ -72,7 +71,7 @@ class RunFunctionOverTableTest extends PostgresTestBase {
     void appliesAMatchingFunctionOverEveryRow() {
         createMixed();
         createMarkMixed("done");
-        String label = uniqueLabel("mixed");
+        String label = functionTestLabel("mixed");
 
         Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_COMPOSITE_MIXED),
                 name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 2, 1, label);
@@ -132,7 +131,7 @@ class RunFunctionOverTableTest extends PostgresTestBase {
         createMixed();
         createMarkMixed("first");
         createMarkMixed2("second");
-        String label = uniqueLabel("setfn");
+        String label = functionTestLabel("setfn");
 
         // Create the run without processing it, then swap in the second function.
         io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
@@ -266,15 +265,8 @@ class RunFunctionOverTableTest extends PostgresTestBase {
                 + " WHERE a = p_a AND b = p_b $$");
     }
 
-    private String uniqueLabel(String suffix) {
-        return "function-test-" + suffix + "-" + UUID.randomUUID();
-    }
-
-    private boolean runCompleted(String label) {
-        return Boolean.TRUE.equals(dsl.select(MIGRATION_RUN.COMPLETED_AT.isNotNull())
-                .from(MIGRATION_RUN)
-                .where(MIGRATION_RUN.LABEL.eq(label))
-                .fetchOne(MIGRATION_RUN.COMPLETED_AT.isNotNull()));
+    private String functionTestLabel(String suffix) {
+        return uniqueLabel("function-test-" + suffix);
     }
 
     private String storedSqlText(String label) {

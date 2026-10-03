@@ -13,7 +13,6 @@ import java.sql.SQLException;
 import java.util.UUID;
 import java.util.concurrent.*;
 
-import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
 import static org.junit.jupiter.api.Assertions.*;
@@ -173,9 +172,7 @@ class ProcessMigrationChunkTest extends PostgresTestBase {
     }
 
     private void createSource(long... ids) {
-        for (long id : ids) {
-            dsl.insertInto(TEST_BIGINT, TEST_BIGINT.ID).values(id).execute();
-        }
+        seedBigint(ids);
     }
 
     private long populate(int chunkSize) {
@@ -186,14 +183,6 @@ class ProcessMigrationChunkTest extends PostgresTestBase {
 
     private void processChunk(long runId, long boundaryNo, String sql) {
         Routines.processMigrationChunk(dsl.configuration(), runId, boundaryNo, sql);
-    }
-
-    private boolean boundaryCompleted(long runId, long boundaryNo) {
-        return Boolean.TRUE.equals(dsl.select(MIGRATION_BOUNDARY.COMPLETED_AT.isNotNull())
-                .from(MIGRATION_BOUNDARY)
-                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId)
-                        .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(boundaryNo)))
-                .fetchOne(MIGRATION_BOUNDARY.COMPLETED_AT.isNotNull()));
     }
 
     private int payloadCount() {

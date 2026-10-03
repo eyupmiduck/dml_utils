@@ -824,7 +824,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     private void createSource(long... ids) {
-        createSource(TEST_BIGINT, ids);
+        seedBigint(ids);
     }
 
     private void createSource(Table<?> table, long... ids) {
@@ -843,7 +843,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     private String label(String suffix) {
-        return "run-chunks-" + suffix + "-" + System.nanoTime();
+        return uniqueLabel("run-chunks-" + suffix);
     }
 
     private void run(String label, int chunkSize, Table<?> table) {
@@ -863,24 +863,9 @@ class RunMigrationChunksTest extends PostgresTestBase {
                 .fetchOne(MIGRATION_RUN.RUN_ID);
     }
 
-    private boolean runCompleted(long runId) {
-        return Boolean.TRUE.equals(dsl.select(MIGRATION_RUN.COMPLETED_AT.isNotNull())
-                .from(MIGRATION_RUN)
-                .where(MIGRATION_RUN.RUN_ID.eq(runId))
-                .fetchOne(MIGRATION_RUN.COMPLETED_AT.isNotNull()));
-    }
-
     private int completedBoundaries(long runId) {
         return dsl.fetchCount(MIGRATION_BOUNDARY,
                 MIGRATION_BOUNDARY.RUN_ID.eq(runId).and(MIGRATION_BOUNDARY.COMPLETED_AT.isNotNull()));
-    }
-
-    private boolean boundaryCompleted(long runId, long boundaryNo) {
-        return Boolean.TRUE.equals(dsl.select(MIGRATION_BOUNDARY.COMPLETED_AT.isNotNull())
-                .from(MIGRATION_BOUNDARY)
-                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId)
-                        .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(boundaryNo)))
-                .fetchOne(MIGRATION_BOUNDARY.COMPLETED_AT.isNotNull()));
     }
 
     /**
