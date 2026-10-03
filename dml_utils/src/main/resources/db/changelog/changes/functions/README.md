@@ -66,8 +66,10 @@ table's locks and pages. `i_sql_text` is a template with
 `<driving_table>` and `<chunking_clause>` (see `render_chunk_sql`). Reuses the
 active run for the label, or creates it by running
 `dml_utils_lib.populate_migration_boundaries` in a worker so its boundaries
-commit before the chunks run. A resumed run uses the recorded SQL text, chunk
-size, threads and driving table; a differing input is ignored with a notice, so
+commit before the chunks run (run resolution is delegated to
+`dml_utils_lib.resolve_migration_run`). A resumed run uses the recorded SQL
+text, chunk size, threads and driving table; a differing input is ignored with a
+notice, so
 the boundaries and the rendered chunk SQL always refer to the same table. Use
 `set_migration_run_sql_text` or `set_migration_run_threads` to change the
 recorded SQL text or thread count of an unfinished run. Each chunk
@@ -336,6 +338,31 @@ primary-key columns in key order (`SELECT <fn>(t.<pk1>, ...) FROM <driving_table
 Resolves the primary key via `primary_key_columns` and validates that the
 function exists and returns `void` with argument types equal to the primary-key
 column types in key order; raises `invalid_parameter_value` (`22023`) otherwise.
+
+### `dml_utils_lib.resolve_migration_run(i_sql_text, i_driving_table_schema_name, i_driving_table_name, i_label, i_chunk_size, i_threads, i_driving_table_alias)`
+
+```sql
+i_sql_text                  dml_utils_data.non_null_text
+i_driving_table_schema_name dml_utils_data.non_null_text
+i_driving_table_name        dml_utils_data.non_null_text
+i_label                     dml_utils_data.non_null_text
+i_chunk_size                dml_utils_data.positive_integer
+i_threads                   dml_utils_data.positive_integer
+i_driving_table_alias       dml_utils_data.non_null_text
+RETURNS record (o_run_id bigint, o_already_completed boolean,
+                o_effective_sql_text text, o_effective_schema_name text,
+                o_effective_table_name text, o_effective_alias text,
+                o_effective_threads integer, o_primary_key_columns name[],
+                o_key_kinds text[])
+```
+
+`SECURITY INVOKER`. The run-resolution half of `run_migration_chunks`: it reuses
+the active run for the label or creates one (populating its boundaries in a
+`pg_background` worker so they commit autonomously), then returns the run id,
+whether it was already complete, the effective sql_text/schema/table/alias/
+threads (the stored values for a resumed run, ignoring differing inputs with a
+notice) and the driving table's primary-key columns and kinds. It validates the
+thread count against `max_worker_processes` before creating a run.
 
 ### `dml_utils_lib.assert_chunking_template(i_sql_text)`
 

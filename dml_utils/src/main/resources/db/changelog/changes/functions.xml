@@ -104,6 +104,16 @@
         </rollback>
     </changeSet>
 
+    <changeSet id="function-dml_utils_lib.resolve_migration_run" author="dml_utils"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils_lib/resolve_migration_run.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils_lib/resolve_migration_run-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
     <changeSet id="function-dml_utils_lib.build_function_chunk_template" author="dml_utils"
                dbms="postgresql" runOnChange="true">
         <createProcedure path="functions/dml_utils_lib/build_function_chunk_template.sql"
