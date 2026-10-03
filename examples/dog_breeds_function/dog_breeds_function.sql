@@ -1,15 +1,21 @@
--- Chunked migration example: backfill a column on a dog-breeds table.
+-- Function-over-table example: run a void function once per row of a dog-breeds
+-- table, chunk by chunk, via dml_utils.run_function_over_table.
 --
 -- Run against the local dev database after scripts/start-local-db.sh:
---   psql -h localhost -p 5433 -U postgres -d dml_utils -f examples/dog_breeds/dog_breeds.sql
+--   psql -h localhost -p 5433 -U postgres -d dml_utils \
+--       -f examples/dog_breeds_function/dog_breeds_function.sql
 --
--- The script is idempotent: it recreates the table and archives any prior run
--- with the example label, so it can be re-run freely.
+-- The script is idempotent: it recreates the function and table and archives any
+-- prior run with the example label, so it can be re-run freely.
 
 \set ON_ERROR_STOP on
 
 -- 1. A driving table with a supported primary key. Here the breed name (text)
 --    is the key; a composite key of up to three columns works the same way.
+--    The function below must take the primary-key column types in key order.
+--    Drop the function first: a SQL function depends on the table it updates,
+--    so the table cannot be dropped while the function still exists.
+DROP FUNCTION IF EXISTS public.review_dog(text);
 DROP TABLE IF EXISTS public.dogs;
 
 CREATE TABLE public.dogs
@@ -22,9 +28,9 @@ CREATE TABLE public.dogs
 );
 
 COMMENT ON TABLE public.dogs IS
-    'Example: dog breeds, keyed by breed name, for the chunked-migration demo.';
+    'Example: dog breeds, keyed by breed name, for the function-over-table demo.';
 COMMENT ON COLUMN public.dogs.status IS
-    'Backfilled by the example migration.';
+    'Set per row by the example review_dog function.';
 
 -- 2. Seed with some famous breeds.
 INSERT INTO public.dogs (breed, origin, size, lifespan)
@@ -81,25 +87,43 @@ VALUES ('Affenpinscher', 'Germany', 'toy', 14),
        ('Whippet', 'United Kingdom', 'medium', 14),
        ('Yorkshire Terrier', 'United Kingdom', 'toy', 15);
 
--- 3. Run the migration in small chunks. The template sets status = 'reviewed'
---    on every row, chunk by chunk; each chunk is a pg_background worker, and
---    the call resumes at the first unprocessed chunk if it is interrupted.
---
---    The label identifies the run; re-running with the same label resumes it,
---    and an already-complete run is a no-op. Here we archive any previous run
---    with the label first so the example can be re-run from scratch;
---    archive_migration_run returns NULL when there is no active run.
-SELECT dml_utils.archive_migration_run(i_label => 'dogs-status-backfill');
+-- 3. Encapsulate the per-row work in a void function. Its argument list is the
+--    driving table's primary key, in key order (here a single text breed).
+--    The wrapper validates this signature up front and calls the function once
+--    per row, so the caller never writes the template SQL.
+CREATE OR REPLACE FUNCTION public.review_dog(p_breed text)
+    RETURNS void
+    LANGUAGE sql
+    SECURITY INVOKER
+AS
+$$
+UPDATE public.dogs
+SET status = 'reviewed'
+WHERE breed = p_breed;
+$$;
 
-SELECT dml_utils.run_migration_chunks(
-               i_sql_text => 'UPDATE <driving_table> SET status = ''reviewed'' WHERE <chunking_clause>',
+COMMENT ON FUNCTION public.review_dog IS
+    'Example per-row function: marks one dog breed reviewed.';
+
+-- 4. Run the function over every row in small chunks. The wrapper builds the
+--    per-row template and delegates to run_migration_chunks, so each chunk is a
+--    pg_background worker and the call resumes at the first unprocessed chunk if
+--    it is interrupted. The label identifies the run; re-running with the same
+--    label resumes it, and an already-complete run is a no-op. Archive any
+--    previous run with the label first so the example can be re-run from
+--    scratch; archive_migration_run returns NULL when there is no active run.
+SELECT dml_utils.archive_migration_run(i_label => 'dogs-review-function');
+
+SELECT dml_utils.run_function_over_table(
                i_driving_table_schema_name => 'public',
                i_driving_table_name => 'dogs',
-               i_label => 'dogs-status-backfill',
+               i_function_schema_name => 'public',
+               i_function_name => 'review_dog',
                i_chunk_size => 10,
-               i_threads => 2);
+               i_threads => 2,
+               i_label => 'dogs-review-function');
 
--- 4. Inspect the result: run summary, stored boundaries, status counts.
+-- 5. Inspect the result: run summary, stored boundaries, status counts.
 \echo '--- migration run summary ---'
 SELECT run_id,
        label,
@@ -109,7 +133,7 @@ SELECT run_id,
        completed_boundary_count,
        error_count,
        completed_at IS NOT NULL AS completed
-FROM dml_utils.migration_run_summary(i_label => 'dogs-status-backfill');
+FROM dml_utils.migration_run_summary(i_label => 'dogs-review-function');
 
 \echo '--- stored chunk boundaries (boundary_id as text values) ---'
 SELECT b.boundary_no,
@@ -119,7 +143,7 @@ SELECT b.boundary_no,
 FROM dml_utils_data.migration_run AS r
          JOIN dml_utils_data.migration_boundary AS b ON b.run_id = r.run_id
 -- noqa:enable=AM05,ST09
-WHERE r.label = 'dogs-status-backfill'
+WHERE r.label = 'dogs-review-function'
 ORDER BY b.boundary_no;
 
 \echo '--- rows by status ---'

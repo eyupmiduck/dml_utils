@@ -48,6 +48,18 @@ REVOKE EXECUTE ON FUNCTION dml_utils_lib.migration_key_is_canonical(
 GRANT EXECUTE ON FUNCTION dml_utils_lib.migration_key_is_canonical(
     dml_utils_data.migration_key
     ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.build_function_chunk_template(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.build_function_chunk_template(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text
+    ) TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_chunking_template(
     dml_utils_data.non_null_text
     ) FROM dml_utils_caller;
@@ -137,6 +149,34 @@ GRANT EXECUTE ON FUNCTION dml_utils.run_migration_chunks(
     dml_utils_data.non_null_text,
     dml_utils_data.positive_integer,
     dml_utils_data.positive_integer,
+    dml_utils_data.non_null_text
+    ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils.run_function_over_table(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.positive_integer,
+    dml_utils_data.positive_integer,
+    text
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils.run_function_over_table(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.positive_integer,
+    dml_utils_data.positive_integer,
+    text
+    ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils.set_migration_run_function(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils.set_migration_run_function(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
     dml_utils_data.non_null_text
     ) TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils.set_migration_run_sql_text(

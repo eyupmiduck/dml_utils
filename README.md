@@ -26,9 +26,11 @@ Docker required (see
 Liquibase loads three application schemas, layered so nothing lower depends on
 anything above it:
 
-- **`dml_utils`** — the caller-facing API: `dml_utils.run_migration_chunks`, plus
-  the run controls (`set_migration_run_sql_text`, `set_migration_run_threads`,
-  `archive_migration_run`) and the inspection and cleanup helpers (`migration_run_summary`, `migration_errors`,
+- **`dml_utils`** — the caller-facing API: `dml_utils.run_migration_chunks` and
+  the `run_function_over_table` wrapper, plus the run controls (`set_migration_run_sql_text`,
+  `set_migration_run_function`,
+  `set_migration_run_threads`, `archive_migration_run`) and the inspection and
+  cleanup helpers (`migration_run_summary`, `migration_errors`,
   `delete_archived_migration_runs`). It depends on the two schemas below.
 - **`dml_utils_lib`** — the engine: the generic catalog and template helpers and
   the internal routines that populate boundaries, run one chunk and record
@@ -173,6 +175,40 @@ SELECT dml_utils.run_migration_chunks(
                i_chunk_size => 5000,
                i_driving_table_alias => 'e');
 ```
+
+### Example: running a function over every row
+
+If a developer finds the template SQL hard to write, they can encapsulate the
+per-row work in a `void` function whose arguments are the driving table's
+primary-key columns, in key order, and let
+`dml_utils.run_function_over_table` build the template and run it chunk by chunk:
+
+```sql
+CREATE FUNCTION app.review_dog(p_breed text)
+    RETURNS void
+    LANGUAGE sql AS
+$$
+UPDATE app.dogs
+SET status = 'reviewed'
+WHERE breed = p_breed;
+$$;
+```
+
+```sql
+SELECT dml_utils.run_function_over_table(
+               i_driving_table_schema_name => 'app',
+               i_driving_table_name => 'dogs',
+               i_function_schema_name => 'app',
+               i_function_name => 'review_dog',
+               i_chunk_size => 1000);
+```
+
+The wrapper validates the function up front (it must return `void` and take the
+primary-key column types in key order, raising `22023` otherwise), derives a
+resume label from the table and function, and delegates to
+`run_migration_chunks`. Point an unfinished run at a different function with
+`dml_utils.set_migration_run_function`. See `examples/dog_breeds_function/` for a
+full runnable script.
 
 ### Requirements and behavior
 

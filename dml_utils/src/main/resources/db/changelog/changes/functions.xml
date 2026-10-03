@@ -94,6 +94,16 @@
         </rollback>
     </changeSet>
 
+    <changeSet id="function-dml_utils_lib.build_function_chunk_template" author="dml_utils"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils_lib/build_function_chunk_template.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils_lib/build_function_chunk_template-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
     <changeSet id="function-dml_utils_lib.assert_chunking_template" author="dml_utils"
                dbms="postgresql" runOnChange="true">
         <createProcedure path="functions/dml_utils_lib/assert_chunking_template.sql"
@@ -160,6 +170,26 @@
                          relativeToChangelogFile="true"/>
         <rollback>
             <sqlFile path="functions-rollback/dml_utils_lib/record_migration_error-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="function-dml_utils.run_function_over_table" author="dml_utils"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils/run_function_over_table.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils/run_function_over_table-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="function-dml_utils.set_migration_run_function" author="dml_utils"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils/set_migration_run_function.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils/set_migration_run_function-rollback.sql"
                      relativeToChangelogFile="true"/>
         </rollback>
     </changeSet>
