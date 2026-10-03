@@ -11,11 +11,7 @@ import org.junit.jupiter.api.Test;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.UUID;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.concurrent.*;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
@@ -31,6 +27,15 @@ class ProcessMigrationChunkTest extends PostgresTestBase {
 
     private static String qualified(org.jooq.Table<?> table) {
         return table.getSchema().getName() + "." + table.getName();
+    }
+
+    private static String sqlStateOf(Throwable throwable) {
+        for (Throwable cause = throwable; cause != null; cause = cause.getCause()) {
+            if (cause instanceof SQLException sqlException) {
+                return sqlException.getSQLState();
+            }
+        }
+        return null;
     }
 
     @BeforeEach
@@ -153,15 +158,6 @@ class ProcessMigrationChunkTest extends PostgresTestBase {
 
         assertTrue(boundaryCompleted(runId, 0), "the boundary should be completed once");
         assertEquals(2, payloadCount(), "the chunk SQL should run exactly once");
-    }
-
-    private static String sqlStateOf(Throwable throwable) {
-        for (Throwable cause = throwable; cause != null; cause = cause.getCause()) {
-            if (cause instanceof SQLException sqlException) {
-                return sqlException.getSQLState();
-            }
-        }
-        return null;
     }
 
     private void createSource(long... ids) {
