@@ -36,6 +36,9 @@ __pycache__/
 .env
 .env.*
 !.env.example
+# The committed root .env holds only non-secret dev-stack config (HOST_PORT)
+# for the shared compose.yaml; nested .env files stay ignored.
+!/.env
 *.pem
 *.key
 *.p12

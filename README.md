@@ -307,11 +307,11 @@ script. Connect with:
 psql -h localhost -p 5433 -U postgres -d dml_utils   # password: postgres
 ```
 
-The port is bound to `127.0.0.1` only and defaults to `5433` (so it can run
-alongside the ddl_utils dev database on `5432`); the credentials are set in
-`compose.yaml`. Data lives in the `dml_utils_pgdata` volume:
-`scripts/stop-local-db.sh` keeps it, while `scripts/refresh-local-db.sh` wipes
-it and re-runs the migrations.
+The port is bound to `127.0.0.1` only and is `5433` here (set in the root
+`.env`, so it can run alongside the ddl_utils dev database on `5432`); the
+credentials and the stack are defined in `scripts/compose.yaml`. Data lives in
+the `dml_utils_pgdata` volume: `scripts/stop-local-db.sh` keeps it, while
+`scripts/refresh-local-db.sh` wipes it and re-runs the migrations.
 
 ## Installing with the Liquibase CLI
 
@@ -442,8 +442,10 @@ image.
 dml_utils/src/main/resources/db/changelog/   Liquibase changelog (master + changes)
 dml_utils/src/test/java/io/github/eyupmiduck/dmlutils/   JUnit tests
 scripts/                                     workflow_library submodule: custom image
-                                             (postgres/), local DB and release helpers
-compose.yaml                                 Local development database
+                                             (postgres/, compose.yaml), local DB,
+                                             release helpers, shared .sqlfluff
+.env                                         Dev-stack config (HOST_PORT)
+.sqlfluff                                    Symlink to scripts/.sqlfluff
 ```
 
 ## Running against a different PostgreSQL version
@@ -458,8 +460,8 @@ custom image tag:
 scripts/build-postgres-image.sh postgres:16-alpine
 ./mvnw verify -Dpostgres.version=16-alpine
 
-# Local dev database (Docker Compose) takes the image tag directly
-POSTGRES_IMAGE=dml-utils-postgres:16-alpine docker compose up -d
+# Local dev database: build the image for that version, then start the stack
+POSTGRES_IMAGE=dml-utils-postgres:16-alpine scripts/start-local-db.sh
 ```
 
 The build rejects a stock `postgres` image at `validate` (it lacks the

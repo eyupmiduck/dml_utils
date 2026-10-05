@@ -38,11 +38,11 @@ dependencies are not installed to the local repository.
 
 ### Local database
 
-For manual experimentation, `docker compose up -d` starts a PostgreSQL with the
-changelog applied. Convenience scripts live in `scripts/`:
+For manual experimentation, the scripts in `scripts/` run the shared
+`scripts/compose.yaml` stack and apply the changelog:
 
 ```sh
-scripts/start-local-db.sh     # docker compose up -d
+scripts/start-local-db.sh     # start PostgreSQL and apply the changelog
 scripts/stop-local-db.sh      # stop, keep data
 scripts/refresh-local-db.sh   # drop the volume and re-apply migrations
 ```
