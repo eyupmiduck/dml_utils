@@ -57,13 +57,6 @@
             <artifactId>slf4j-jdk14</artifactId>
             <scope>test</scope>
         </dependency>
-        <!-- Puts docker-java.properties (Docker API pin) on the test classpath -->
-        <dependency>
-            <groupId>io.github.eyupmiduck</groupId>
-            <artifactId>docker_java_config</artifactId>
-            <version>${project.version}</version>
-            <scope>test</scope>
-        </dependency>
         <dependency>
             <groupId>io.github.eyupmiduck</groupId>
             <artifactId>liquibase-validation</artifactId>
@@ -98,8 +91,8 @@
                 <groupId>org.testcontainers</groupId>
                 <artifactId>testcontainers-jooq-codegen-maven-plugin</artifactId>
                 <dependencies>
-                    <!-- Override the plugin's bundled Testcontainers 1.19.1: its
-                         docker-java is too old for Docker 29 (needs API >= 1.40). -->
+                    <!-- Override the plugin's bundled Testcontainers 1.19.1 so
+                         the codegen runs the same Testcontainers as the tests. -->
                     <dependency>
                         <groupId>org.testcontainers</groupId>
                         <artifactId>testcontainers</artifactId>
@@ -126,13 +119,6 @@
                         <groupId>org.jooq</groupId>
                         <artifactId>jooq-codegen</artifactId>
                         <version>${jooq.version}</version>
-                    </dependency>
-                    <!-- Puts docker-java.properties (Docker API pin) on the plugin
-                         classpath -->
-                    <dependency>
-                        <groupId>io.github.eyupmiduck</groupId>
-                        <artifactId>docker_java_config</artifactId>
-                        <version>${project.version}</version>
                     </dependency>
                 </dependencies>
                 <executions>
