@@ -21,6 +21,10 @@ jOOQ codegen and tests. CI: GitHub Actions (`.github/workflows/maven.yml`) runs
 `./mvnw clean verify` on pull requests to
 `main`.
 
+- `scripts/` is a git submodule of `eyupmiduck/workflow_library` (the shared
+  build/dev shims: the custom PostgreSQL image, the local-DB scripts, the
+  release script). Run `git submodule update --init` after cloning. Keep the
+  submodule commit and the reusable-workflow `uses:` SHA in step.
 - Root `pom.xml`: parent POM (`dml-utils-parent`); all dependency and plugin
   versions are pinned here in `dependencyManagement` / `pluginManagement`.
 - `dml_utils/`: the main module; base package
@@ -49,7 +53,6 @@ jOOQ codegen and tests. CI: GitHub Actions (`.github/workflows/maven.yml`) runs
       PostgreSQL container and applies the Liquibase changelog. **Docker must be
       running for `./mvnw verify`.** Plugin 0.0.4 is old: the module POM
       overrides its bundled Testcontainers and jOOQ — keep those overrides.
-
 
 ## Useful commands
 
@@ -217,7 +220,7 @@ jOOQ codegen and tests. CI: GitHub Actions (`.github/workflows/maven.yml`) runs
   in a dedicated `liquibase` schema as `dml_utils_databasechangelog` and
   `dml_utils_databasechangeloglock`. Every entry point sets this — the jOOQ
   codegen plugin (`dml_utils/pom.xml`), `PostgresTestBase`, and the CLI flags in
-  `compose.yaml` — and the custom image's init script (`docker/postgres/roles.sql`)
+  `compose.yaml` — and the custom image's init script (`scripts/postgres/roles.sql`)
   creates the schema, because Liquibase does not.
 - SQLFluff (`.sqlfluff`, dialect `postgres`) lints the changelog `.sql` files
   during `verify` via `exec-maven-plugin`. Requires `sqlfluff` on PATH (use
@@ -286,7 +289,7 @@ jOOQ codegen and tests. CI: GitHub Actions (`.github/workflows/maven.yml`) runs
 - The routines are statically analysed with the `plpgsql_check` extension (`PlpgsqlCheckTest`). It is compiled into the
   custom image, created in the
   template database, and available in dev databases via
-  `docker/postgres/roles.sql`; keep the routines free of its warnings.
+  `scripts/postgres/roles.sql`; keep the routines free of its warnings.
 
 ## Before completing a change
 

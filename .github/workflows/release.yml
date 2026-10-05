@@ -22,11 +22,12 @@ permissions:
 jobs:
   release:
     # Pinned to the workflow_library commit; bump the SHA deliberately when
-    # upgrading the library.
+    # upgrading the library. Keep it in step with the scripts/ submodule.
     permissions:
       contents: write
       packages: write
-    uses: eyupmiduck/workflow_library/.github/workflows/maven-release.yml@83d3de534b94b63f7876709f2e969621136caaf8
+    uses: eyupmiduck/workflow_library/.github/workflows/maven-release.yml@9238b6c09fa879c463106221a7e6183f6605509d
     with:
       java-version: "25"
       postgres-version: postgres:17-alpine
+      project: dml_utils

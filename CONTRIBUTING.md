@@ -11,6 +11,9 @@ and submit changes.
   fails without a running Docker daemon.
 - **Maven wrapper** — always use `./mvnw`; do not rely on a globally installed
   Maven.
+- **Submodule** — `scripts/` is a git submodule of
+  [`workflow_library`](https://github.com/eyupmiduck/workflow_library) holding
+  the shared build/dev shims. Run `git submodule update --init` after cloning (or clone with `--recurse-submodules`).
 - **Python + SQLFluff** — only needed if you touch changelog SQL. The repo's
   `.venv` is the expected environment (see below).
 - **GitHub Packages token** — the test-scoped `liquibase-validation` dependency

@@ -279,7 +279,7 @@ SELECT dml_utils.delete_archived_migration_runs(i_label => 'events-region-backfi
 ## Building and testing
 
 ```sh
-scripts/build-postgres-image.sh postgres:17-alpine   # once, or after docker/ changes
+scripts/build-postgres-image.sh postgres:17-alpine   # once, or after scripts/postgres/ changes
 ./mvnw verify
 ```
 
@@ -412,7 +412,7 @@ liquibase \
 
 The build and local dev database use a custom image (`dml-utils-postgres:<ver>-alpine`) built from the official
 `postgres:<ver>-alpine`
-image. It bakes in a roles init script (`docker/postgres/roles.sql`) that
+image. It bakes in a roles init script (`scripts/postgres/roles.sql`) that
 creates the application roles and the `liquibase` schema before Liquibase runs:
 
 - `dml_utils_owner` — owns the schemas and objects; Liquibase connects as this
@@ -441,8 +441,8 @@ image.
 ```
 dml_utils/src/main/resources/db/changelog/   Liquibase changelog (master + changes)
 dml_utils/src/test/java/io/github/eyupmiduck/dmlutils/   JUnit tests
-docker/postgres/                             Custom image (roles + extensions)
-scripts/                                     Local DB and release helpers
+scripts/                                     workflow_library submodule: custom image
+                                             (postgres/), local DB and release helpers
 compose.yaml                                 Local development database
 ```
 
