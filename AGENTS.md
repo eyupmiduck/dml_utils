@@ -16,8 +16,8 @@ Primary technologies:
 
 ## Repo state
 
-Maven multi-module project: `dml_utils` carries the Liquibase-managed schemas,
-jOOQ codegen and tests; `docker_java_config` is a build shim. CI: GitHub Actions (`.github/workflows/maven.yml`) runs
+Single-module Maven project: `dml_utils` carries the Liquibase-managed schemas,
+jOOQ codegen and tests. CI: GitHub Actions (`.github/workflows/maven.yml`) runs
 `./mvnw clean verify` on pull requests to
 `main`.
 
@@ -49,11 +49,7 @@ jOOQ codegen and tests; `docker_java_config` is a build shim. CI: GitHub Actions
       PostgreSQL container and applies the Liquibase changelog. **Docker must be
       running for `./mvnw verify`.** Plugin 0.0.4 is old: the module POM
       overrides its bundled Testcontainers and jOOQ — keep those overrides.
-- `docker_java_config/`: jar containing only `docker-java.properties`
-  (`api.version=1.44`). Testcontainers <= 1.21.3 shades docker-java pinned to
-  Docker API 1.32, but Docker 29 requires >= 1.40. This module puts the pin on
-  the codegen plugin realm and the test classpath. Remove once Testcontainers
-  supports Docker 29+ natively.
+
 
 ## Useful commands
 
@@ -81,8 +77,7 @@ jOOQ codegen and tests; `docker_java_config` is a build shim. CI: GitHub Actions
   not built green. Cut one with `scripts/cut-release.sh <version>`, which
   refuses anything but a clean, up-to-date `main` and a version newer than the
   greatest existing tag.
-- The parent POM and `dml_utils` are published. `docker_java_config` is a build
-  shim, so it sets `maven.deploy.skip` and is never deployed.
+- The parent POM and `dml_utils` are published.
 
 ## Development principles
 

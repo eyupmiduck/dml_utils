@@ -2,10 +2,10 @@
 #
 # Minor and patch updates are grouped into a single PR per ecosystem to reduce
 # noise; major updates arrive as individual PRs so they get a real review.
-# Note: Testcontainers, jOOQ, and the docker-java API pin in docker_java_config
-# are deliberate, so a dependency bump there is a change to validate, not to
-# merge blindly. The Maven build and integration tests run on every Dependabot
-# PR, so a broken update fails CI before it can reach main.
+# Note: Testcontainers and jOOQ are deliberate, so a dependency bump there is a
+# change to validate, not to merge blindly. The Maven build and integration tests
+# run on every Dependabot PR, so a broken update fails CI before it can reach
+# main.
 version: 2
 updates:
   - package-ecosystem: maven
@@ -29,10 +29,6 @@ updates:
         exclude-patterns:
           - "org.testcontainers:*"
           - "org.jooq:*"
-          # docker-java arrives transitively via Testcontainers; the
-          # docker-java.properties API pin in docker_java_config is deliberate,
-          # so keep its updates out of the bulk group too.
-          - "com.github.docker-java:*"
         update-types:
           - minor
           - patch
