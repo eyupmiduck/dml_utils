@@ -12,13 +12,16 @@ DECLARE
     l_boundary_no bigint;
 BEGIN
     -- Claim the boundary first: a single atomic UPDATE ... RETURNING both locks
-    -- the row for this worker's transaction and records the claim. The
-    -- completed_at IS NULL guard makes the claim exclusive, so a boundary can be
-    -- processed only once. If the chunk SQL then fails, the worker transaction
-    -- aborts and the claim rolls back, leaving the boundary unclaimed so a later
-    -- run resumes it.
+    -- the row for this worker's transaction and records the claim in started_at.
+    -- The completed_at IS NULL guard makes the claim exclusive, so a boundary can
+    -- be processed only once. clock_timestamp(), not now(), so started_at is the
+    -- actual server time the claim ran, not the worker transaction's start time.
+    -- If the chunk SQL then fails, the worker transaction aborts and the claim
+    -- rolls back -- including started_at -- leaving the boundary unclaimed so a
+    -- later run resumes it. A boundary therefore reports started_at only for a
+    -- chunk that actually completed, which is intended.
     UPDATE dml_utils_data.migration_boundary
-    SET completed_at = pg_catalog.now()
+    SET started_at = pg_catalog.clock_timestamp()
     WHERE run_id = i_run_id
       AND boundary_no = i_boundary_no
       AND completed_at IS NULL
@@ -41,13 +44,23 @@ BEGIN
     -- therefore no more privileged than the caller's own SQL, and no
     -- provenance check is needed to keep it safe.
     EXECUTE i_sql_text;
+
+    -- Record completion only after the chunk SQL succeeds, with its own
+    -- clock_timestamp() so completed_at is the actual server time the chunk
+    -- finished rather than the claim time. The row is still locked by the claim
+    -- above, so no other transaction can interleave.
+    UPDATE dml_utils_data.migration_boundary
+    SET completed_at = pg_catalog.clock_timestamp()
+    WHERE run_id = i_run_id
+      AND boundary_no = i_boundary_no;
 END;
 $$;
 
 COMMENT ON FUNCTION dml_utils_lib.process_migration_chunk IS
-    'Claims one migration boundary and runs its chunk SQL in the caller''s '
-        'transaction; raises P0002 when the boundary is missing or already '
-        'completed. Intended to run inside a pg_background worker. SECURITY '
-        'INVOKER by design: it runs with the caller''s privileges and is not an '
-        'authorization boundary, so it can do nothing the caller could not do '
-        'directly.';
+    'Claims one migration boundary (recording started_at) and runs its chunk SQL '
+        'in the caller''s transaction, then records completed_at; raises P0002 when '
+        'the boundary is missing or already completed. Both timestamps are the '
+        'actual server time of the event, not the transaction start. Intended to '
+        'run inside a pg_background worker. SECURITY INVOKER by design: it runs '
+        'with the caller''s privileges and is not an authorization boundary, so it '
+        'can do nothing the caller could not do directly.';

@@ -108,6 +108,7 @@ class MigrationMaintenanceTest extends PostgresTestBase {
         assertEquals(3L, summary.getBoundaryCount().longValue(), "chunk starts plus terminal");
         assertEquals(0L, summary.getCompletedBoundaryCount().longValue());
         assertEquals(2L, summary.getErrorCount().longValue());
+        assertNull(summary.getStartedAt(), "a fresh run has not started");
         assertNull(summary.getCompletedAt());
         assertNull(summary.getArchivedAt());
     }
@@ -122,12 +123,15 @@ class MigrationMaintenanceTest extends PostgresTestBase {
         String label = "maint-summary-done";
         long runId = populateRun(label, 2, 1, 2, 3, 4);
         // Complete two of the three boundaries and finish the run.
+        OffsetDateTime started = OffsetDateTime.parse("2020-01-01T00:00:00Z");
         dsl.update(MIGRATION_BOUNDARY)
+                .set(MIGRATION_BOUNDARY.STARTED_AT, started)
                 .set(MIGRATION_BOUNDARY.COMPLETED_AT, OffsetDateTime.now())
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
                 .and(MIGRATION_BOUNDARY.BOUNDARY_NO.in(0L, 1L))
                 .execute();
         dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.STARTED_AT, started)
                 .set(MIGRATION_RUN.COMPLETED_AT, OffsetDateTime.now())
                 .where(MIGRATION_RUN.RUN_ID.eq(runId))
                 .execute();
@@ -139,6 +143,8 @@ class MigrationMaintenanceTest extends PostgresTestBase {
         assertEquals(3L, summary.getBoundaryCount().longValue());
         assertEquals(2L, summary.getCompletedBoundaryCount().longValue(),
                 "two of the three boundaries are completed");
+        assertNotNull(summary.getStartedAt(), "the run start comes through");
+        assertTrue(started.isEqual(summary.getStartedAt()), "the run start value comes through");
         assertNotNull(summary.getCompletedAt(), "the run is completed");
         assertNotNull(summary.getArchivedAt(), "the run is archived");
     }
@@ -182,14 +188,16 @@ class MigrationMaintenanceTest extends PostgresTestBase {
 
     /**
      * The boundary listing returns the run's boundaries in order, with the
-     * packed key and the completion timestamp of each. A pending chunk has a
-     * null {@code completed_at}.
+     * packed key and the start/completion timestamps of each. A pending chunk
+     * has null {@code started_at} and {@code completed_at}.
      */
     @Test
     void migrationBoundariesReturnsTheRunsBoundaries() {
         String label = "maint-boundaries";
         long runId = populateRun(label, 2, 1, 2, 3);
+        OffsetDateTime started = OffsetDateTime.parse("2020-01-01T00:00:00Z");
         dsl.update(MIGRATION_BOUNDARY)
+                .set(MIGRATION_BOUNDARY.STARTED_AT, started)
                 .set(MIGRATION_BOUNDARY.COMPLETED_AT, OffsetDateTime.now())
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
                 .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(0L))
@@ -203,7 +211,11 @@ class MigrationMaintenanceTest extends PostgresTestBase {
                 boundaries.stream().map(b -> b.getBoundaryNo().longValue()).toList());
         assertEquals(1L, boundaries.get(0).getBoundaryId().getBigintValues()[0].longValue(),
                 "the first boundary packs the first id");
+        assertNotNull(boundaries.get(0).getStartedAt(), "the completed chunk has a start");
+        assertTrue(started.isEqual(boundaries.get(0).getStartedAt()),
+                "the boundary start value comes through");
         assertNotNull(boundaries.get(0).getCompletedAt(), "the completed chunk has a timestamp");
+        assertNull(boundaries.get(1).getStartedAt(), "a pending chunk has not started");
         assertNull(boundaries.get(1).getCompletedAt(), "a pending chunk has no timestamp");
         assertNull(boundaries.get(2).getCompletedAt(), "the terminal boundary is pending");
     }

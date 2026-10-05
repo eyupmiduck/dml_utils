@@ -74,6 +74,18 @@ BEGIN
         RETURN;
     END IF;
 
+    -- Record when the run first begins processing. clock_timestamp(), not now(),
+    -- because now() is the caller transaction's start time; the AND keeps the
+    -- original value on a resume. This write is in the caller's transaction, so
+    -- if a chunk fails and the call rolls back, started_at (like completed_at,
+    -- below) is not recorded: a failed run reports neither timestamp, and a
+    -- retry re-stamps started_at. That is intended, so the two timestamps always
+    -- describe one continuous, successful run.
+    UPDATE dml_utils_data.migration_run
+    SET started_at = pg_catalog.clock_timestamp()
+    WHERE run_id = l_run_id
+      AND started_at IS NULL;
+
     -- Process every unclaimed boundary, up to i_threads workers at a time. Each
     -- worker claims its boundary and runs its chunk SQL in its own transaction,
     -- so progress is durable and a re-run resumes at the first unclaimed
@@ -238,9 +250,10 @@ BEGIN
     END;
 
     -- All boundaries are claimed and every chunk SQL already ran; record the run
-    -- completion in the caller's transaction.
+    -- completion in the caller's transaction. clock_timestamp() so completed_at
+    -- is the actual server time the run finished, not the transaction start.
     UPDATE dml_utils_data.migration_run
-    SET completed_at = pg_catalog.now()
+    SET completed_at = pg_catalog.clock_timestamp()
     WHERE run_id = l_run_id
       AND completed_at IS NULL;
 END;

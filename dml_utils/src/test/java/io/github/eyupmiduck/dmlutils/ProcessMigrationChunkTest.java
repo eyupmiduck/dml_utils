@@ -57,6 +57,7 @@ class ProcessMigrationChunkTest extends PostgresTestBase {
         processChunk(runId, 0, "UPDATE " + qualified(TEST_BIGINT)
                 + " SET payload = 'done' WHERE id >= 1 AND id < 5");
 
+        assertTrue(boundaryStarted(runId, 0), "the first chunk should set started_at");
         assertTrue(boundaryCompleted(runId, 0), "the first chunk should set completed_at");
         assertEquals(4, payloadCount(), "rows 1..4 should be updated");
         assertEquals(6, dsl.fetchCount(TEST_BIGINT, TEST_BIGINT.PAYLOAD.isNull()),
@@ -78,6 +79,8 @@ class ProcessMigrationChunkTest extends PostgresTestBase {
                 + " SET payload = 'leaked' WHERE id >= 1 AND id < 3;"
                 + " SELECT 1 / 0";
         assertSqlState("22012", () -> processChunk(runId, 0, mutateThenFail));
+        assertFalse(boundaryStarted(runId, 0),
+                "a failed chunk must not leave the boundary started");
         assertFalse(boundaryCompleted(runId, 0),
                 "a failed chunk must not leave the boundary claimed");
         assertEquals(0, dsl.fetchCount(TEST_BIGINT, TEST_BIGINT.PAYLOAD.isNotNull()),

@@ -31,6 +31,8 @@ class MigrationTablesTest extends PostgresTestBase {
         assertTrue(hasColumn("dml_utils_data", "migration_run", "run_id"), "run_id should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "created_at"), "created_at should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "updated_at"), "updated_at should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_run", "started_at"), "started_at should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_run", "completed_at"), "completed_at should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "driving_table_schema_name"),
                 "driving_table_schema_name should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "driving_table_name"),
@@ -42,6 +44,8 @@ class MigrationTablesTest extends PostgresTestBase {
         assertTrue(hasColumn("dml_utils_data", "migration_boundary", "boundary_id"), "boundary_id should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_boundary", "created_at"), "created_at should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_boundary", "updated_at"), "updated_at should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_boundary", "started_at"), "started_at should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_boundary", "completed_at"), "completed_at should exist");
 
         assertTrue(tableExists("dml_utils_data", "migration_error"), "migration_error should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_error", "error_id"), "error_id should exist");
@@ -243,9 +247,11 @@ class MigrationTablesTest extends PostgresTestBase {
                 .where(MIGRATION_RUN.RUN_ID.eq(runId))
                 .execute());
 
-        // A mutable column can still be updated.
+        // The mutable started_at/completed_at columns can still be updated, in
+        // the order the time-order check requires.
         dsl.update(MIGRATION_RUN)
-                .set(MIGRATION_RUN.COMPLETED_AT, OffsetDateTime.now())
+                .set(MIGRATION_RUN.STARTED_AT, OffsetDateTime.parse("2020-01-01T00:00:00Z"))
+                .set(MIGRATION_RUN.COMPLETED_AT, OffsetDateTime.parse("2020-01-02T00:00:00Z"))
                 .where(MIGRATION_RUN.RUN_ID.eq(runId))
                 .execute();
     }
@@ -273,11 +279,51 @@ class MigrationTablesTest extends PostgresTestBase {
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
                 .execute());
 
-        // A mutable column can still be updated.
+        // The mutable started_at/completed_at columns can still be updated, in
+        // the order the time-order check requires.
         dsl.update(MIGRATION_BOUNDARY)
-                .set(MIGRATION_BOUNDARY.COMPLETED_AT, OffsetDateTime.now())
+                .set(MIGRATION_BOUNDARY.STARTED_AT, OffsetDateTime.parse("2020-01-01T00:00:00Z"))
+                .set(MIGRATION_BOUNDARY.COMPLETED_AT, OffsetDateTime.parse("2020-01-02T00:00:00Z"))
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
                 .execute();
+    }
+
+    /**
+     * The time-order check constraints reject a completion with no start, and a
+     * completion earlier than the start, on both {@code migration_run} and
+     * {@code migration_boundary}.
+     */
+    @Test
+    void rejectsCompletionWithoutStartOrBeforeStart() {
+        Long runId = insertRun();
+
+        assertDomainViolation(() -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.COMPLETED_AT, OffsetDateTime.parse("2020-01-02T00:00:00Z"))
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute());
+
+        dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.STARTED_AT, OffsetDateTime.parse("2020-01-02T00:00:00Z"))
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute();
+        assertDomainViolation(() -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.COMPLETED_AT, OffsetDateTime.parse("2020-01-01T00:00:00Z"))
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute());
+
+        long boundaryRunId = insertRunWithBoundary();
+        assertDomainViolation(() -> dsl.update(MIGRATION_BOUNDARY)
+                .set(MIGRATION_BOUNDARY.COMPLETED_AT, OffsetDateTime.parse("2020-01-02T00:00:00Z"))
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(boundaryRunId))
+                .execute());
+        dsl.update(MIGRATION_BOUNDARY)
+                .set(MIGRATION_BOUNDARY.STARTED_AT, OffsetDateTime.parse("2020-01-02T00:00:00Z"))
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(boundaryRunId))
+                .execute();
+        assertDomainViolation(() -> dsl.update(MIGRATION_BOUNDARY)
+                .set(MIGRATION_BOUNDARY.COMPLETED_AT, OffsetDateTime.parse("2020-01-01T00:00:00Z"))
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(boundaryRunId))
+                .execute());
     }
 
     /**
@@ -359,6 +405,7 @@ class MigrationTablesTest extends PostgresTestBase {
 
         dsl.update(MIGRATION_BOUNDARY)
                 .set(MIGRATION_BOUNDARY.UPDATED_AT, old)
+                .set(MIGRATION_BOUNDARY.STARTED_AT, old)
                 .set(MIGRATION_BOUNDARY.COMPLETED_AT, OffsetDateTime.now())
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
                 .execute();

@@ -74,8 +74,14 @@ the boundaries and the rendered chunk SQL always refer to the same table. Use
 `set_migration_run_sql_text` or `set_migration_run_threads` to change the
 recorded SQL text or thread count of an unfinished run. Each chunk
 worker claims its boundary and commits autonomously, so a re-run resumes at the
-first unclaimed boundary. Raises `unique_violation` (`23505`) when another
-active run already exists for the label, and re-raises a chunk worker's failure
+first unclaimed boundary. The run records `started_at` when processing begins
+(preserved across resumes) and `completed_at` when it finishes, both with the
+actual server time (`clock_timestamp()`). Both are written in the caller's
+transaction, so a run whose chunk fails and rolls back records neither, and a
+retry re-stamps `started_at`; this is intended, so the two timestamps always
+describe one continuous, successful run. Raises `unique_violation` (`23505`)
+when another active run already exists for the label, and re-raises a chunk
+worker's failure
 with its original SQLSTATE. `RAISE NOTICE` and returns when the run is already
 complete. Run under `READ COMMITTED`; do not hold locks on the driving table
 across the call. Bounded worker waits are not part of this first version.
@@ -192,7 +198,7 @@ i_label dml_utils_data.non_null_text
 RETURNS TABLE
 ( run_id, label, chunk_size, threads,
     driving_table_schema_name, driving_table_name,
-    created_at, completed_at, archived_at,
+    created_at, started_at, completed_at, archived_at,
     boundary_count, completed_boundary_count, error_count)
 ```
 
@@ -217,14 +223,15 @@ RETURNS TABLE
 ```sql
 i_run_id bigint
 RETURNS TABLE
-    (boundary_no, boundary_id, completed_at)
+    (boundary_no, boundary_id, started_at, completed_at)
 ```
 
 `STABLE`, `SECURITY INVOKER`. Returns the run's chunk boundaries in order.
 `boundary_id` is a `dml_utils_data.migration_key`: position-aligned arrays, one
 per key kind. Index i is the i-th primary-key column, so a bigint key's first
-column is `(boundary_id).bigint_values[1]`. A `completed_at` of `NULL` means the
-chunk is still to process.
+column is `(boundary_id).bigint_values[1]`. A `started_at` of `NULL` means the
+chunk has not been claimed; a `completed_at` of `NULL` (with `started_at` set)
+means it is in progress.
 
 ## `dml_utils_lib`
 
@@ -447,8 +454,8 @@ all-NULL or empty array is rejected), present arrays must share one length of on
 to three, and exactly one of the three arrays holds a non-NULL value at each
 index. Raises `23505` when
 an active (not archived) run already exists for the label. Boundaries are
-inserted with `completed_at` null. An empty source produces a run with no
-boundaries. Later inserts above the captured maximum fall outside the terminal
+inserted with `started_at` and `completed_at` null. An empty source produces a
+run with no boundaries. Later inserts above the captured maximum fall outside the terminal
 boundary and are not processed.
 
 ### `dml_utils_lib.process_migration_chunk(i_run_id, i_boundary_no, i_sql_text)`
@@ -460,12 +467,16 @@ i_sql_text    dml_utils_data.non_null_text
 RETURNS void
 ```
 
-`SECURITY INVOKER`. Claims one boundary by setting its `completed_at` (an atomic
-`UPDATE ... RETURNING` that locks the row for the caller's transaction) and then
-runs the fully-formed chunk SQL. Raises `no_data_found` (`P0002`) when the
-boundary does not exist or is already completed. If the chunk SQL fails, the
-transaction aborts and the claim rolls back, so the chunk is retried on the next
-run. Intended to run inside a `pg_background` worker, one call per chunk.
+`SECURITY INVOKER`. Claims one boundary by setting its `started_at` (an atomic
+`UPDATE ... RETURNING` that locks the row for the caller's transaction), runs
+the fully-formed chunk SQL, then sets its `completed_at`. Both timestamps are the
+actual server time of the event (`clock_timestamp()`), not the transaction start.
+Raises `no_data_found` (`P0002`) when the boundary does not exist or is already
+completed. If the chunk SQL fails, the transaction aborts and the claim rolls
+back — including `started_at` — so the chunk is retried on the next run. A
+boundary therefore reports `started_at` only for a chunk that actually
+completed; this is intended. Intended to run inside a `pg_background` worker,
+one call per chunk.
 
 ### `dml_utils_lib.record_migration_error(i_run_id, i_boundary_no, i_sqlstate, i_message)`
 
