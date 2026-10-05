@@ -8,6 +8,7 @@ import io.github.eyupmiduck.changelogvalidator.linter.model.ChangeSet;
 import io.github.eyupmiduck.changelogvalidator.linter.model.ChangelogModel;
 import io.github.eyupmiduck.changelogvalidator.linter.model.SqlSource;
 import io.github.eyupmiduck.changelogvalidator.linter.rules.Rules;
+import io.github.eyupmiduck.changelogvalidator.testing.ChangelogTestSupport;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
