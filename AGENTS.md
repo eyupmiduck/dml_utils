@@ -54,7 +54,6 @@ jOOQ codegen and tests. CI: GitHub Actions (`.github/workflows/maven.yml`) runs
       running for `./mvnw verify`.** Plugin 0.0.4 is old: the module POM
       overrides its bundled Testcontainers and jOOQ — keep those overrides.
 
-
 ## Useful commands
 
 - Everything: `./mvnw verify`
