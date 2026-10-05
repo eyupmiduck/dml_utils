@@ -74,8 +74,8 @@ the boundaries and the rendered chunk SQL always refer to the same table. Use
 `set_migration_run_sql_text` or `set_migration_run_threads` to change the
 recorded SQL text or thread count of an unfinished run. Each chunk
 worker claims its boundary and commits autonomously, so a re-run resumes at the
-first unclaimed boundary. The run records `started_at` when processing begins
-(preserved across resumes) and `completed_at` when it finishes, both with the
+first unclaimed boundary. The run records `started_at` when processing begins (preserved across resumes) and
+`completed_at` when it finishes, both with the
 actual server time (`clock_timestamp()`). Both are written in the caller's
 transaction, so a run whose chunk fails and rolls back records neither, and a
 retry re-stamps `started_at`; this is intended, so the two timestamps always

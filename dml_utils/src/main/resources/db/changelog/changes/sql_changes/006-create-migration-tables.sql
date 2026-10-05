@@ -21,7 +21,7 @@ CREATE TABLE dml_utils_data.migration_run
     -- otherwise make the check pass as unknown.
     CONSTRAINT migration_run_time_order_check CHECK (
         completed_at IS NULL
-        OR (started_at IS NOT NULL AND completed_at >= started_at)
+            OR (started_at IS NOT NULL AND completed_at >= started_at)
         )
 );
 
@@ -118,7 +118,7 @@ CREATE TABLE dml_utils_data.migration_boundary
     -- started; started_at set with completed_at NULL means in progress.
     CONSTRAINT migration_boundary_time_order_check CHECK (
         completed_at IS NULL
-        OR (started_at IS NOT NULL AND completed_at >= started_at)
+            OR (started_at IS NOT NULL AND completed_at >= started_at)
         )
 );
 

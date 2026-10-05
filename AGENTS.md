@@ -220,8 +220,8 @@ jOOQ codegen and tests. CI: GitHub Actions (`.github/workflows/maven.yml`) runs
   in a dedicated `liquibase` schema as `dml_utils_databasechangelog` and
   `dml_utils_databasechangeloglock`. Every entry point sets this — the jOOQ
   codegen plugin (`dml_utils/pom.xml`), `PostgresTestBase`, and the CLI flags in
-  `scripts/compose.yaml` — and the custom image's init script
-  (`scripts/postgres/roles.sql`) creates the schema, because Liquibase does not.
+  `scripts/compose.yaml` — and the custom image's init script (`scripts/postgres/roles.sql`) creates the schema, because
+  Liquibase does not.
 - SQLFluff (`.sqlfluff`, a symlink to `scripts/.sqlfluff`, dialect `postgres`)
   lints the changelog `.sql` files during `verify` via `exec-maven-plugin`.
   Requires `sqlfluff` on PATH (use the repo's `.venv`); skip with
