@@ -1,10 +1,10 @@
 package io.github.eyupmiduck.dmlutils;
 
-import io.github.eyupmiduck.changelogvalidator.ChangelogValidator;
+import io.github.eyupmiduck.changelogvalidator.testing.ChangelogAssertions;
+import io.github.eyupmiduck.changelogvalidator.testing.ChangelogTestSupport;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -38,11 +38,7 @@ class ChangelogNamingTest {
      */
     @Test
     void sqlFilesHaveThreeDigitPrefix() throws IOException {
-        Path changesRoot = ChangelogTestSupport.changesRoot();
-
-        List<Path> invalid = ChangelogValidator.findInvalidlyNamedSqlFiles(changesRoot);
-
-        assertTrue(invalid.isEmpty(), "Invalidly named SQL files: " + invalid);
+        ChangelogAssertions.assertSqlFilesAreNumbered(ChangelogTestSupport.changesRoot());
     }
 
     /**
@@ -78,12 +74,7 @@ class ChangelogNamingTest {
      */
     @Test
     void changeSetsFollowTheNamingConvention() throws IOException {
-        Path changelogRoot = ChangelogTestSupport.changelogRoot();
-        Path master = ChangelogTestSupport.master();
-
-        List<ChangelogValidator.InvalidChangeSet> invalid =
-                ChangelogValidator.findInvalidlyNamedChangeSets(changelogRoot, master, CHANGE_SET_ID);
-
-        assertTrue(invalid.isEmpty(), "Invalidly named changeSets: " + invalid);
+        ChangelogAssertions.assertChangeSetsFollowNaming(
+                ChangelogTestSupport.changelogRoot(), ChangelogTestSupport.master(), CHANGE_SET_ID);
     }
 }

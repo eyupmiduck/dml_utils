@@ -43,12 +43,12 @@
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
-            <artifactId>junit-jupiter</artifactId>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
-            <artifactId>postgresql</artifactId>
+            <artifactId>testcontainers-postgresql</artifactId>
             <scope>test</scope>
         </dependency>
         <!-- SLF4J binding for the Testcontainers logging (see the parent POM). -->
@@ -68,6 +68,17 @@
             <groupId>io.github.eyupmiduck</groupId>
             <artifactId>liquibase-validation</artifactId>
             <version>${liquibase-validation.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- Shared test support (PostgresTestBase, ChangelogTestSupport, the
+             assertion helpers). test-jar dependencies are not transitive, so
+             the test-scoped JUnit/Testcontainers/jOOQ/liquibase-core the support
+             needs are declared above. -->
+        <dependency>
+            <groupId>io.github.eyupmiduck</groupId>
+            <artifactId>liquibase-validation</artifactId>
+            <version>${liquibase-validation.version}</version>
+            <type>test-jar</type>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -96,7 +107,7 @@
                     </dependency>
                     <dependency>
                         <groupId>org.testcontainers</groupId>
-                        <artifactId>postgresql</artifactId>
+                        <artifactId>testcontainers-postgresql</artifactId>
                         <version>${testcontainers.version}</version>
                     </dependency>
                     <dependency>
