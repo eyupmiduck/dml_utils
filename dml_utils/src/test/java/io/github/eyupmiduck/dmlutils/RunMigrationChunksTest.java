@@ -217,6 +217,34 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     /**
+     * A completed run records the actual server start and completion times, with
+     * {@code completed_at} not earlier than {@code started_at}.
+     */
+    @Test
+    void recordsRunStartAndCompletionTimestamps() {
+        createSource(1, 2, 3, 4);
+        String label = label("timestamps");
+
+        run(label, 2, TEST_BIGINT);
+
+        long runId = runId(label);
+        assertTrue(runStarted(runId), "the run should record started_at");
+        assertTrue(runCompleted(runId), "the run should record completed_at");
+
+        OffsetDateTime started = dsl.select(MIGRATION_RUN.STARTED_AT)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_RUN.STARTED_AT);
+        OffsetDateTime completed = dsl.select(MIGRATION_RUN.COMPLETED_AT)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_RUN.COMPLETED_AT);
+        assertNotNull(started, "the run should record started_at");
+        assertNotNull(completed, "the run should record completed_at");
+        assertFalse(completed.isBefore(started), "completed_at must not precede started_at");
+    }
+
+    /**
      * Re-running a completed label is a no-op: the SQL is not executed again.
      */
     @Test
@@ -247,6 +275,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
         // hand to simulate a partially processed run.
         long runId = populate(TEST_BIGINT, label, TEMPLATE, 2);
         dsl.update(MIGRATION_BOUNDARY)
+                .set(MIGRATION_BOUNDARY.STARTED_AT, OffsetDateTime.parse("2020-01-01T00:00:00Z"))
                 .set(MIGRATION_BOUNDARY.COMPLETED_AT, OffsetDateTime.now())
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId)
                         .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(0L)))
@@ -274,6 +303,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
         long runId = populate(TEST_BIGINT, label, TEMPLATE, 2);
         // Complete the terminal boundary directly (it is not a chunk).
         dsl.update(MIGRATION_BOUNDARY)
+                .set(MIGRATION_BOUNDARY.STARTED_AT, OffsetDateTime.parse("2020-01-01T00:00:00Z"))
                 .set(MIGRATION_BOUNDARY.COMPLETED_AT, OffsetDateTime.now())
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId)
                         .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(3L)))

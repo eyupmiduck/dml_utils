@@ -10,9 +10,19 @@ CREATE TABLE dml_utils_data.migration_run
     driving_table_alias       dml_utils_data.non_null_text    NOT NULL DEFAULT 't',
     created_at                timestamptz                     NOT NULL DEFAULT pg_catalog.now(),
     updated_at                timestamptz                     NOT NULL DEFAULT pg_catalog.now(),
+    started_at                timestamptz,
     completed_at              timestamptz,
     archived_at               timestamptz,
-    CONSTRAINT migration_run_chunk_size_check CHECK (chunk_size > 0)
+    CONSTRAINT migration_run_chunk_size_check CHECK (chunk_size > 0),
+    -- A run cannot finish before it started: completed_at may only be set once
+    -- started_at is set, and never earlier. Both NULL means not started;
+    -- started_at set with completed_at NULL means in progress. The explicit
+    -- started_at IS NOT NULL is required because a NULL comparison would
+    -- otherwise make the check pass as unknown.
+    CONSTRAINT migration_run_time_order_check CHECK (
+        completed_at IS NULL
+            OR (started_at IS NOT NULL AND completed_at >= started_at)
+        )
 );
 
 COMMENT ON TABLE dml_utils_data.migration_run IS
@@ -39,8 +49,13 @@ COMMENT ON COLUMN dml_utils_data.migration_run.created_at IS
     'Row creation time.';
 COMMENT ON COLUMN dml_utils_data.migration_run.updated_at IS
     'Last update time, maintained by the set_updated_at() trigger.';
+COMMENT ON COLUMN dml_utils_data.migration_run.started_at IS
+    'Actual server time when the run first began processing chunks; NULL until '
+        'then, and preserved across resumes. Written in the caller''s '
+        'transaction, so a failed run that rolls back records neither '
+        'started_at nor completed_at; a retry re-stamps it.';
 COMMENT ON COLUMN dml_utils_data.migration_run.completed_at IS
-    'Set when the run finishes; NULL while the run is in progress.';
+    'Actual server time when the run finished; NULL while the run is in progress.';
 COMMENT ON COLUMN dml_utils_data.migration_run.archived_at IS
     'Set when the run is archived; NULL means the run is active.';
 
@@ -83,6 +98,7 @@ CREATE TABLE dml_utils_data.migration_boundary
     boundary_id  dml_utils_data.migration_key NOT NULL,
     created_at   timestamptz                  NOT NULL DEFAULT pg_catalog.now(),
     updated_at   timestamptz                  NOT NULL DEFAULT pg_catalog.now(),
+    started_at   timestamptz,
     completed_at timestamptz,
     PRIMARY KEY (run_id, boundary_no),
     CONSTRAINT migration_boundary_run_fk
@@ -96,6 +112,13 @@ CREATE TABLE dml_utils_data.migration_boundary
     -- dml_utils_lib.migration_key_is_canonical for the rule.
     CONSTRAINT migration_boundary_key_check CHECK (
         dml_utils_lib.migration_key_is_canonical(boundary_id)
+        ),
+    -- A chunk cannot finish before it started; see
+    -- migration_run_time_order_check for the rationale. Both NULL means not
+    -- started; started_at set with completed_at NULL means in progress.
+    CONSTRAINT migration_boundary_time_order_check CHECK (
+        completed_at IS NULL
+            OR (started_at IS NOT NULL AND completed_at >= started_at)
         )
 );
 
@@ -115,8 +138,13 @@ COMMENT ON COLUMN dml_utils_data.migration_boundary.created_at IS
     'Row creation time.';
 COMMENT ON COLUMN dml_utils_data.migration_boundary.updated_at IS
     'Last update time, maintained by the set_updated_at() trigger.';
+COMMENT ON COLUMN dml_utils_data.migration_boundary.started_at IS
+    'Actual server time when the chunk for this boundary was claimed and began '
+        'processing; NULL until then. Written in the claim''s transaction, so a '
+        'chunk that fails rolls it back and the boundary is retried; a boundary '
+        'reports started_at only for a chunk that completed.';
 COMMENT ON COLUMN dml_utils_data.migration_boundary.completed_at IS
-    'Set when the chunk for this boundary is processed; NULL until then.';
+    'Actual server time when the chunk for this boundary finished; NULL until then.';
 
 CREATE TABLE dml_utils_data.migration_error
 (

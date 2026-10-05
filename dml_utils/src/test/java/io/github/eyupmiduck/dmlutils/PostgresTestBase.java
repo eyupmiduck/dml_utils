@@ -165,6 +165,19 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
     }
 
     /**
+     * Whether the run with the given id has started processing.
+     *
+     * @param runId the run id
+     * @return {@code true} when {@code started_at} is set
+     */
+    protected boolean runStarted(long runId) {
+        return Boolean.TRUE.equals(dsl.select(MIGRATION_RUN.STARTED_AT.isNotNull())
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_RUN.STARTED_AT.isNotNull()));
+    }
+
+    /**
      * Whether the boundary {@code (runId, boundaryNo)} has been claimed.
      *
      * @param runId      the run id
@@ -177,6 +190,22 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId)
                         .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(boundaryNo)))
                 .fetchOne(MIGRATION_BOUNDARY.COMPLETED_AT.isNotNull()));
+    }
+
+    /**
+     * Whether the boundary {@code (runId, boundaryNo)} has been claimed and
+     * started processing.
+     *
+     * @param runId      the run id
+     * @param boundaryNo the boundary number
+     * @return {@code true} when {@code started_at} is set
+     */
+    protected boolean boundaryStarted(long runId, long boundaryNo) {
+        return Boolean.TRUE.equals(dsl.select(MIGRATION_BOUNDARY.STARTED_AT.isNotNull())
+                .from(MIGRATION_BOUNDARY)
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId)
+                        .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(boundaryNo)))
+                .fetchOne(MIGRATION_BOUNDARY.STARTED_AT.isNotNull()));
     }
 
     @Override
