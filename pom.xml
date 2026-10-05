@@ -35,7 +35,7 @@
         <testcontainers-jooq-codegen.version>0.0.4</testcontainers-jooq-codegen.version>
         <liquibase-validation.version>1.2.0</liquibase-validation.version>
         <flatten.version>1.8.0</flatten.version>
-        <build-helper.version>3.6.0</build-helper.version>
+        <build-helper.version>3.6.2</build-helper.version>
         <skip.sqlfluff>false</skip.sqlfluff>
         <sqlfluff.executable>sqlfluff</sqlfluff.executable>
         <skip.liquibase-linter>false</skip.liquibase-linter>
