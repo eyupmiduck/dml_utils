@@ -25,6 +25,13 @@ import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_
 abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.testing.PostgresTestBase {
 
     /**
+     * The schema Liquibase keeps its tracking tables in, so they stay out of the
+     * application schemas.
+     */
+    static final String LIQUIBASE_SCHEMA = "liquibase";
+    static final String DATABASE_CHANGELOG_TABLE = "dml_utils_databasechangelog";
+    static final String DATABASE_CHANGELOG_LOCK_TABLE = "dml_utils_databasechangeloglock";
+    /**
      * The test-only fixture changelog (fixture tables the tests drive the
      * routines over), applied to the template database after the production
      * changelog.
@@ -32,12 +39,17 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
     private static final String FIXTURES_RESOURCE = "db/changelog-fixtures/db.changelog-fixtures.xml";
 
     /**
-     * The schema Liquibase keeps its tracking tables in, so they stay out of the
-     * application schemas.
+     * Returns a jOOQ field reference by name, for fixture columns when no
+     * generated field is available.
+     *
+     * @param name the column name
+     * @param type the column's Java type
+     * @param <T>  the column type
+     * @return the field reference
      */
-    static final String LIQUIBASE_SCHEMA = "liquibase";
-    static final String DATABASE_CHANGELOG_TABLE = "dml_utils_databasechangelog";
-    static final String DATABASE_CHANGELOG_LOCK_TABLE = "dml_utils_databasechangeloglock";
+    protected static <T> Field<T> field(String name, Class<T> type) {
+        return DSL.field(name, type);
+    }
 
     @Override
     protected String defaultPostgresImage() {
@@ -82,19 +94,6 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
     @Override
     protected String databaseChangeLogLockTableName() {
         return DATABASE_CHANGELOG_LOCK_TABLE;
-    }
-
-    /**
-     * Returns a jOOQ field reference by name, for fixture columns when no
-     * generated field is available.
-     *
-     * @param name the column name
-     * @param type the column's Java type
-     * @param <T>  the column type
-     * @return the field reference
-     */
-    protected static <T> Field<T> field(String name, Class<T> type) {
-        return DSL.field(name, type);
     }
 
     /**
