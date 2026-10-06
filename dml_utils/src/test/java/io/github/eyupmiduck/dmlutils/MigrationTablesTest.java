@@ -32,6 +32,8 @@ class MigrationTablesTest extends PostgresTestBase {
         assertTrue(hasColumn("dml_utils_data", "migration_run", "created_at"), "created_at should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "updated_at"), "updated_at should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "started_at"), "started_at should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_run", "boundaries_calculated_at"),
+                "boundaries_calculated_at should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "completed_at"), "completed_at should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "driving_table_schema_name"),
                 "driving_table_schema_name should exist");
@@ -323,6 +325,26 @@ class MigrationTablesTest extends PostgresTestBase {
         assertDomainViolation(() -> dsl.update(MIGRATION_BOUNDARY)
                 .set(MIGRATION_BOUNDARY.COMPLETED_AT, OffsetDateTime.parse("2020-01-01T00:00:00Z"))
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(boundaryRunId))
+                .execute());
+    }
+
+    /**
+     * The time-order check rejects a {@code boundaries_calculated_at} earlier
+     * than {@code started_at}.
+     */
+    @Test
+    void rejectsBoundariesCalculatedBeforeStart() {
+        Long runId = insertRun();
+
+        dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.STARTED_AT, OffsetDateTime.parse("2020-01-02T00:00:00Z"))
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute();
+
+        assertDomainViolation(() -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.BOUNDARIES_CALCULATED_AT,
+                        OffsetDateTime.parse("2020-01-01T00:00:00Z"))
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
                 .execute());
     }
 

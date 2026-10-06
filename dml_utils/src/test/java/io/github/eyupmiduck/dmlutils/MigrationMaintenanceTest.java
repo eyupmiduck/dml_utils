@@ -108,8 +108,10 @@ class MigrationMaintenanceTest extends PostgresTestBase {
         assertEquals(3L, summary.getBoundaryCount().longValue(), "chunk starts plus terminal");
         assertEquals(0L, summary.getCompletedBoundaryCount().longValue());
         assertEquals(2L, summary.getErrorCount().longValue());
-        assertNull(summary.getStartedAt(), "a fresh run has not started");
-        assertNull(summary.getCompletedAt());
+        assertNotNull(summary.getStartedAt(), "the run start is recorded when the run is created");
+        assertNotNull(summary.getBoundariesCalculatedAt(),
+                "the range-calculation completion is recorded");
+        assertNull(summary.getCompletedAt(), "a fresh run has not finished");
         assertNull(summary.getArchivedAt());
     }
 
@@ -145,6 +147,8 @@ class MigrationMaintenanceTest extends PostgresTestBase {
                 "two of the three boundaries are completed");
         assertNotNull(summary.getStartedAt(), "the run start comes through");
         assertTrue(started.isEqual(summary.getStartedAt()), "the run start value comes through");
+        assertNotNull(summary.getBoundariesCalculatedAt(),
+                "the range-calculation completion comes through");
         assertNotNull(summary.getCompletedAt(), "the run is completed");
         assertNotNull(summary.getArchivedAt(), "the run is archived");
     }
