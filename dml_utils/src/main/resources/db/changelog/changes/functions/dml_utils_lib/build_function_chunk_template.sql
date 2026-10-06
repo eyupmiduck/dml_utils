@@ -14,12 +14,12 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.build_function_chunk_template(
 AS
 $$
 DECLARE
-    l_primary_key_columns      name[];
-    l_call_arguments           text;
-    l_argument_oids            oid[];
-    l_function_not_void        boolean;
-    l_argument_type_list       text;
-    l_function_chunk_template  text;
+    l_primary_key_columns     name[];
+    l_call_arguments          text;
+    l_argument_oids           oid[];
+    l_function_not_void       boolean;
+    l_argument_type_list      text;
+    l_function_chunk_template text;
 BEGIN
     -- Resolve the driving table's primary key in key order; this also validates
     -- the schema/table exist and that the key has one to three supported columns.

@@ -45,10 +45,10 @@ BEGIN
             CASE
                 WHEN i_filter IS NULL
                     THEN 'function:' || pg_catalog.json_build_array(
-                            i_driving_table_schema_name,
-                            i_driving_table_name,
-                            i_function_schema_name,
-                            i_function_name)::text
+                        i_driving_table_schema_name,
+                        i_driving_table_name,
+                        i_function_schema_name,
+                        i_function_name)::text
                 ELSE 'function:' || pg_catalog.json_build_array(
                         i_driving_table_schema_name,
                         i_driving_table_name,

@@ -87,6 +87,7 @@ complete. Run under `READ COMMITTED`; do not hold locks on the driving table
 across the call. Bounded worker waits are not part of this first version.
 
 ###
+
 `dml_utils.explain_migration_chunks(i_sql_text, i_driving_table_schema_name, i_driving_table_name [, i_chunk_size, i_driving_table_alias])`
 
 ```sql
@@ -157,14 +158,15 @@ mismatched argument types raise `invalid_parameter_value` (`22023`) before any
 run is created. When `i_label` is NULL a deterministic label is derived from the
 driving table, function and (when set) filter, so re-running the same call
 resumes the same run and two calls that differ only in their filter derive
-different runs. A non-NULL `i_filter` is ANDed onto every chunk's range predicate
-(referencing the driving table through the fixed alias `t`), so only the rows it
+different runs. A non-NULL `i_filter` is ANDed onto every chunk's range predicate (referencing the driving table through
+the fixed alias `t`), so only the rows it
 matches are passed to the function; a filter that contains `<driving_table>` or
 `<chunking_clause>` is rejected when the template is validated. Because a resumed
 run uses the recorded SQL text, use `set_migration_run_function` to point an
 unfinished run at a different function or filter.
 
 ###
+
 `dml_utils.explain_function_over_table(i_driving_table_schema_name, i_driving_table_name, i_function_schema_name, i_function_name [, i_chunk_size, i_filter])`
 
 ```sql
@@ -519,6 +521,7 @@ run with no boundaries. Later inserts above the captured maximum fall outside th
 boundary and are not processed.
 
 ###
+
 `dml_utils_lib.build_boundary_population_sql(i_schema_name, i_table_name, i_primary_key_columns, i_key_kinds, i_run_id, i_chunk_size)`
 
 ```sql
@@ -567,6 +570,7 @@ plans. Rejects a NULL, empty or blank statement (`22023`). It is `VOLATILE`
 because PostgreSQL forbids `EXPLAIN` in a non-volatile function.
 
 ###
+
 `dml_utils_lib.explain_chunk_plans(i_sql_text, i_schema_name, i_table_name, i_table_alias, i_primary_key_columns, i_key_kinds, i_chunk_size)`
 
 ```sql
