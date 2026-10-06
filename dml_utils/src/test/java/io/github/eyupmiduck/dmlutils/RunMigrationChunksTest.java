@@ -235,13 +235,21 @@ class RunMigrationChunksTest extends PostgresTestBase {
                 .from(MIGRATION_RUN)
                 .where(MIGRATION_RUN.RUN_ID.eq(runId))
                 .fetchOne(MIGRATION_RUN.STARTED_AT);
+        OffsetDateTime boundariesCalculated = dsl.select(MIGRATION_RUN.BOUNDARIES_CALCULATED_AT)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_RUN.BOUNDARIES_CALCULATED_AT);
         OffsetDateTime completed = dsl.select(MIGRATION_RUN.COMPLETED_AT)
                 .from(MIGRATION_RUN)
                 .where(MIGRATION_RUN.RUN_ID.eq(runId))
                 .fetchOne(MIGRATION_RUN.COMPLETED_AT);
         assertNotNull(started, "the run should record started_at");
+        assertNotNull(boundariesCalculated, "the run should record boundaries_calculated_at");
         assertNotNull(completed, "the run should record completed_at");
-        assertFalse(completed.isBefore(started), "completed_at must not precede started_at");
+        assertFalse(boundariesCalculated.isBefore(started),
+                "boundaries_calculated_at must not precede started_at");
+        assertFalse(completed.isBefore(boundariesCalculated),
+                "completed_at must not precede boundaries_calculated_at");
     }
 
     /**

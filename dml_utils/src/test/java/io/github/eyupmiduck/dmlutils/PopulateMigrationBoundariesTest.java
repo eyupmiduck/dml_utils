@@ -354,6 +354,28 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
     }
 
     /**
+     * Populating boundaries records the run's start and the range-calculation
+     * completion, and leaves the run's {@code completed_at} null (the chunks
+     * have not run yet).
+     */
+    @Test
+    void recordsRunStartAndBoundaryCalculationTimestamps() {
+        createSource(1, 2, 3, 4);
+
+        long runId = populate(2);
+
+        MigrationRunRecord run = dsl.selectFrom(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne();
+        assertNotNull(run.getStartedAt(), "started_at is set at the run start");
+        assertNotNull(run.getBoundariesCalculatedAt(),
+                "boundaries_calculated_at is set when the ranges are ready");
+        assertNull(run.getCompletedAt(), "completed_at is null until the chunks run");
+        assertFalse(run.getBoundariesCalculatedAt().isBefore(run.getStartedAt()),
+                "the range calculation cannot finish before the run starts");
+    }
+
+    /**
      * The primary-key column is resolved from the catalog, not assumed to be
      * named {@code id}.
      */

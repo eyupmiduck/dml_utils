@@ -74,12 +74,13 @@ the boundaries and the rendered chunk SQL always refer to the same table. Use
 `set_migration_run_sql_text` or `set_migration_run_threads` to change the
 recorded SQL text or thread count of an unfinished run. Each chunk
 worker claims its boundary and commits autonomously, so a re-run resumes at the
-first unclaimed boundary. The run records `started_at` when processing begins (preserved across resumes) and
-`completed_at` when it finishes, both with the
-actual server time (`clock_timestamp()`). Both are written in the caller's
-transaction, so a run whose chunk fails and rolls back records neither, and a
-retry re-stamps `started_at`; this is intended, so the two timestamps always
-describe one continuous, successful run. Raises `unique_violation` (`23505`)
+first unclaimed boundary. The run records three actual-server-time
+(`clock_timestamp()`) milestones: `started_at` when the run begins (the boundary
+calculation starts) and `boundaries_calculated_at` when the range calculation
+finishes, both written by `populate_migration_boundaries` in its worker's
+transaction so they commit with the run and persist across a failed processing
+attempt; and `completed_at` when the chunks finish, written in the caller's
+transaction so a failed attempt rolls it back. Raises `unique_violation` (`23505`)
 when another active run already exists for the label, and re-raises a chunk
 worker's failure
 with its original SQLSTATE. `RAISE NOTICE` and returns when the run is already
@@ -256,7 +257,7 @@ i_label dml_utils_data.non_null_text
 RETURNS TABLE
 ( run_id, label, chunk_size, threads,
     driving_table_schema_name, driving_table_name,
-    created_at, started_at, completed_at, archived_at,
+    created_at, started_at, boundaries_calculated_at, completed_at, archived_at,
     boundary_count, completed_boundary_count, error_count)
 ```
 
@@ -502,9 +503,13 @@ RETURNS bigint
 ```
 
 `SECURITY INVOKER`. Creates a `dml_utils_data.migration_run` row for the label,
-with the recorded SQL text, chunk size, threads and driving table, then inserts one
+with the recorded SQL text, chunk size, threads and driving table, records the
+run's `started_at` (the run start, when the calculation begins), then inserts one
 fixed-row chunk boundary per chunk plus a terminal high-water boundary at the
-captured maximum primary key; returns the new `run_id`. The source table must
+captured maximum primary key and records `boundaries_calculated_at` (when the
+range calculation finishes); returns the new `run_id`. Both timestamps are written
+in this worker's transaction, so they commit with the run and persist across a
+failed processing attempt. The source table must
 exist and have a primary key of one to three columns, each of a supported type (`smallint`, `integer`, `bigint`, `text`
 or `uuid`); the columns are identified
 from the catalog in key order, not assumed to be `id`. Each boundary is stored as
@@ -515,10 +520,11 @@ constraint enforces that: each present array must have a non-NULL element (so an
 all-NULL or empty array is rejected), present arrays must share one length of one
 to three, and exactly one of the three arrays holds a non-NULL value at each
 index. Raises `23505` when
-an active (not archived) run already exists for the label. Boundaries are
-inserted with `started_at` and `completed_at` null. An empty source produces a
-run with no boundaries. Later inserts above the captured maximum fall outside the terminal
-boundary and are not processed.
+an active (not archived) run already exists for the label. The
+`migration_boundary` rows are inserted with their own `started_at` and
+`completed_at` null. An empty source produces a run with no boundaries. Later
+inserts above the captured maximum fall outside the terminal boundary and are not
+processed.
 
 ###
 
