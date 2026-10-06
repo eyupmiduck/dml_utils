@@ -3,7 +3,10 @@ CREATE OR REPLACE FUNCTION dml_utils.explain_function_over_table(
     i_driving_table_name dml_utils_data.non_null_text,
     i_function_schema_name dml_utils_data.non_null_text,
     i_function_name dml_utils_data.non_null_text,
-    i_chunk_size dml_utils_data.positive_integer DEFAULT 1000
+    i_chunk_size dml_utils_data.positive_integer DEFAULT 1000,
+    -- Plain text, not non_null_text: an omitted filter is NULL and means no
+    -- filter. non_null_text would reject the DEFAULT NULL before the body.
+    i_filter text DEFAULT NULL
 )
     RETURNS TABLE
             (
@@ -28,7 +31,8 @@ BEGIN
             i_table_schema_name => i_driving_table_schema_name,
             i_table_name => i_driving_table_name,
             i_function_schema_name => i_function_schema_name,
-            i_function_name => i_function_name);
+            i_function_name => i_function_name,
+            i_filter => i_filter);
 
     l_primary_key_columns := dml_utils_lib.primary_key_columns(
             i_schema_name => i_driving_table_schema_name,
@@ -59,6 +63,7 @@ COMMENT ON FUNCTION dml_utils.explain_function_over_table IS
         'insert, a non-final chunk and the final chunk, as rows '
         'boundary_population, chunk_non_final and chunk_final. The function must '
         'return void with argument types matching the driving table''s primary '
-        'key, in key order. It resolves no run, reads no boundaries and writes '
-        'nothing; the chunk ranges are synthetic, so their estimates may differ '
-        'from a real chunk.';
+        'key, in key order. A non-NULL i_filter is ANDed onto the chunk plans'' '
+        'range predicate (the boundary-population plan is unaffected). It '
+        'resolves no run, reads no boundaries and writes nothing; the chunk '
+        'ranges are synthetic, so their estimates may differ from a real chunk.';

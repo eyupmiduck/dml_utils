@@ -130,7 +130,7 @@ call, which would ignore it.
 
 ###
 
-`dml_utils.run_function_over_table(i_driving_table_schema_name, i_driving_table_name, i_function_schema_name, i_function_name [, i_chunk_size, i_threads, i_label])`
+`dml_utils.run_function_over_table(i_driving_table_schema_name, i_driving_table_name, i_function_schema_name, i_function_name [, i_chunk_size, i_threads, i_label, i_filter])`
 
 ```sql
 i_driving_table_schema_name dml_utils_data.non_null_text
@@ -140,6 +140,7 @@ i_function_name             dml_utils_data.non_null_text
 i_chunk_size                dml_utils_data.positive_integer DEFAULT 1000
 i_threads                   dml_utils_data.positive_integer DEFAULT 1
 i_label                     text DEFAULT NULL
+i_filter                    text DEFAULT NULL
 RETURNS void
 ```
 
@@ -154,12 +155,17 @@ run. The function's argument types must equal the primary-key column types in ke
 order and it must return `void`; a missing function, a non-`void` return, or
 mismatched argument types raise `invalid_parameter_value` (`22023`) before any
 run is created. When `i_label` is NULL a deterministic label is derived from the
-driving table and function, so re-running the same call resumes the same run.
-Because a resumed run uses the recorded SQL text, use
-`set_migration_run_function` to point an unfinished run at a different function.
+driving table, function and (when set) filter, so re-running the same call
+resumes the same run and two calls that differ only in their filter derive
+different runs. A non-NULL `i_filter` is ANDed onto every chunk's range predicate
+(referencing the driving table through the fixed alias `t`), so only the rows it
+matches are passed to the function; a filter that contains `<driving_table>` or
+`<chunking_clause>` is rejected when the template is validated. Because a resumed
+run uses the recorded SQL text, use `set_migration_run_function` to point an
+unfinished run at a different function or filter.
 
 ###
-`dml_utils.explain_function_over_table(i_driving_table_schema_name, i_driving_table_name, i_function_schema_name, i_function_name [, i_chunk_size])`
+`dml_utils.explain_function_over_table(i_driving_table_schema_name, i_driving_table_name, i_function_schema_name, i_function_name [, i_chunk_size, i_filter])`
 
 ```sql
 i_driving_table_schema_name dml_utils_data.non_null_text
@@ -167,6 +173,7 @@ i_driving_table_name        dml_utils_data.non_null_text
 i_function_schema_name      dml_utils_data.non_null_text
 i_function_name             dml_utils_data.non_null_text
 i_chunk_size                dml_utils_data.positive_integer DEFAULT 1000
+i_filter                    text DEFAULT NULL
 RETURNS TABLE (o_plan_kind text, o_sql_text text, o_plan json)
 ```
 
@@ -175,14 +182,17 @@ RETURNS TABLE (o_plan_kind text, o_sql_text text, o_plan json)
 primary key, builds the per-row template and returns the same three plans as
 `explain_migration_chunks` (`boundary_population`, `chunk_non_final`,
 `chunk_final`). A missing function, a non-`void` return or mismatched argument
-types raise `invalid_parameter_value` (`22023`) before any plan is produced.
+types raise `invalid_parameter_value` (`22023`) before any plan is produced. A
+non-NULL `i_filter` is ANDed onto the chunk plans' range predicate; the
+boundary-population plan (which does not use the template) is unaffected.
 
-### `dml_utils.set_migration_run_function(i_label, i_function_schema_name, i_function_name)`
+### `dml_utils.set_migration_run_function(i_label, i_function_schema_name, i_function_name [, i_filter])`
 
 ```sql
 i_label               dml_utils_data.non_null_text
 i_function_schema_name dml_utils_data.non_null_text
 i_function_name       dml_utils_data.non_null_text
+i_filter              text DEFAULT NULL
 RETURNS void
 ```
 
@@ -191,7 +201,9 @@ the label with the template that calls the given function over the run's driving
 table (which is immutable), so the next `run_function_over_table` call uses the
 adjusted function. Validates the function against the driving table's primary
 key (raising `invalid_parameter_value`, `22023`, on a mismatch) and raises
-`no_data_found` (`P0002`) when there is no unfinished run for the label.
+`no_data_found` (`P0002`) when there is no unfinished run for the label. A
+non-NULL `i_filter` is ANDed onto each chunk's range predicate; a NULL `i_filter`
+removes any filter from the stored template.
 
 ### `dml_utils.set_migration_run_threads(i_label, i_threads)`
 
@@ -373,13 +385,14 @@ casts and array element access, so it is `IMMUTABLE`.
 
 ###
 
-`dml_utils_lib.build_function_chunk_template(i_table_schema_name, i_table_name, i_function_schema_name, i_function_name)`
+`dml_utils_lib.build_function_chunk_template(i_table_schema_name, i_table_name, i_function_schema_name, i_function_name [, i_filter])`
 
 ```sql
 i_table_schema_name    dml_utils_data.non_null_text
 i_table_name           dml_utils_data.non_null_text
 i_function_schema_name dml_utils_data.non_null_text
 i_function_name        dml_utils_data.non_null_text
+i_filter               text DEFAULT NULL
 RETURNS text
 ```
 
@@ -388,7 +401,10 @@ template that calls the given function once per row, passing the driving table's
 primary-key columns in key order (`SELECT <fn>(t.<pk1>, ...) FROM <driving_table> WHERE <chunking_clause>`).
 Resolves the primary key via `primary_key_columns` and validates that the
 function exists and returns `void` with argument types equal to the primary-key
-column types in key order; raises `invalid_parameter_value` (`22023`) otherwise.
+column types in key order; raises `invalid_parameter_value` (`22023`) otherwise. A
+non-NULL `i_filter` is appended as ` AND (<i_filter>)`, so only the rows it
+matches are passed to the function; it references the driving table through the
+fixed alias `t`.
 
 ###
 

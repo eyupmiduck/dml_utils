@@ -1,7 +1,11 @@
 CREATE OR REPLACE FUNCTION dml_utils.set_migration_run_function(
     i_label dml_utils_data.non_null_text,
     i_function_schema_name dml_utils_data.non_null_text,
-    i_function_name dml_utils_data.non_null_text
+    i_function_name dml_utils_data.non_null_text,
+    -- Plain text, not non_null_text: an omitted filter is NULL and means no
+    -- filter, so any filter currently on the run is removed. non_null_text would
+    -- reject the DEFAULT NULL before the body.
+    i_filter text DEFAULT NULL
 )
     RETURNS void
     LANGUAGE plpgsql
@@ -26,7 +30,8 @@ BEGIN
                    i_table_schema_name => driving_table_schema_name,
                    i_table_name => driving_table_name,
                    i_function_schema_name => i_function_schema_name,
-                   i_function_name => i_function_name)
+                   i_function_name => i_function_name,
+                   i_filter => i_filter)
     INTO l_function_chunk_template
     FROM dml_utils_data.migration_run
     WHERE label = i_label
@@ -50,4 +55,6 @@ $$;
 COMMENT ON FUNCTION dml_utils.set_migration_run_function IS
     'Replaces the recorded sql_text of the unfinished run for the label with the '
         'template that calls the given function over the run''s driving table, so '
-        'the next run_function_over_table call uses the adjusted function.';
+        'the next run_function_over_table call uses the adjusted function. A '
+        'non-NULL i_filter is ANDed onto each chunk''s range predicate; a NULL '
+        'i_filter removes any filter from the stored template.';

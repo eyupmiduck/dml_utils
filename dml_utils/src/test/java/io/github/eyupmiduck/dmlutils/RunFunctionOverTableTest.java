@@ -74,7 +74,7 @@ class RunFunctionOverTableTest extends PostgresTestBase {
         String label = functionTestLabel("mixed");
 
         Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_COMPOSITE_MIXED),
-                name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 2, 1, label);
+                name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 2, 1, label, null);
 
         assertEquals(3, payloadCount(TEST_COMPOSITE_MIXED, "done"),
                 "the function should update every row");
@@ -92,9 +92,9 @@ class RunFunctionOverTableTest extends PostgresTestBase {
         createMarkMixed("done");
 
         Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_COMPOSITE_MIXED),
-                name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 2, 1, null);
+                name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 2, 1, null, null);
         Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_COMPOSITE_MIXED),
-                name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 99, 4, null);
+                name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 99, 4, null, null);
 
         String derivedLabel = "function:"
                 + dsl.fetchOne("SELECT pg_catalog.json_build_array(?, ?, ?, ?)::text",
@@ -137,13 +137,13 @@ class RunFunctionOverTableTest extends PostgresTestBase {
         io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
                 dsl.configuration(), schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
                 label, TEMPLATE("mark_mixed"), 2, 1);
-        Routines.setMigrationRunFunction(dsl.configuration(), label, FN_SCHEMA, "mark_mixed_2");
+        Routines.setMigrationRunFunction(dsl.configuration(), label, FN_SCHEMA, "mark_mixed_2", null);
 
         assertTrue(storedSqlText(label).contains("mark_mixed_2"),
                 "the stored sql_text should now reference the new function");
 
         Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_COMPOSITE_MIXED),
-                name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed_2", 2, 1, label);
+                name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed_2", 2, 1, label, null);
 
         assertEquals(3, payloadCount(TEST_COMPOSITE_MIXED, "second"),
                 "the run should apply the swapped-in function");
@@ -160,7 +160,7 @@ class RunFunctionOverTableTest extends PostgresTestBase {
     void setMigrationRunFunctionRaisesWhenNoUnfinishedRun() {
         createMarkMixed("done");
         assertSqlState("P0002", () -> Routines.setMigrationRunFunction(
-                dsl.configuration(), "no-such-label", FN_SCHEMA, "mark_mixed"));
+                dsl.configuration(), "no-such-label", FN_SCHEMA, "mark_mixed", null));
     }
 
     /**
@@ -175,7 +175,7 @@ class RunFunctionOverTableTest extends PostgresTestBase {
         int runsBefore = dsl.fetchCount(MIGRATION_RUN);
         assertSqlState("22023", () -> Routines.runFunctionOverTable(dsl.configuration(),
                 schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED), FN_SCHEMA,
-                "wrong_order", 2, 1, null));
+                "wrong_order", 2, 1, null, null));
         assertEquals(runsBefore, dsl.fetchCount(MIGRATION_RUN),
                 "a rejected function must not create a run");
     }
@@ -190,7 +190,7 @@ class RunFunctionOverTableTest extends PostgresTestBase {
 
         assertSqlState("22023", () -> Routines.runFunctionOverTable(dsl.configuration(),
                 schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED), FN_SCHEMA,
-                "bad_return", 2, 1, null));
+                "bad_return", 2, 1, null, null));
     }
 
     /**
@@ -206,7 +206,7 @@ class RunFunctionOverTableTest extends PostgresTestBase {
         int runsBefore = dsl.fetchCount(MIGRATION_RUN);
         assertSqlState("22023", () -> Routines.runFunctionOverTable(dsl.configuration(),
                 schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED), FN_SCHEMA,
-                "mark_mixed_proc", 2, 1, null));
+                "mark_mixed_proc", 2, 1, null, null));
         assertEquals(runsBefore, dsl.fetchCount(MIGRATION_RUN),
                 "a rejected procedure must not create a run");
     }
@@ -218,7 +218,7 @@ class RunFunctionOverTableTest extends PostgresTestBase {
     void rejectsAMissingFunction() {
         assertSqlState("22023", () -> Routines.runFunctionOverTable(dsl.configuration(),
                 schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED), FN_SCHEMA,
-                "no_such_function", 2, 1, null));
+                "no_such_function", 2, 1, null, null));
     }
 
     /**
@@ -231,10 +231,115 @@ class RunFunctionOverTableTest extends PostgresTestBase {
 
         String template = io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines
                 .buildFunctionChunkTemplate(dsl.configuration(), schema(TEST_COMPOSITE_MIXED),
-                        name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed");
+                        name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", null);
 
         assertEquals("SELECT public.mark_mixed(t.a, t.b) FROM <driving_table>"
                 + " WHERE <chunking_clause>", template);
+    }
+
+    /**
+     * The template builder appends a non-NULL filter as an extra ANDed
+     * predicate.
+     */
+    @Test
+    void buildsThePerRowFunctionTemplateWithAFilter() {
+        createMarkMixed("done");
+
+        String template = io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines
+                .buildFunctionChunkTemplate(dsl.configuration(), schema(TEST_COMPOSITE_MIXED),
+                        name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", "t.b = 'x'");
+
+        assertEquals("SELECT public.mark_mixed(t.a, t.b) FROM <driving_table>"
+                + " WHERE <chunking_clause> AND (t.b = 'x')", template);
+    }
+
+    /**
+     * A non-NULL filter is ANDed onto every chunk, so only the rows it matches
+     * are passed to the function.
+     */
+    @Test
+    void appliesTheFilterOverOnlyMatchingRows() {
+        createMixed();
+        createMarkMixed("done");
+
+        Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_COMPOSITE_MIXED),
+                name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 2, 1, null, "t.b = 'x'");
+
+        assertEquals(2, payloadCount(TEST_COMPOSITE_MIXED, "done"),
+                "only the two rows with b = x are updated");
+    }
+
+    /**
+     * The derived label includes the filter, so two calls that differ only in
+     * their filter create two runs instead of the second resuming the first.
+     */
+    @Test
+    void derivesADifferentLabelWhenTheFilterDiffers() {
+        createMixed();
+        createMarkMixed("done");
+
+        Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_COMPOSITE_MIXED),
+                name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 2, 1, null, "t.b = 'x'");
+        Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_COMPOSITE_MIXED),
+                name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 2, 1, null, "t.b = 'y'");
+
+        assertEquals(2, dsl.fetchCount(MIGRATION_RUN),
+                "a different filter derives a different run");
+    }
+
+    /**
+     * {@code set_migration_run_function} stores the filter in the run's
+     * template, and a later run applies it.
+     */
+    @Test
+    void setMigrationRunFunctionAppliesTheFilter() {
+        createMixed();
+        createMarkMixed("first");
+        createMarkMixed2("second");
+        String label = functionTestLabel("setfilter");
+
+        io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
+                dsl.configuration(), schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
+                label, TEMPLATE("mark_mixed"), 2, 1);
+        Routines.setMigrationRunFunction(dsl.configuration(), label, FN_SCHEMA, "mark_mixed_2",
+                "t.b = 'x'");
+
+        assertTrue(storedSqlText(label).contains("mark_mixed_2"),
+                "the stored sql_text references the new function");
+        assertTrue(storedSqlText(label).contains("AND (t.b = 'x')"),
+                "the stored sql_text carries the filter");
+
+        Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_COMPOSITE_MIXED),
+                name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed_2", 2, 1, label, null);
+
+        assertEquals(2, payloadCount(TEST_COMPOSITE_MIXED, "second"),
+                "only the filtered rows run the swapped-in function");
+        assertEquals(0, payloadCount(TEST_COMPOSITE_MIXED, "first"),
+                "the replaced function must not run");
+    }
+
+    /**
+     * A NULL filter removes any filter from the stored template.
+     */
+    @Test
+    void setMigrationRunFunctionRemovesTheFilter() {
+        createMarkMixed("first");
+        createMarkMixed2("second");
+        String label = functionTestLabel("removefilter");
+
+        io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
+                dsl.configuration(), schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
+                label, TEMPLATE("mark_mixed"), 2, 1);
+        Routines.setMigrationRunFunction(dsl.configuration(), label, FN_SCHEMA, "mark_mixed_2",
+                "t.b = 'x'");
+        assertTrue(storedSqlText(label).contains("AND (t.b = 'x')"),
+                "the filter is stored");
+
+        Routines.setMigrationRunFunction(dsl.configuration(), label, FN_SCHEMA, "mark_mixed_2",
+                null);
+
+        assertFalse(storedSqlText(label).contains("AND ("),
+                "a NULL filter removes the filter from the stored template");
     }
 
     private void createMixed() {
