@@ -98,13 +98,15 @@ REVOKE EXECUTE ON FUNCTION dml_utils_lib.build_function_chunk_template(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text,
-    dml_utils_data.non_null_text
+    dml_utils_data.non_null_text,
+    text
     ) FROM public;
 GRANT EXECUTE ON FUNCTION dml_utils_lib.build_function_chunk_template(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text,
-    dml_utils_data.non_null_text
+    dml_utils_data.non_null_text,
+    text
     ) TO dml_utils_caller;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_chunking_template(
     dml_utils_data.non_null_text
@@ -270,6 +272,7 @@ REVOKE EXECUTE ON FUNCTION dml_utils.run_function_over_table(
     dml_utils_data.non_null_text,
     dml_utils_data.positive_integer,
     dml_utils_data.positive_integer,
+    text,
     text
     ) FROM public;
 GRANT EXECUTE ON FUNCTION dml_utils.run_function_over_table(
@@ -279,6 +282,7 @@ GRANT EXECUTE ON FUNCTION dml_utils.run_function_over_table(
     dml_utils_data.non_null_text,
     dml_utils_data.positive_integer,
     dml_utils_data.positive_integer,
+    text,
     text
     ) TO dml_utils_caller;
 REVOKE EXECUTE ON FUNCTION dml_utils.explain_migration_chunks(
@@ -300,24 +304,28 @@ REVOKE EXECUTE ON FUNCTION dml_utils.explain_function_over_table(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text,
-    dml_utils_data.positive_integer
+    dml_utils_data.positive_integer,
+    text
     ) FROM public;
 GRANT EXECUTE ON FUNCTION dml_utils.explain_function_over_table(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text,
-    dml_utils_data.positive_integer
+    dml_utils_data.positive_integer,
+    text
     ) TO dml_utils_caller;
 REVOKE EXECUTE ON FUNCTION dml_utils.set_migration_run_function(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text,
-    dml_utils_data.non_null_text
+    dml_utils_data.non_null_text,
+    text
     ) FROM public;
 GRANT EXECUTE ON FUNCTION dml_utils.set_migration_run_function(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text,
-    dml_utils_data.non_null_text
+    dml_utils_data.non_null_text,
+    text
     ) TO dml_utils_caller;
 REVOKE EXECUTE ON FUNCTION dml_utils.set_migration_run_sql_text(
     dml_utils_data.non_null_text,

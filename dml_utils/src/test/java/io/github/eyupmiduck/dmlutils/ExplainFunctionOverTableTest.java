@@ -12,8 +12,7 @@ import java.util.List;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeMixed.TEST_COMPOSITE_MIXED;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Verifies {@code dml_utils.explain_function_over_table}: it validates a
@@ -62,7 +61,7 @@ class ExplainFunctionOverTableTest extends PostgresTestBase {
 
         List<ExplainFunctionOverTableRecord> plans = Routines.explainFunctionOverTable(
                 dsl.configuration(), schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
-                FN_SCHEMA, "mark_mixed", 10);
+                FN_SCHEMA, "mark_mixed", 10, null);
 
         assertEquals(List.of("boundary_population", "chunk_non_final", "chunk_final"),
                 plans.stream().map(ExplainFunctionOverTableRecord::getOPlanKind).toList());
@@ -72,6 +71,27 @@ class ExplainFunctionOverTableTest extends PostgresTestBase {
                 "the non-final chunk explains the per-row function call");
         assertTrue(plans.get(2).getOSqlText().contains("SELECT public.mark_mixed(t.a, t.b)"),
                 "the final chunk explains the per-row function call");
+    }
+
+    /**
+     * A non-NULL filter is ANDed onto the chunk plans' range predicate, while
+     * the boundary-population plan (which does not use the template) is
+     * unaffected.
+     */
+    @Test
+    void includesTheFilterInTheChunkPlans() {
+        createFunction("mark_mixed", "done");
+
+        List<ExplainFunctionOverTableRecord> plans = Routines.explainFunctionOverTable(
+                dsl.configuration(), schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
+                FN_SCHEMA, "mark_mixed", 10, "t.b = 'x'");
+
+        assertTrue(plans.get(1).getOSqlText().contains("AND (t.b = 'x')"),
+                "the non-final chunk ANDs the filter");
+        assertTrue(plans.get(2).getOSqlText().contains("AND (t.b = 'x')"),
+                "the final chunk ANDs the filter");
+        assertFalse(plans.get(0).getOSqlText().contains("t.b = 'x'"),
+                "the boundary-population plan is unaffected");
     }
 
     /**
@@ -88,7 +108,7 @@ class ExplainFunctionOverTableTest extends PostgresTestBase {
         createFunction("mark_mixed", "done");
 
         Routines.explainFunctionOverTable(dsl.configuration(),
-                schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 10);
+                schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 10, null);
 
         assertEquals(0, dsl.fetchCount(MIGRATION_RUN), "no run is created");
         assertEquals(0,
@@ -110,7 +130,7 @@ class ExplainFunctionOverTableTest extends PostgresTestBase {
 
         assertSqlState("22023", () -> Routines.explainFunctionOverTable(dsl.configuration(),
                 schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED), FN_SCHEMA,
-                "wrong_order", 10));
+                "wrong_order", 10, null));
     }
 
     /**
@@ -123,7 +143,7 @@ class ExplainFunctionOverTableTest extends PostgresTestBase {
 
         assertSqlState("22023", () -> Routines.explainFunctionOverTable(dsl.configuration(),
                 schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED), FN_SCHEMA,
-                "bad_return", 10));
+                "bad_return", 10, null));
     }
 
     /**
@@ -134,7 +154,7 @@ class ExplainFunctionOverTableTest extends PostgresTestBase {
     void rejectsAMissingFunction() {
         assertSqlState("22023", () -> Routines.explainFunctionOverTable(dsl.configuration(),
                 schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED), FN_SCHEMA,
-                "no_such_function", 10));
+                "no_such_function", 10, null));
     }
 
     /**

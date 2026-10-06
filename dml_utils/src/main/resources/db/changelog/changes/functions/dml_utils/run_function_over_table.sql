@@ -7,7 +7,10 @@ CREATE OR REPLACE FUNCTION dml_utils.run_function_over_table(
     i_threads dml_utils_data.positive_integer DEFAULT 1,
     -- Plain text, not non_null_text: an omitted label is NULL and the body
     -- derives one. non_null_text would reject the DEFAULT NULL before the body.
-    i_label text DEFAULT NULL
+    i_label text DEFAULT NULL,
+    -- Plain text for the same reason: an omitted filter is NULL and means no
+    -- filter. When set, it is ANDed onto every chunk's range predicate.
+    i_filter text DEFAULT NULL
 )
     RETURNS void
     LANGUAGE plpgsql
@@ -26,21 +29,33 @@ BEGIN
             i_table_schema_name => i_driving_table_schema_name,
             i_table_name => i_driving_table_name,
             i_function_schema_name => i_function_schema_name,
-            i_function_name => i_function_name);
+            i_function_name => i_function_name,
+            i_filter => i_filter);
 
     -- Derive a deterministic label from the driving table and function when the
     -- caller does not supply one, so re-running the same call resumes the same
     -- run instead of creating a new one. The components are joined as a JSON
     -- array, which is unambiguous even when a (quoted) name contains a '.', ':'
     -- or other delimiter: JSON escapes and quotes each element, so distinct
-    -- inputs cannot collide.
+    -- inputs cannot collide. A non-NULL filter is part of the label, so two calls
+    -- that differ only in their filter derive different runs instead of the
+    -- second silently resuming the first with its stored filter.
     l_label := coalesce(
             i_label,
-            'function:' || pg_catalog.json_build_array(
-                    i_driving_table_schema_name,
-                    i_driving_table_name,
-                    i_function_schema_name,
-                    i_function_name)::text);
+            CASE
+                WHEN i_filter IS NULL
+                    THEN 'function:' || pg_catalog.json_build_array(
+                        i_driving_table_schema_name,
+                        i_driving_table_name,
+                        i_function_schema_name,
+                        i_function_name)::text
+                ELSE 'function:' || pg_catalog.json_build_array(
+                        i_driving_table_schema_name,
+                        i_driving_table_name,
+                        i_function_schema_name,
+                        i_function_name,
+                        i_filter)::text
+                END);
 
     -- Delegate to the base engine: it owns resume, chunk scheduling, error
     -- recording and run completion. The generated template is a valid
@@ -57,6 +72,8 @@ $$;
 
 COMMENT ON FUNCTION dml_utils.run_function_over_table IS
     'Runs a user-supplied void function once per row of the driving table, chunk '
-        'by chunk, resuming by label (derived from the table and function when '
-        'i_label is NULL). The function must take the primary-key column types in '
-        'key order and return void.';
+        'by chunk, resuming by label (derived from the table, function and, when '
+        'set, i_filter when i_label is NULL). The function must take the '
+        'primary-key column types in key order and return void. A non-NULL '
+        'i_filter is ANDed onto every chunk''s range predicate, so only the rows '
+        'it matches are passed to the function.';
