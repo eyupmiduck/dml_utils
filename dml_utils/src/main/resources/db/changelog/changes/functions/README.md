@@ -74,8 +74,8 @@ the boundaries and the rendered chunk SQL always refer to the same table. Use
 `set_migration_run_sql_text` or `set_migration_run_threads` to change the
 recorded SQL text or thread count of an unfinished run. Each chunk
 worker claims its boundary and commits autonomously, so a re-run resumes at the
-first unclaimed boundary. The run records three actual-server-time
-(`clock_timestamp()`) milestones: `started_at` when the run begins (the boundary
+first unclaimed boundary. The run records three actual-server-time (`clock_timestamp()`) milestones: `started_at` when
+the run begins (the boundary
 calculation starts) and `boundaries_calculated_at` when the range calculation
 finishes, both written by `populate_migration_boundaries` in its worker's
 transaction so they commit with the run and persist across a failed processing
@@ -323,7 +323,8 @@ does not exist in the schema.
 ```sql
 i_schema_name dml_utils_data.non_null_text
 i_table_name  dml_utils_data.non_null_text
-RETURNS TABLE (ordinality integer, column_name name, column_oid oid,
+RETURNS TABLE
+(ordinality integer, column_name name, column_oid oid,
                column_type regtype, key_kind text)
 ```
 
@@ -553,7 +554,8 @@ the `bigint`/`text`/`uuid` whitelist (`22023` otherwise).
 ```sql
 i_key_kinds  text[]
 i_chunk_size bigint
-RETURNS TABLE (o_is_final boolean, o_start_values text[], o_end_values text[])
+RETURNS TABLE
+(o_is_final boolean, o_start_values text[], o_end_values text[])
 ```
 
 `IMMUTABLE`, `SECURITY INVOKER`. Returns two representative chunk ranges, one
@@ -587,7 +589,8 @@ i_table_alias         dml_utils_data.non_null_text
 i_primary_key_columns name[]
 i_key_kinds           text[]
 i_chunk_size          bigint
-RETURNS TABLE (o_plan_kind text, o_sql_text text, o_plan json)
+RETURNS TABLE
+(o_plan_kind text, o_sql_text text, o_plan json)
 ```
 
 `VOLATILE`, `SECURITY INVOKER`. Renders and explains the three statements a

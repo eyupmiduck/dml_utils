@@ -24,7 +24,7 @@ CREATE TABLE dml_utils_data.migration_run
         (completed_at IS NULL
             OR (started_at IS NOT NULL AND completed_at >= started_at))
             AND (boundaries_calculated_at IS NULL
-                OR (started_at IS NOT NULL AND boundaries_calculated_at >= started_at))
+            OR (started_at IS NOT NULL AND boundaries_calculated_at >= started_at))
         )
 );
 
