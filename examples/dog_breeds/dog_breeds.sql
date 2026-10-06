@@ -81,7 +81,23 @@ VALUES ('Affenpinscher', 'Germany', 'toy', 14),
        ('Whippet', 'United Kingdom', 'medium', 14),
        ('Yorkshire Terrier', 'United Kingdom', 'toy', 15);
 
--- 3. Run the migration in small chunks. The template sets status = 'reviewed'
+-- 3. Inspect the plans the run would use, before running it.
+--    explain_migration_chunks is read-only: it creates no run and writes no
+--    boundaries, and the chunk ranges are synthetic, so the row estimates may
+--    differ from a real chunk. The three rows show the primary-key scan the
+--    boundaries are computed from and the two generated chunk forms (a
+--    half-open range and the final, inclusive one).
+\echo '--- plans for the chunked migration (read-only) ---'
+SELECT o_plan_kind,
+       o_sql_text,
+       jsonb_pretty(o_plan::jsonb) AS plan
+FROM dml_utils.explain_migration_chunks(
+        i_sql_text => 'UPDATE <driving_table> SET status = ''reviewed'' WHERE <chunking_clause>',
+        i_driving_table_schema_name => 'public',
+        i_driving_table_name => 'dogs',
+        i_chunk_size => 10);
+
+-- 4. Run the migration in small chunks. The template sets status = 'reviewed'
 --    on every row, chunk by chunk; each chunk is a pg_background worker, and
 --    the call resumes at the first unprocessed chunk if it is interrupted.
 --
@@ -99,7 +115,7 @@ SELECT dml_utils.run_migration_chunks(
                i_chunk_size => 10,
                i_threads => 2);
 
--- 4. Inspect the result: run summary, stored boundaries, status counts.
+-- 5. Inspect the result: run summary, stored boundaries, status counts.
 \echo '--- migration run summary ---'
 SELECT run_id,
        label,

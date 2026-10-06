@@ -12,10 +12,14 @@ chunk — against a small `dogs` table keyed by breed.
 2. Seeds it with famous breeds.
 3. Defines `public.review_dog(p_breed text)`, a `void` function whose single
    argument is the table's primary key.
-4. Runs `dml_utils.run_function_over_table`, which builds the per-row template,
+4. Prints the plans the run would use via
+   `dml_utils.explain_function_over_table` (read-only: no run or boundaries are
+   written, and the chunk ranges are synthetic, so the estimates may differ from
+   a real chunk).
+5. Runs `dml_utils.run_function_over_table`, which builds the per-row template,
    validates the function against the primary key, and delegates to
    `run_migration_chunks` (small chunk size so the example makes several chunks).
-5. Prints the run summary, the stored boundaries, and the per-status counts.
+6. Prints the run summary, the stored boundaries, and the per-status counts.
 
 The script is idempotent: it drops and recreates the function and the `dogs`
 table and archives any previous run with the same label, so you can re-run it

@@ -1,0 +1,154 @@
+package io.github.eyupmiduck.dmlutils;
+
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.ExplainFunctionOverTableRecord;
+import org.jooq.Table;
+import org.jooq.impl.DSL;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeMixed.TEST_COMPOSITE_MIXED;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * Verifies {@code dml_utils.explain_function_over_table}: it validates a
+ * user-supplied void function against the driving table's primary key and
+ * returns the EXPLAIN plans of the generated per-row SQL, read-only.
+ */
+class ExplainFunctionOverTableTest extends PostgresTestBase {
+
+    private static final String FN_SCHEMA = "public";
+
+    private static String schema(Table<?> table) {
+        return table.getSchema().getName();
+    }
+
+    private static String name(Table<?> table) {
+        return table.getName();
+    }
+
+    /**
+     * Clears the fixture table and the migration metadata so each test starts
+     * clean.
+     */
+    @BeforeEach
+    void resetFixtures() {
+        dsl.deleteFrom(MIGRATION_RUN).execute();
+        dsl.truncate(TEST_COMPOSITE_MIXED).execute();
+    }
+
+    /**
+     * Drops the test functions so a rerun of the class starts clean.
+     */
+    @AfterEach
+    void dropFunctions() {
+        dsl.execute("DROP FUNCTION IF EXISTS public.mark_mixed(bigint, text)");
+        dsl.execute("DROP FUNCTION IF EXISTS public.wrong_order(text, bigint)");
+        dsl.execute("DROP FUNCTION IF EXISTS public.bad_return(bigint, text)");
+    }
+
+    /**
+     * A matching void function yields the three plan kinds, and the chunk plans
+     * explain the generated per-row call over the primary-key columns.
+     */
+    @Test
+    void returnsTheThreePlansForAMatchingFunction() {
+        createFunction("mark_mixed", "done");
+
+        List<ExplainFunctionOverTableRecord> plans = Routines.explainFunctionOverTable(
+                dsl.configuration(), schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
+                FN_SCHEMA, "mark_mixed", 10);
+
+        assertEquals(List.of("boundary_population", "chunk_non_final", "chunk_final"),
+                plans.stream().map(ExplainFunctionOverTableRecord::getOPlanKind).toList());
+        assertEquals("ModifyTable", planNodeType(plans.get(0).getOPlan()),
+                "the boundary insert plans as a ModifyTable");
+        assertTrue(plans.get(1).getOSqlText().contains("SELECT public.mark_mixed(t.a, t.b)"),
+                "the non-final chunk explains the per-row function call");
+        assertTrue(plans.get(2).getOSqlText().contains("SELECT public.mark_mixed(t.a, t.b)"),
+                "the final chunk explains the per-row function call");
+    }
+
+    /**
+     * The call is read-only: it creates no run and does not run the function, so
+     * the seeded payloads stay null.
+     */
+    @Test
+    void writesNothing() {
+        dsl.insertInto(TEST_COMPOSITE_MIXED, TEST_COMPOSITE_MIXED.A, TEST_COMPOSITE_MIXED.B)
+                .values(1L, "x")
+                .values(1L, "y")
+                .values(2L, "x")
+                .execute();
+        createFunction("mark_mixed", "done");
+
+        Routines.explainFunctionOverTable(dsl.configuration(),
+                schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 10);
+
+        assertEquals(0, dsl.fetchCount(MIGRATION_RUN), "no run is created");
+        assertEquals(0,
+                dsl.selectCount()
+                        .from(TEST_COMPOSITE_MIXED)
+                        .where(TEST_COMPOSITE_MIXED.PAYLOAD.isNotNull())
+                        .fetchOne(0, Integer.class),
+                "the function must not run");
+    }
+
+    /**
+     * A function whose argument types do not match the primary key, in key
+     * order, is rejected with {@code 22023}.
+     */
+    @Test
+    void rejectsAMismatchedFunction() {
+        dsl.execute("CREATE FUNCTION public.wrong_order(text, bigint) RETURNS void"
+                + " LANGUAGE sql AS $$ SELECT NULL::void $$");
+
+        assertSqlState("22023", () -> Routines.explainFunctionOverTable(dsl.configuration(),
+                schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED), FN_SCHEMA,
+                "wrong_order", 10));
+    }
+
+    /**
+     * A function that does not return void is rejected with {@code 22023}.
+     */
+    @Test
+    void rejectsANonVoidFunction() {
+        dsl.execute("CREATE FUNCTION public.bad_return(bigint, text) RETURNS integer"
+                + " LANGUAGE sql AS $$ SELECT 1 $$");
+
+        assertSqlState("22023", () -> Routines.explainFunctionOverTable(dsl.configuration(),
+                schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED), FN_SCHEMA,
+                "bad_return", 10));
+    }
+
+    /**
+     * A missing function is rejected with {@code 22023} before any plan is
+     * produced.
+     */
+    @Test
+    void rejectsAMissingFunction() {
+        assertSqlState("22023", () -> Routines.explainFunctionOverTable(dsl.configuration(),
+                schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED), FN_SCHEMA,
+                "no_such_function", 10));
+    }
+
+    /**
+     * Creates the per-row void function that appends the given value to the
+     * payload of the row matching the primary key.
+     *
+     * @param functionName the function to create
+     * @param value        the value appended to {@code payload}
+     */
+    private void createFunction(String functionName, String value) {
+        dsl.execute("CREATE OR REPLACE FUNCTION public." + functionName
+                + "(p_a bigint, p_b text) RETURNS void LANGUAGE sql AS $$"
+                + " UPDATE " + schema(TEST_COMPOSITE_MIXED) + "." + name(TEST_COMPOSITE_MIXED)
+                + " SET payload = coalesce(payload, '') || " + DSL.inline(value)
+                + " WHERE a = p_a AND b = p_b $$");
+    }
+}

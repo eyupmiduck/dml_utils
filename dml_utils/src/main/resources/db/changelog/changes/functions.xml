@@ -144,12 +144,42 @@
         </rollback>
     </changeSet>
 
+    <changeSet id="function-dml_utils_lib.synthetic_chunk_boundary_values" author="dml_utils"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils_lib/synthetic_chunk_boundary_values.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils_lib/synthetic_chunk_boundary_values-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="function-dml_utils_lib.explain_query_plan" author="dml_utils"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils_lib/explain_query_plan.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils_lib/explain_query_plan-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
     <changeSet id="function-dml_utils_lib.assert_no_active_run_for_label" author="dml_utils"
                dbms="postgresql" runOnChange="true">
         <createProcedure path="functions/dml_utils_lib/assert_no_active_run_for_label.sql"
                          relativeToChangelogFile="true"/>
         <rollback>
             <sqlFile path="functions-rollback/dml_utils_lib/assert_no_active_run_for_label-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="function-dml_utils_lib.build_boundary_population_sql" author="dml_utils"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils_lib/build_boundary_population_sql.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils_lib/build_boundary_population_sql-rollback.sql"
                      relativeToChangelogFile="true"/>
         </rollback>
     </changeSet>
@@ -164,12 +194,32 @@
         </rollback>
     </changeSet>
 
+    <changeSet id="function-dml_utils_lib.explain_chunk_plans" author="dml_utils"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils_lib/explain_chunk_plans.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils_lib/explain_chunk_plans-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
     <changeSet id="function-dml_utils.run_migration_chunks" author="dml_utils"
                dbms="postgresql" runOnChange="true">
         <createProcedure path="functions/dml_utils/run_migration_chunks.sql"
                          relativeToChangelogFile="true"/>
         <rollback>
             <sqlFile path="functions-rollback/dml_utils/run_migration_chunks-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="function-dml_utils.explain_migration_chunks" author="dml_utils"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils/explain_migration_chunks.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils/explain_migration_chunks-rollback.sql"
                      relativeToChangelogFile="true"/>
         </rollback>
     </changeSet>
@@ -200,6 +250,16 @@
                          relativeToChangelogFile="true"/>
         <rollback>
             <sqlFile path="functions-rollback/dml_utils/run_function_over_table-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="function-dml_utils.explain_function_over_table" author="dml_utils"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils/explain_function_over_table.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils/explain_function_over_table-rollback.sql"
                      relativeToChangelogFile="true"/>
         </rollback>
     </changeSet>
