@@ -15,3 +15,35 @@
     dml_utils_lib.render_chunk_sql from validated identifiers (%I) and typed
     ids, and is SECURITY INVOKER, so a caller already holds the privileges the
     SQL would use. The dynamic SQL is deliberate; see process_migration_chunk.sql.
+- schema: dml_utils_lib
+  function: populate_migration_boundaries
+  level: security
+  statement: EXECUTE
+  message: text type variable is not sanitized
+  reason: >-
+    The routine executes the statement built by
+    dml_utils_lib.build_boundary_population_sql, which quotes every identifier
+    with %I/quote_ident, takes every kind from the primary_key_kinds whitelist,
+    and inlines only the run id and chunk size (both bigint). The routine is
+    SECURITY INVOKER, so a caller already holds the privileges the SQL would
+    use. The dynamic SQL is deliberate; see build_boundary_population_sql.sql.
+- schema: dml_utils_lib
+  function: explain_query_plan
+  level: security
+  statement: EXECUTE
+  message: text type variable is not sanitized
+  reason: >-
+    The routine runs EXPLAIN (FORMAT JSON) over caller-supplied SQL. EXPLAIN
+    only plans and never executes the statement, and the routine is SECURITY
+    INVOKER, so it is no more privileged than running EXPLAIN on the same SQL
+    directly: it is not an authorization boundary. The dynamic SQL is
+    deliberate; see explain_query_plan.sql.
+- schema: dml_utils_lib
+  function: explain_query_plan
+  level: performance
+  message: routine is marked as VOLATILE, should be IMMUTABLE
+  reason: >-
+    PostgreSQL rejects EXPLAIN inside a non-volatile function ("EXPLAIN is not
+    allowed in a non-volatile function"), so the routine must be VOLATILE even
+    though it only plans. plpgsql_check's suggestion is not applicable; see
+    explain_query_plan.sql.

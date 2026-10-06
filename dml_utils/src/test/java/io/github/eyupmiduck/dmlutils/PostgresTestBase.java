@@ -1,6 +1,7 @@
 package io.github.eyupmiduck.dmlutils;
 
 import org.jooq.Field;
+import org.jooq.JSON;
 import org.jooq.Record;
 import org.jooq.impl.DSL;
 
@@ -113,6 +114,19 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
     protected <T> T evaluate(String expression, Class<T> type) {
         Record record = dsl.fetchOne("SELECT " + expression);
         return record.get(0, type);
+    }
+
+    /**
+     * Reads the top-level plan node type from an {@code EXPLAIN (FORMAT JSON)}
+     * document, so plan-content tests assert a statement's shape without
+     * duplicating the json path.
+     *
+     * @param plan the {@code EXPLAIN (FORMAT JSON)} document
+     * @return the plan's {@code Node Type}
+     */
+    protected String planNodeType(JSON plan) {
+        return dsl.fetchOne("SELECT (?::json -> 0 -> 'Plan' ->> 'Node Type')",
+                plan.data()).get(0, String.class);
     }
 
     /**

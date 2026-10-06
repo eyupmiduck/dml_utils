@@ -86,6 +86,31 @@ with its original SQLSTATE. `RAISE NOTICE` and returns when the run is already
 complete. Run under `READ COMMITTED`; do not hold locks on the driving table
 across the call. Bounded worker waits are not part of this first version.
 
+###
+`dml_utils.explain_migration_chunks(i_sql_text, i_driving_table_schema_name, i_driving_table_name [, i_chunk_size, i_driving_table_alias])`
+
+```sql
+i_sql_text                  dml_utils_data.non_null_text
+i_driving_table_schema_name dml_utils_data.non_null_text
+i_driving_table_name        dml_utils_data.non_null_text
+i_chunk_size                dml_utils_data.positive_integer DEFAULT 1000
+i_driving_table_alias       dml_utils_data.non_null_text DEFAULT 't'
+RETURNS TABLE (o_plan_kind text, o_sql_text text, o_plan json)
+```
+
+`VOLATILE`, `SECURITY INVOKER`. The read-only companion to
+`run_migration_chunks`: it returns `EXPLAIN (FORMAT JSON)` of the SQL a chunked
+run would generate, one row per statement, without executing anything and
+without writing a run or boundaries. `o_plan_kind` is `boundary_population` (the
+range scan and boundary INSERT), `chunk_non_final` (a half-open `<` range) or
+`chunk_final` (the inclusive `<=` range); `o_sql_text` is the exact SQL that was
+explained. The boundary INSERT is explained with a synthetic run id (`0`), which
+plans as a `ModifyTable` without evaluating the foreign key, and the chunk ranges
+come from `dml_utils_lib.synthetic_chunk_boundary_values`, so their row estimates
+may differ from a real chunk. It is `VOLATILE` because PostgreSQL forbids
+`EXPLAIN` in a non-volatile function. Use it to inspect the plans before running
+`run_migration_chunks`.
+
 ### `dml_utils.set_migration_run_sql_text(i_label, i_sql_text)`
 
 ```sql
@@ -132,6 +157,25 @@ run is created. When `i_label` is NULL a deterministic label is derived from the
 driving table and function, so re-running the same call resumes the same run.
 Because a resumed run uses the recorded SQL text, use
 `set_migration_run_function` to point an unfinished run at a different function.
+
+###
+`dml_utils.explain_function_over_table(i_driving_table_schema_name, i_driving_table_name, i_function_schema_name, i_function_name [, i_chunk_size])`
+
+```sql
+i_driving_table_schema_name dml_utils_data.non_null_text
+i_driving_table_name        dml_utils_data.non_null_text
+i_function_schema_name      dml_utils_data.non_null_text
+i_function_name             dml_utils_data.non_null_text
+i_chunk_size                dml_utils_data.positive_integer DEFAULT 1000
+RETURNS TABLE (o_plan_kind text, o_sql_text text, o_plan json)
+```
+
+`VOLATILE`, `SECURITY INVOKER`. The read-only companion to
+`run_function_over_table`: it validates the function against the driving table's
+primary key, builds the per-row template and returns the same three plans as
+`explain_migration_chunks` (`boundary_population`, `chunk_non_final`,
+`chunk_final`). A missing function, a non-`void` return or mismatched argument
+types raise `invalid_parameter_value` (`22023`) before any plan is produced.
 
 ### `dml_utils.set_migration_run_function(i_label, i_function_schema_name, i_function_name)`
 
@@ -457,6 +501,74 @@ an active (not archived) run already exists for the label. Boundaries are
 inserted with `started_at` and `completed_at` null. An empty source produces a
 run with no boundaries. Later inserts above the captured maximum fall outside the terminal
 boundary and are not processed.
+
+###
+`dml_utils_lib.build_boundary_population_sql(i_schema_name, i_table_name, i_primary_key_columns, i_key_kinds, i_run_id, i_chunk_size)`
+
+```sql
+i_schema_name          dml_utils_data.non_null_text
+i_table_name           dml_utils_data.non_null_text
+i_primary_key_columns  name[]
+i_key_kinds            text[]
+i_run_id               bigint
+i_chunk_size           bigint
+RETURNS text
+```
+
+`STABLE`, `SECURITY INVOKER`. Returns the statement that scans the driving
+table's primary key in row order and inserts the run's chunk boundaries as the
+contiguous sequence `0..N` (one start per chunk plus the terminal high-water
+boundary). `populate_migration_boundaries` executes it and the explain path
+explains it, so both use the identical SQL; the run id and chunk size are inlined (both bigint). Identifiers are quoted
+with `%I` and every kind is checked against
+the `bigint`/`text`/`uuid` whitelist (`22023` otherwise).
+
+### `dml_utils_lib.synthetic_chunk_boundary_values(i_key_kinds, i_chunk_size)`
+
+```sql
+i_key_kinds  text[]
+i_chunk_size bigint
+RETURNS TABLE (o_is_final boolean, o_start_values text[], o_end_values text[])
+```
+
+`IMMUTABLE`, `SECURITY INVOKER`. Returns two representative chunk ranges, one
+per key kind and in key order: the non-final (`o_is_final` false) and final (`o_is_final` true) rows. `bigint` spans
+`0..chunk_size`, `text` uses `a..b` and
+`uuid` the first two all-zero forms. The values are synthetic, so the explain
+path can render a plausible chunk predicate without reading real boundaries.
+Rejects malformed kinds or a non-positive chunk size (`22023`).
+
+### `dml_utils_lib.explain_query_plan(i_sql_text)`
+
+```sql
+i_sql_text text
+RETURNS json
+```
+
+`VOLATILE`, `SECURITY INVOKER`. Returns `EXPLAIN (FORMAT JSON)` of `i_sql_text`
+as a json value, without executing it (no `ANALYZE`): an INSERT or UPDATE only
+plans. Rejects a NULL, empty or blank statement (`22023`). It is `VOLATILE`
+because PostgreSQL forbids `EXPLAIN` in a non-volatile function.
+
+###
+`dml_utils_lib.explain_chunk_plans(i_sql_text, i_schema_name, i_table_name, i_table_alias, i_primary_key_columns, i_key_kinds, i_chunk_size)`
+
+```sql
+i_sql_text            dml_utils_data.non_null_text
+i_schema_name         dml_utils_data.non_null_text
+i_table_name          dml_utils_data.non_null_text
+i_table_alias         dml_utils_data.non_null_text
+i_primary_key_columns name[]
+i_key_kinds           text[]
+i_chunk_size          bigint
+RETURNS TABLE (o_plan_kind text, o_sql_text text, o_plan json)
+```
+
+`VOLATILE`, `SECURITY INVOKER`. Renders and explains the three statements a
+chunked run generates — the boundary-population insert (synthetic run id `0`), a
+non-final chunk and the final chunk — using synthetic ranges and reading no
+boundaries. Shared by `explain_migration_chunks` and
+`explain_function_over_table`.
 
 ### `dml_utils_lib.process_migration_chunk(i_run_id, i_boundary_no, i_sql_text)`
 

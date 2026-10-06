@@ -105,7 +105,24 @@ $$;
 COMMENT ON FUNCTION public.review_dog IS
     'Example per-row function: marks one dog breed reviewed.';
 
--- 4. Run the function over every row in small chunks. The wrapper builds the
+-- 4. Inspect the plans the run would use, before running it.
+--    explain_function_over_table is read-only: it creates no run and writes no
+--    boundaries, and the chunk ranges are synthetic, so the row estimates may
+--    differ from a real chunk. The three rows show the primary-key scan the
+--    boundaries are computed from and the two generated per-row call forms (a
+--    half-open range and the final, inclusive one).
+\echo '--- plans for the function-over-table run (read-only) ---'
+SELECT o_plan_kind,
+       o_sql_text,
+       jsonb_pretty(o_plan::jsonb) AS plan
+FROM dml_utils.explain_function_over_table(
+        i_driving_table_schema_name => 'public',
+        i_driving_table_name => 'dogs',
+        i_function_schema_name => 'public',
+        i_function_name => 'review_dog',
+        i_chunk_size => 10);
+
+-- 5. Run the function over every row in small chunks. The wrapper builds the
 --    per-row template and delegates to run_migration_chunks, so each chunk is a
 --    pg_background worker and the call resumes at the first unprocessed chunk if
 --    it is interrupted. The label identifies the run; re-running with the same
@@ -123,7 +140,7 @@ SELECT dml_utils.run_function_over_table(
                i_threads => 2,
                i_label => 'dogs-review-function');
 
--- 5. Inspect the result: run summary, stored boundaries, status counts.
+-- 6. Inspect the result: run summary, stored boundaries, status counts.
 \echo '--- migration run summary ---'
 SELECT run_id,
        label,

@@ -10,9 +10,12 @@ small `dogs` table keyed by breed.
 1. Creates `public.dogs` (one row per dog breed) and an `status` column to
    backfill.
 2. Seeds it with famous breeds.
-3. Runs `dml_utils.run_migration_chunks` to set `status = 'reviewed'` for every
+3. Prints the plans the run would use via `dml_utils.explain_migration_chunks`
+   (read-only: no run or boundaries are written, and the chunk ranges are
+   synthetic, so the estimates may differ from a real chunk).
+4. Runs `dml_utils.run_migration_chunks` to set `status = 'reviewed'` for every
    row, chunk by chunk (small chunk size so the example makes several chunks).
-4. Prints the run summary, the stored boundaries, and the per-status counts.
+5. Prints the run summary, the stored boundaries, and the per-status counts.
 
 The script is idempotent: it drops and recreates the `dogs` table and archives
 any previous run with the same label, so you can re-run it freely.
