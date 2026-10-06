@@ -68,6 +68,11 @@ run_once() {
             -c "TRUNCATE ${BENCH_SCHEMA}.${BENCH_TARGET_TABLE}"
     fi
 
+    # pg_background caps concurrent workers per session at
+    # pg_background.max_workers (16 by default), independently of the server's
+    # max_worker_processes, so raise it to this run's thread count before
+    # launching the workers. It is a user-settable GUC, so this needs no server
+    # change.
     psql_stdin -q -v ON_ERROR_STOP=1 \
         -v sql="$BENCH_SQL" \
         -v schema="$BENCH_SCHEMA" \
@@ -76,6 +81,7 @@ run_once() {
         -v chunk="$BENCH_CHUNK_SIZE" \
         -v threads="$threads" \
         -f - >/dev/null <<'SQL'
+SET pg_background.max_workers = :threads;
 SELECT dml_utils.run_migration_chunks(
     i_sql_text => :'sql',
     i_driving_table_schema_name => :'schema',
