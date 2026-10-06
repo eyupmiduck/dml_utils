@@ -11,8 +11,12 @@ DROP TABLE IF EXISTS :"schema".:"target_table";
 
 CREATE TABLE :"schema".:"target_table"
 (
-    id      bigint,
-    payload text NOT NULL
+    id
+    bigint,
+    payload
+    text
+    NOT
+    NULL
 );
 
 COMMENT ON TABLE :"schema".:"target_table" IS

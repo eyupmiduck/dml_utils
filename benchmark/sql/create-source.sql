@@ -11,8 +11,14 @@ DROP TABLE IF EXISTS :"schema".:"source_table";
 
 CREATE TABLE :"schema".:"source_table"
 (
-    id      bigint PRIMARY KEY,
-    payload text NOT NULL
+    id
+    bigint
+    PRIMARY
+    KEY,
+    payload
+    text
+    NOT
+    NULL
 );
 
 COMMENT ON TABLE :"schema".:"source_table" IS

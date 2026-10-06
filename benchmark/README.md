@@ -24,11 +24,11 @@ For each thread value in `BENCH_THREADS_FROM .. BENCH_THREADS_TO`, `run.sh` does
 some unrecorded warm-up runs and then `BENCH_RUNS` measured runs. Each run calls
 `run_migration_chunks` once and reads the run's timestamps back:
 
-| column | meaning |
-| --- | --- |
-| `range_seconds` | `boundaries_calculated_at - started_at` — the range calculation |
+| column          | meaning                                                                  |
+|-----------------|--------------------------------------------------------------------------|
+| `range_seconds` | `boundaries_calculated_at - started_at` — the range calculation          |
 | `chunk_seconds` | `completed_at - boundaries_calculated_at` — the workload over all chunks |
-| `total_seconds` | `completed_at - started_at` |
+| `total_seconds` | `completed_at - started_at`                                              |
 
 `report.sh` takes the mean of each over the recorded runs and prints a speedup
 relative to the lowest thread value.
@@ -39,8 +39,7 @@ relative to the lowest thread value.
 - The custom PostgreSQL image, e.g. `dml-utils-postgres:17-alpine`. `setup.sh`
   builds it with `scripts/build-postgres-image.sh postgres:17-alpine` if it is
   missing.
-- Network access on first setup: the Liquibase image downloads its JDBC driver
-  (`lpm add postgresql`).
+- Network access on first setup: the Liquibase image downloads its JDBC driver (`lpm add postgresql`).
 
 ## Quick start
 
@@ -84,16 +83,16 @@ All database access goes through `docker exec`, so no host `psql` is required.
 All parameters live in [`config.env`](config.env) and are documented there. The
 ones you are most likely to change:
 
-| parameter | default | purpose |
-| --- | --- | --- |
-| `BENCH_ROWS` | `1000000` | synthetic source rows |
-| `BENCH_CHUNK_SIZE` | `1000` | rows per chunk |
-| `BENCH_THREADS_FROM` / `BENCH_THREADS_TO` | `1` / `20` | thread sweep |
-| `BENCH_RUNS` | `5` | measured runs per thread value |
-| `BENCH_WARMUP_RUNS` | `1` | unrecorded warm-up runs per thread value |
-| `BENCH_SQL` | INSERT into the target | the workload run once per chunk |
-| `BENCH_MAX_WORKER_PROCESSES` | `30` | must cover `BENCH_THREADS_TO` |
-| `BENCH_SHARED_BUFFERS` | `512MB` | server setting for the run |
+| parameter                                 | default                | purpose                                  |
+|-------------------------------------------|------------------------|------------------------------------------|
+| `BENCH_ROWS`                              | `1000000`              | synthetic source rows                    |
+| `BENCH_CHUNK_SIZE`                        | `1000`                 | rows per chunk                           |
+| `BENCH_THREADS_FROM` / `BENCH_THREADS_TO` | `1` / `20`             | thread sweep                             |
+| `BENCH_RUNS`                              | `5`                    | measured runs per thread value           |
+| `BENCH_WARMUP_RUNS`                       | `1`                    | unrecorded warm-up runs per thread value |
+| `BENCH_SQL`                               | INSERT into the target | the workload run once per chunk          |
+| `BENCH_MAX_WORKER_PROCESSES`              | `30`                   | must cover `BENCH_THREADS_TO`            |
+| `BENCH_SHARED_BUFFERS`                    | `512MB`                | server setting for the run               |
 
 `BENCH_SQL` must contain `<driving_table>` and `<chunking_clause>` exactly once;
 the driving table is aliased `t`. The default keeps the source table untouched by
