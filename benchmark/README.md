@@ -9,14 +9,14 @@ Everything needed to reproduce a run lives in this directory.
 
 ## How to run a benchmark, step by step
 
-The worked example below runs **threads 1..20 with 10 measured runs each** on a
-**1,000,000-row** table. No prior knowledge of the scripts is assumed.
+The worked example below runs **threads 1..20 with 10 measured runs each** on a **1,000,000-row** table. No prior
+knowledge of the scripts is assumed.
 
 ### Step 0 — prerequisites
 
 - Docker is installed and running (`docker info` works).
-- The repository is checked out and its `scripts/` submodule is present
-  (`git submodule update --init` if `scripts/start-local-db.sh` is missing).
+- The repository is checked out and its `scripts/` submodule is present (`git submodule update --init` if
+  `scripts/start-local-db.sh` is missing).
 - The first setup needs internet access: the Liquibase container downloads its
   PostgreSQL JDBC driver. `setup.sh` also builds the custom PostgreSQL image
   automatically if it is not present.
@@ -93,7 +93,7 @@ Open `benchmark/results/report.md`. It contains:
 - a **results table**, one row per thread value, with the mean range-calculation
   time, the mean chunk-run time, the mean total, and the speedup relative to the
   lowest thread value,
-- a **chart** (`report.svg`, generated next to the page) of the same means
+- a **chart** (`report.svg`, generated next to the page) of the mean total time
   against the thread count, embedded in the page.
 
 The raw per-run data is `benchmark/results/benchmark.csv` (one row per measured
@@ -104,11 +104,11 @@ hold the captured environment.
 
 Each run calls `run_migration_chunks` once and reads the run's timestamps back:
 
-| column in the CSV | meaning |
-| --- | --- |
-| `range_seconds` | `boundaries_calculated_at - started_at` — the range calculation |
-| `chunk_seconds` | `completed_at - boundaries_calculated_at` — the workload over all chunks |
-| `total_seconds` | `completed_at - started_at` |
+| column in the CSV | meaning                                                                  |
+|-------------------|--------------------------------------------------------------------------|
+| `range_seconds`   | `boundaries_calculated_at - started_at` — the range calculation          |
+| `chunk_seconds`   | `completed_at - boundaries_calculated_at` — the workload over all chunks |
+| `total_seconds`   | `completed_at - started_at`                                              |
 
 Warm-up runs are not recorded. `report.sh` averages each column over the recorded
 runs for a thread value.
@@ -118,16 +118,16 @@ runs for a thread value.
 All parameters live in [`config.env`](config.env) and are documented there. The
 ones you are most likely to change:
 
-| parameter | default | purpose |
-| --- | --- | --- |
-| `BENCH_ROWS` | `1000000` | synthetic source rows |
-| `BENCH_CHUNK_SIZE` | `1000` | rows per chunk |
-| `BENCH_THREADS_FROM` / `BENCH_THREADS_TO` | `1` / `20` | thread sweep |
-| `BENCH_RUNS` | `10` | measured runs per thread value (the mean is over these) |
-| `BENCH_WARMUP_RUNS` | `1` | unrecorded warm-up runs per thread value |
-| `BENCH_SQL` | INSERT into the target | the workload run once per chunk |
-| `BENCH_MAX_WORKER_PROCESSES` | `30` | must cover `BENCH_THREADS_TO` |
-| `BENCH_SHARED_BUFFERS` | `512MB` | server setting for the run |
+| parameter                                 | default                | purpose                                                 |
+|-------------------------------------------|------------------------|---------------------------------------------------------|
+| `BENCH_ROWS`                              | `1000000`              | synthetic source rows                                   |
+| `BENCH_CHUNK_SIZE`                        | `1000`                 | rows per chunk                                          |
+| `BENCH_THREADS_FROM` / `BENCH_THREADS_TO` | `1` / `20`             | thread sweep                                            |
+| `BENCH_RUNS`                              | `10`                   | measured runs per thread value (the mean is over these) |
+| `BENCH_WARMUP_RUNS`                       | `1`                    | unrecorded warm-up runs per thread value                |
+| `BENCH_SQL`                               | INSERT into the target | the workload run once per chunk                         |
+| `BENCH_MAX_WORKER_PROCESSES`              | `30`                   | must cover `BENCH_THREADS_TO`                           |
+| `BENCH_SHARED_BUFFERS`                    | `512MB`                | server setting for the run                              |
 
 `BENCH_SQL` must contain `<driving_table>` and `<chunking_clause>` exactly once;
 the driving table is aliased `t`. The default keeps the source table untouched by
@@ -170,7 +170,7 @@ benchmark/
   setup.sh                create/refresh the dedicated benchmark database
   run.sh                  run the sweep, appending results/<BENCH_CSV>
   report.sh               format the results into results/<BENCH_REPORT>
-  chart.awk               render results/<BENCH_CSV> as the report's SVG chart
+  chart.awk               render the mean total time as the report's SVG chart
   sql/create-source.sql   deterministic synthetic source table + data
   sql/create-target.sql   throwaway destination the workload inserts into
   results/                generated: benchmark.csv, report.md, report.svg, hardware.txt, ...

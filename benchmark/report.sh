@@ -142,10 +142,10 @@ awk -f "$here/chart.awk" "$csv" > "$svg"
     echo
     echo "## Chart"
     echo
-    echo "![run_migration_chunks: mean time vs threads]($svg_name)"
+    echo "![run_migration_chunks: mean total time vs threads]($svg_name)"
     echo
-    echo "_The range-calculation line is near the bottom because it is small"
-    echo "relative to the chunk run; the table above has its exact values._"
+    echo "_The chart plots the mean total time only; the table above also has the"
+    echo "range-calculation and chunk-run means._"
     echo
     echo "## How the times are measured"
     echo
