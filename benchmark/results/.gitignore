@@ -3,3 +3,7 @@
 *
 !.gitkeep
 !.gitignore
+
+# Published snapshots are committed: un-ignore the directory and its contents.
+!lhorner_laptop_oct_2026/
+!lhorner_laptop_oct_2026/**
