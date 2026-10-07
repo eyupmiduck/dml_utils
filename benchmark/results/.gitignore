@@ -1,0 +1,9 @@
+# Generated benchmark output. Keep the directory (via .gitkeep) but do not commit
+# results by default; force-add a specific report if you want to publish findings.
+*
+!.gitkeep
+!.gitignore
+
+# Published snapshots are committed: un-ignore the directory and its contents.
+!lhorner_laptop_oct_2026/
+!lhorner_laptop_oct_2026/**
