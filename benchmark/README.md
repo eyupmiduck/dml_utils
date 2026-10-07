@@ -92,7 +92,9 @@ Open `benchmark/results/report.md`. It contains:
 - the **hardware and PostgreSQL settings** captured on this machine,
 - a **results table**, one row per thread value, with the mean range-calculation
   time, the mean chunk-run time, the mean total, and the speedup relative to the
-  lowest thread value.
+  lowest thread value,
+- a **chart** (`report.svg`, generated next to the page) of the same means
+  against the thread count, embedded in the page.
 
 The raw per-run data is `benchmark/results/benchmark.csv` (one row per measured
 run); `benchmark/results/hardware.txt` and `benchmark/results/postgres-settings.txt`
@@ -168,9 +170,10 @@ benchmark/
   setup.sh                create/refresh the dedicated benchmark database
   run.sh                  run the sweep, appending results/<BENCH_CSV>
   report.sh               format the results into results/<BENCH_REPORT>
+  chart.awk               render results/<BENCH_CSV> as the report's SVG chart
   sql/create-source.sql   deterministic synthetic source table + data
   sql/create-target.sql   throwaway destination the workload inserts into
-  results/                generated: benchmark.csv, report.md, hardware.txt, ...
+  results/                generated: benchmark.csv, report.md, report.svg, hardware.txt, ...
 ```
 
 ## Caveats

@@ -85,6 +85,11 @@ table="$(awk -F, '
         }
     }' "$csv")"
 
+# --- SVG chart --------------------------------------------------------------
+svg_name="${BENCH_REPORT%.md}.svg"
+svg="$results_dir/$svg_name"
+awk -f "$here/chart.awk" "$csv" > "$svg"
+
 # --- Report -----------------------------------------------------------------
 {
     echo "# Chunked migration thread-scaling benchmark"
@@ -134,6 +139,13 @@ table="$(awk -F, '
     echo "| threads | runs | mean range calc (s) | mean chunk run (s) | mean total (s) | speedup vs first |"
     echo "| ---: | ---: | ---: | ---: | ---: | ---: |"
     printf '%s\n' "$table"
+    echo
+    echo "## Chart"
+    echo
+    echo "![run_migration_chunks: mean time vs threads]($svg_name)"
+    echo
+    echo "_The range-calculation line is near the bottom because it is small"
+    echo "relative to the chunk run; the table above has its exact values._"
     echo
     echo "## How the times are measured"
     echo
