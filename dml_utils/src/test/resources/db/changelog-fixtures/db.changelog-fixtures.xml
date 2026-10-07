@@ -4,7 +4,7 @@
         xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
 
-    <changeSet id="fixture-001-create-schema" author="dml_utils_test">
+    <changeSet id="fixture-001-create-schema" author="lee.horner">
         <sqlFile path="changes/001-create-fixture-schema.sql" relativeToChangelogFile="true"/>
         <rollback>
             <sqlFile path="changes/rollback/001-create-fixture-schema-rollback.sql"
@@ -12,7 +12,7 @@
         </rollback>
     </changeSet>
 
-    <changeSet id="fixture-002-create-tables" author="dml_utils_test">
+    <changeSet id="fixture-002-create-tables" author="lee.horner">
         <sqlFile path="changes/002-create-fixture-tables.sql" relativeToChangelogFile="true"/>
         <rollback>
             <sqlFile path="changes/rollback/002-create-fixture-tables-rollback.sql"
@@ -20,7 +20,7 @@
         </rollback>
     </changeSet>
 
-    <changeSet id="fixture-003-grant" author="dml_utils_test">
+    <changeSet id="fixture-003-grant" author="lee.horner">
         <sqlFile path="changes/003-grant-fixtures.sql" relativeToChangelogFile="true"/>
         <rollback>
             <sqlFile path="changes/rollback/003-grant-fixtures-rollback.sql"
