@@ -151,7 +151,8 @@ i_driving_table_name        dml_utils_data.non_null_text
 i_chunk_size                dml_utils_data.positive_integer DEFAULT 1000
 i_driving_table_alias       dml_utils_data.non_null_text DEFAULT 't'
 i_chunk_by                  dml_utils_data.chunking_strategy DEFAULT 'primary_key'
-RETURNS TABLE (o_plan_kind text, o_sql_text text, o_plan json)
+RETURNS TABLE
+    (o_plan_kind text, o_sql_text text, o_plan json)
 ```
 
 `VOLATILE`, `SECURITY INVOKER`. The read-only companion to
@@ -236,7 +237,8 @@ i_function_name             dml_utils_data.non_null_text
 i_chunk_size                dml_utils_data.positive_integer DEFAULT 1000
 i_filter                    text DEFAULT NULL
 i_chunk_by                  dml_utils_data.chunking_strategy DEFAULT 'primary_key'
-RETURNS TABLE (o_plan_kind text, o_sql_text text, o_plan json)
+RETURNS TABLE
+    (o_plan_kind text, o_sql_text text, o_plan json)
 ```
 
 `VOLATILE`, `SECURITY INVOKER`. The read-only companion to
@@ -386,7 +388,7 @@ i_schema_name dml_utils_data.non_null_text
 i_table_name  dml_utils_data.non_null_text
 RETURNS TABLE
 (ordinality integer, column_name name, column_oid oid,
-               column_type regtype, key_kind text)
+    column_type regtype, key_kind text)
 ```
 
 `STABLE`, `SECURITY INVOKER`. The single catalog reader for a table's primary
@@ -626,7 +628,7 @@ the `bigint`/`text`/`uuid` whitelist (`22023` otherwise).
 i_key_kinds  text[]
 i_chunk_size bigint
 RETURNS TABLE
-(o_is_final boolean, o_start_values text[], o_end_values text[])
+    (o_is_final boolean, o_start_values text [], o_end_values text [])
 ```
 
 `IMMUTABLE`, `SECURITY INVOKER`. Returns two representative chunk ranges, one
@@ -662,7 +664,7 @@ i_key_kinds           text[]
 i_chunk_size          bigint
 i_chunk_by            dml_utils_data.chunking_strategy DEFAULT 'primary_key'
 RETURNS TABLE
-(o_plan_kind text, o_sql_text text, o_plan json)
+    (o_plan_kind text, o_sql_text text, o_plan json)
 ```
 
 `VOLATILE`, `SECURITY INVOKER`. Renders and explains the three statements a
@@ -692,6 +694,7 @@ and the server block size at execution time, so no table scan is needed; a table
 with no blocks yields no boundaries. See the block-strategy limitations above.
 
 ###
+
 `dml_utils_lib.render_block_chunk_sql(i_sql_text, i_schema_name, i_table_name, i_table_alias, i_start_block, i_end_block)`
 
 ```sql

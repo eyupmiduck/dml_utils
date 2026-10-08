@@ -117,7 +117,7 @@ Each run calls `run_migration_chunks` once and reads the run's timestamps back:
 |-------------------|--------------------------------------------------------------------------|
 | `strategy`        | the chunking strategy (`primary_key` or `blocks`)                        |
 | `chunk_unit`      | the chunk-size unit: `rows` for `primary_key`, `blocks` for `blocks`     |
-| `chunk_size`      | the configured chunk size, in `chunk_unit`                              |
+| `chunk_size`      | the configured chunk size, in `chunk_unit`                               |
 | `threads`         | the thread count                                                         |
 | `run`             | the measured run number                                                  |
 | `chunks`          | the number of chunks the run processed                                   |
