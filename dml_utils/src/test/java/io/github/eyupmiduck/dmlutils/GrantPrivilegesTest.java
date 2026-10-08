@@ -40,8 +40,7 @@ class GrantPrivilegesTest extends PostgresTestBase {
                                 """)
                 .get(0, Boolean.class);
 
-        assertFalse(Boolean.TRUE.equals(anyExecutableByPublic),
-                "every routine should have an explicit ACL without PUBLIC execute");
+        assertNotEquals(Boolean.TRUE, anyExecutableByPublic, "every routine should have an explicit ACL without PUBLIC execute");
     }
 
     /**
@@ -58,7 +57,8 @@ class GrantPrivilegesTest extends PostgresTestBase {
                                 WHERE (n.nspname, t.typname) IN (
                                     ('dml_utils_data', 'migration_key'),
                                     ('dml_utils_data', 'non_null_text'),
-                                    ('dml_utils_data', 'positive_integer'))
+                                    ('dml_utils_data', 'positive_integer'),
+                                    ('dml_utils_data', 'chunking_strategy'))
                                   AND (
                                       t.typacl IS NULL
                                       OR EXISTS (
@@ -120,13 +120,11 @@ class GrantPrivilegesTest extends PostgresTestBase {
                                 )
                                 """)
                 .get(0, Boolean.class);
-        assertTrue(Boolean.TRUE.equals(explicitUsage),
-                "the caller should have an explicit USAGE grant on dml_utils_data.migration_key");
+        assertEquals(Boolean.TRUE, explicitUsage, "the caller should have an explicit USAGE grant on dml_utils_data.migration_key");
 
-        assertTrue(Boolean.TRUE.equals(dsl.fetchOne(
-                                "SELECT pg_catalog.has_table_privilege('dml_utils_caller',"
-                                        + " 'dml_utils_data.migration_boundary', 'SELECT')")
-                        .get(0, Boolean.class)),
-                "the caller should be able to select migration_boundary");
+        assertEquals(Boolean.TRUE, dsl.fetchOne(
+                        "SELECT pg_catalog.has_table_privilege('dml_utils_caller',"
+                                + " 'dml_utils_data.migration_boundary', 'SELECT')")
+                .get(0, Boolean.class), "the caller should be able to select migration_boundary");
     }
 }

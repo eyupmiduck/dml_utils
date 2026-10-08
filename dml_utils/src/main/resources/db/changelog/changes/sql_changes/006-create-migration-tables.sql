@@ -4,10 +4,12 @@ CREATE TABLE dml_utils_data.migration_run
     label                     text                            NOT NULL,
     sql_text                  text                            NOT NULL,
     chunk_size                integer                         NOT NULL,
+    chunk_by                  dml_utils_data.chunking_strategy NOT NULL DEFAULT 'primary_key',
     threads                   dml_utils_data.positive_integer NOT NULL,
     driving_table_schema_name dml_utils_data.non_null_text    NOT NULL,
     driving_table_name        dml_utils_data.non_null_text    NOT NULL,
     driving_table_alias       dml_utils_data.non_null_text    NOT NULL DEFAULT 't',
+    driving_table_relation_filepath text,
     created_at                timestamptz                     NOT NULL DEFAULT pg_catalog.now(),
     updated_at                timestamptz                     NOT NULL DEFAULT pg_catalog.now(),
     started_at                timestamptz,
@@ -15,6 +17,12 @@ CREATE TABLE dml_utils_data.migration_run
     completed_at              timestamptz,
     archived_at               timestamptz,
     CONSTRAINT migration_run_chunk_size_check CHECK (chunk_size > 0),
+    -- A block run always records the physical relation filepath it was computed
+    -- against, and a primary-key run never does, so a block resume can detect a
+    -- heap rewrite (see dml_utils_lib.relation_filepath).
+    CONSTRAINT migration_run_chunk_by_filepath_check CHECK (
+        (chunk_by = 'blocks') = (driving_table_relation_filepath IS NOT NULL)
+    ),
     -- The run's milestones are ordered: the boundary calculation cannot finish
     -- before the run started, and the run cannot finish before it started. Each
     -- later stamp may only be set once started_at is set, and never earlier. The
@@ -37,7 +45,11 @@ COMMENT ON COLUMN dml_utils_data.migration_run.label IS
 COMMENT ON COLUMN dml_utils_data.migration_run.sql_text IS
     'The migration SQL recorded for the run; stored as given.';
 COMMENT ON COLUMN dml_utils_data.migration_run.chunk_size IS
-    'Number of source rows per chunk used to compute the boundaries.';
+    'Number of units per chunk used to compute the boundaries: source rows for '
+        'chunk_by = primary_key, heap blocks for chunk_by = blocks.';
+COMMENT ON COLUMN dml_utils_data.migration_run.chunk_by IS
+    'Chunking strategy: primary_key (fixed rows in primary-key order, the '
+        'default) or blocks (physical heap block ranges). Immutable.';
 COMMENT ON COLUMN dml_utils_data.migration_run.threads IS
     'Number of pg_background workers used to process the run''s chunks; may be '
         'changed with dml_utils.set_migration_run_threads while the run is unfinished.';
@@ -48,6 +60,10 @@ COMMENT ON COLUMN dml_utils_data.migration_run.driving_table_name IS
 COMMENT ON COLUMN dml_utils_data.migration_run.driving_table_alias IS
     'Alias the driving table is referred to as in the recorded SQL; stored at '
         'creation so a resumed run renders with the same alias.';
+COMMENT ON COLUMN dml_utils_data.migration_run.driving_table_relation_filepath IS
+    'For chunk_by = blocks, the pg_relation_filepath of the driving table at '
+        'boundary-calculation time, used to detect a heap rewrite before a '
+        'resume; NULL for primary_key runs. Immutable.';
 COMMENT ON COLUMN dml_utils_data.migration_run.created_at IS
     'Row creation time.';
 COMMENT ON COLUMN dml_utils_data.migration_run.updated_at IS

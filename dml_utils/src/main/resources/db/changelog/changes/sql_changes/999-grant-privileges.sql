@@ -13,6 +13,8 @@ REVOKE USAGE ON DOMAIN dml_utils_data.positive_integer FROM public;
 GRANT USAGE ON DOMAIN dml_utils_data.positive_integer TO dml_utils_caller;
 REVOKE USAGE ON TYPE dml_utils_data.migration_key FROM public;
 GRANT USAGE ON TYPE dml_utils_data.migration_key TO dml_utils_caller;
+REVOKE USAGE ON TYPE dml_utils_data.chunking_strategy FROM public;
+GRANT USAGE ON TYPE dml_utils_data.chunking_strategy TO dml_utils_caller;
 
 -- Same rule for objects created later: PostgreSQL grants EXECUTE on functions
 -- and USAGE on types to PUBLIC by default, so revoke those defaults for the
@@ -213,6 +215,52 @@ GRANT EXECUTE ON FUNCTION dml_utils_lib.build_boundary_population_sql(
     text[],
     bigint,
     bigint
+    ) TO dml_utils_caller;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.build_block_boundary_population_sql(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    bigint,
+    bigint
+    ) FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.build_block_boundary_population_sql(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    bigint,
+    bigint
+    ) TO dml_utils_caller;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.render_block_chunk_sql(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    bigint,
+    bigint
+    ) FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.render_block_chunk_sql(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    bigint,
+    bigint
+    ) TO dml_utils_caller;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.relation_filepath(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text
+    ) FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.relation_filepath(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text
+    ) TO dml_utils_caller;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_relation_filepath(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    text
+    ) FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_relation_filepath(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    text
     ) TO dml_utils_caller;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.synthetic_chunk_boundary_values(
     text[],

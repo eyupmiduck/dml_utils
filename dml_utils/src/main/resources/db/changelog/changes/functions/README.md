@@ -36,6 +36,55 @@ for the routine it creates, using the short form (`schema.name`, no argument
 list). If a routine is ever overloaded, include its argument types so the
 comment targets the right overload.
 
+## Chunking strategies
+
+A run chunks the driving table one of two ways, recorded in the run's `chunk_by`
+(`dml_utils_data.chunking_strategy`):
+
+- **`primary_key`** (the default): fixed-row chunks from the primary-key order.
+  The boundaries are primary-key values, so they are stable and a run is
+  resumable.
+- **`blocks`**: fixed-block chunks from the physical heap order. The boundaries
+  are heap block numbers and a chunk is the half-open ctid range
+  `ctid >= '(start,0)' AND ctid < '(end,0)'`, which plans as a TID Range Scan
+  (PostgreSQL 14+). Boundary computation is O(1) from `pg_relation_size`, with no
+  table scan, and the chunks are physically sequential.
+
+Prefer `primary_key` unless block chunking is specifically wanted. The block
+strategy is only valid for a **quiescent, read-only driving table on a plain
+heap**, and it has hard limitations:
+
+- **ctid is not stable.** A non-HOT `UPDATE` changes a tuple's ctid and may move
+  it to another block; HOT updates keep it on the page but cannot be relied on.
+  A block run assumes the table is not modified while it runs.
+- **Heap rewrites change every ctid.** `VACUUM FULL`, `CLUSTER`, `pg_repack`,
+  `TRUNCATE`, a tablespace move and rewrite-causing `ALTER TABLE` all rewrite the
+  heap. A block run records the driving table's `pg_relation_filepath` and fails
+  closed if it changed before a resume, but a rewrite during a run is not
+  detected.
+- **Inserts land wherever there is free space**, often mid-file, so a block range
+  is not a stable partition of the rows.
+- **Block chunks have uneven row counts** (fillfactor and dead space), so equal
+  blocks is not equal rows.
+- **A run is not resumable across a heap rewrite**, and ctid is not preserved by
+  a logical `pg_dump`/restore.
+- **Plain heap tables only.** ctid is per-partition, so partitioned and foreign
+  tables cannot use the block strategy.
+- **Read-only cannot be proven.** The routines execute caller-supplied SQL with
+  the caller's privileges and cannot tell whether it (or another session)
+  modifies the driving table, so a quiescent, read-only source is a caller
+  contract, not an enforced property.
+
+### Workaround for idempotent transformations
+
+If the transformation is idempotent and every relevant write fires a trigger, a
+`BEFORE UPDATE` trigger on the table can apply the same transformation alongside
+the chunked bulk pass: a row that moves is then transformed by the trigger
+regardless of which chunk it lands in, and applying it twice is harmless. This is
+an advanced mitigation, not a guarantee. The transformation must be idempotent,
+the trigger must not recurse, and it does not make deletes, concurrent DML or
+heap rewrites safe; it does not replace a quiescent source.
+
 ## `dml_utils`
 
 ###
@@ -598,6 +647,68 @@ chunked run generates — the boundary-population insert (synthetic run id `0`),
 non-final chunk and the final chunk — using synthetic ranges and reading no
 boundaries. Shared by `explain_migration_chunks` and
 `explain_function_over_table`.
+
+### `dml_utils_lib.build_block_boundary_population_sql(i_schema_name, i_table_name, i_run_id, i_chunk_size)`
+
+```sql
+i_schema_name dml_utils_data.non_null_text
+i_table_name  dml_utils_data.non_null_text
+i_run_id      bigint
+i_chunk_size  bigint
+RETURNS text
+```
+
+`STABLE`, `SECURITY INVOKER`. Returns the statement that inserts a block-chunked
+run's boundaries as the contiguous sequence `0..N`: one start boundary every
+`i_chunk_size` heap blocks plus a one-past-end terminal boundary, each a bigint
+block number in `migration_key`. The block count comes from `pg_relation_size`
+and the server block size at execution time, so no table scan is needed; a table
+with no blocks yields no boundaries. See the block-strategy limitations above.
+
+### `dml_utils_lib.render_block_chunk_sql(i_sql_text, i_schema_name, i_table_name, i_table_alias, i_start_block, i_end_block)`
+
+```sql
+i_sql_text     dml_utils_data.non_null_text
+i_schema_name  dml_utils_data.non_null_text
+i_table_name   dml_utils_data.non_null_text
+i_table_alias  dml_utils_data.non_null_text
+i_start_block  bigint
+i_end_block    bigint
+RETURNS text
+```
+
+`STABLE`, `SECURITY INVOKER`. Substitutes `<driving_table>` and a half-open ctid
+range for `<chunking_clause>`, for example
+`((t.ctid) >= ('(0,0)'::tid) AND (t.ctid) < ('(1000,0)'::tid))`. Every chunk,
+including the terminal one, uses a half-open range; the terminal end is the
+one-past-end block count. Rejects a NULL, reversed or empty range and a bad
+template (`22023`).
+
+### `dml_utils_lib.relation_filepath(i_schema_name, i_table_name)`
+
+```sql
+i_schema_name dml_utils_data.non_null_text
+i_table_name  dml_utils_data.non_null_text
+RETURNS text
+```
+
+`STABLE`, `SECURITY INVOKER`. Returns the table's `pg_relation_filepath` (its
+physical file, relative to the data directory), the fingerprint a block run
+records; raises `undefined_table` (`42P01`) when the table does not exist.
+
+### `dml_utils_lib.assert_relation_filepath(i_schema_name, i_table_name, i_expected_filepath)`
+
+```sql
+i_schema_name       dml_utils_data.non_null_text
+i_table_name        dml_utils_data.non_null_text
+i_expected_filepath text
+RETURNS void
+```
+
+`STABLE`, `SECURITY INVOKER`. Raises `invalid_parameter_value` (`22023`) when the
+table's current filepath differs from the recorded one, so a block-chunked run
+fails closed after a heap rewrite instead of resuming stale block boundaries. A
+NULL expectation (a primary-key run) is a no-op.
 
 ### `dml_utils_lib.process_migration_chunk(i_run_id, i_boundary_no, i_sql_text)`
 

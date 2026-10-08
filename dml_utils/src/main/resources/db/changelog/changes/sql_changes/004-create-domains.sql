@@ -47,3 +47,13 @@ COMMENT ON TYPE dml_utils_data.migration_key IS
         'per supported kind, so exactly one array element is non-NULL per index '
         'and an unused kind''s array is NULL. Index i holds the value of '
         'primary-key column i when that column has the array''s kind.';
+
+-- The chunking strategy a migration run uses. primary_key computes fixed-row
+-- chunks from the primary-key order (the default); blocks computes chunks from
+-- physical heap block ranges (ctid). See the block-chunking limitations in
+-- changes/functions/README.md before using blocks.
+CREATE TYPE dml_utils_data.chunking_strategy AS ENUM ('primary_key', 'blocks');
+
+COMMENT ON TYPE dml_utils_data.chunking_strategy IS
+    'Chunking strategy for a migration run: primary_key (fixed rows in '
+        'primary-key order) or blocks (physical heap block ranges).';
