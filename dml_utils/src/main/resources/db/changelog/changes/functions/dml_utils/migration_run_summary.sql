@@ -3,22 +3,22 @@ CREATE OR REPLACE FUNCTION dml_utils.migration_run_summary(
 )
     RETURNS TABLE
             (
-                run_id                    bigint,
-                label                     text,
-                chunk_size                integer,
-                chunk_by                  text,
-                threads                   integer,
-                driving_table_schema_name text,
-                driving_table_name        text,
+                run_id                          bigint,
+                label                           text,
+                chunk_size                      integer,
+                chunk_by                        text,
+                threads                         integer,
+                driving_table_schema_name       text,
+                driving_table_name              text,
                 driving_table_relation_filepath text,
-                created_at                timestamptz,
-                started_at                timestamptz,
-                boundaries_calculated_at  timestamptz,
-                completed_at              timestamptz,
-                archived_at               timestamptz,
-                boundary_count            bigint,
-                completed_boundary_count  bigint,
-                error_count               bigint
+                created_at                      timestamptz,
+                started_at                      timestamptz,
+                boundaries_calculated_at        timestamptz,
+                completed_at                    timestamptz,
+                archived_at                     timestamptz,
+                boundary_count                  bigint,
+                completed_boundary_count        bigint,
+                error_count                     bigint
             )
     LANGUAGE sql
     STABLE

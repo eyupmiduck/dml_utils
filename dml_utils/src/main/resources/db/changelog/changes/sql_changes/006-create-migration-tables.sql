@@ -1,28 +1,28 @@
 CREATE TABLE dml_utils_data.migration_run
 (
-    run_id                    bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    label                     text                            NOT NULL,
-    sql_text                  text                            NOT NULL,
-    chunk_size                integer                         NOT NULL,
-    chunk_by                  dml_utils_data.chunking_strategy NOT NULL DEFAULT 'primary_key',
-    threads                   dml_utils_data.positive_integer NOT NULL,
-    driving_table_schema_name dml_utils_data.non_null_text    NOT NULL,
-    driving_table_name        dml_utils_data.non_null_text    NOT NULL,
-    driving_table_alias       dml_utils_data.non_null_text    NOT NULL DEFAULT 't',
+    run_id                          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    label                           text                             NOT NULL,
+    sql_text                        text                             NOT NULL,
+    chunk_size                      integer                          NOT NULL,
+    chunk_by                        dml_utils_data.chunking_strategy NOT NULL DEFAULT 'primary_key',
+    threads                         dml_utils_data.positive_integer  NOT NULL,
+    driving_table_schema_name       dml_utils_data.non_null_text     NOT NULL,
+    driving_table_name              dml_utils_data.non_null_text     NOT NULL,
+    driving_table_alias             dml_utils_data.non_null_text     NOT NULL DEFAULT 't',
     driving_table_relation_filepath text,
-    created_at                timestamptz                     NOT NULL DEFAULT pg_catalog.now(),
-    updated_at                timestamptz                     NOT NULL DEFAULT pg_catalog.now(),
-    started_at                timestamptz,
-    boundaries_calculated_at  timestamptz,
-    completed_at              timestamptz,
-    archived_at               timestamptz,
+    created_at                      timestamptz                      NOT NULL DEFAULT pg_catalog.now(),
+    updated_at                      timestamptz                      NOT NULL DEFAULT pg_catalog.now(),
+    started_at                      timestamptz,
+    boundaries_calculated_at        timestamptz,
+    completed_at                    timestamptz,
+    archived_at                     timestamptz,
     CONSTRAINT migration_run_chunk_size_check CHECK (chunk_size > 0),
     -- A block run always records the physical relation filepath it was computed
     -- against, and a primary-key run never does, so a block resume can detect a
     -- heap rewrite (see dml_utils_lib.relation_filepath).
     CONSTRAINT migration_run_chunk_by_filepath_check CHECK (
         (chunk_by = 'blocks') = (driving_table_relation_filepath IS NOT NULL)
-    ),
+        ),
     -- The run's milestones are ordered: the boundary calculation cannot finish
     -- before the run started, and the run cannot finish before it started. Each
     -- later stamp may only be set once started_at is set, and never earlier. The

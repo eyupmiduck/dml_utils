@@ -46,8 +46,8 @@ A run chunks the driving table one of two ways, recorded in the run's `chunk_by`
   resumable.
 - **`blocks`**: fixed-block chunks from the physical heap order. The boundaries
   are heap block numbers and a chunk is the half-open ctid range
-  `ctid >= '(start,0)' AND ctid < '(end,0)'`, which plans as a TID Range Scan
-  (PostgreSQL 14+). Boundary computation is O(1) from `pg_relation_size`, with no
+  `ctid >= '(start,0)' AND ctid < '(end,0)'`, which plans as a TID Range Scan (PostgreSQL 14+). Boundary computation is
+  O (1) from `pg_relation_size`, with no
   table scan, and the chunks are physically sequential.
 
 Prefer `primary_key` unless block chunking is specifically wanted. The block
@@ -215,8 +215,8 @@ mismatched argument types raise `invalid_parameter_value` (`22023`) before any
 run is created. When `i_label` is NULL a deterministic label is derived from the
 driving table, function, filter and chunking strategy, so re-running the same
 call resumes the same run and calls that differ only in those derive different
-runs. A non-NULL `i_filter` is ANDed onto every chunk's range predicate
-(referencing the driving table through the fixed alias `t`), so only the rows it
+runs. A non-NULL `i_filter` is ANDed onto every chunk's range predicate (referencing the driving table through the fixed
+alias `t`), so only the rows it
 matches are passed to the function; a filter that contains `<driving_table>` or
 `<chunking_clause>` is rejected when the template is validated. `i_chunk_by`
 selects the strategy; `blocks` requires a quiescent, read-only driving table and
@@ -322,8 +322,8 @@ RETURNS TABLE
 ```
 
 `STABLE`, `SECURITY INVOKER`. Returns one high-level row per run for the label,
-including the chunking strategy (`chunk_by`), the block run's physical filepath
-(`driving_table_relation_filepath`), the number of boundaries (chunk starts plus
+including the chunking strategy (`chunk_by`), the block run's physical filepath (`driving_table_relation_filepath`), the
+number of boundaries (chunk starts plus
 the terminal boundary), how many are completed, and the number of recorded
 errors. Use `migration_errors` to list the errors themselves.
 
@@ -691,7 +691,8 @@ block number in `migration_key`. The block count comes from `pg_relation_size`
 and the server block size at execution time, so no table scan is needed; a table
 with no blocks yields no boundaries. See the block-strategy limitations above.
 
-### `dml_utils_lib.render_block_chunk_sql(i_sql_text, i_schema_name, i_table_name, i_table_alias, i_start_block, i_end_block)`
+###
+`dml_utils_lib.render_block_chunk_sql(i_sql_text, i_schema_name, i_table_name, i_table_alias, i_start_block, i_end_block)`
 
 ```sql
 i_sql_text     dml_utils_data.non_null_text
