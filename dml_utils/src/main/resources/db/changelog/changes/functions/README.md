@@ -89,7 +89,7 @@ heap rewrites safe; it does not replace a quiescent source.
 
 ###
 
-`dml_utils.run_migration_chunks(i_sql_text, i_driving_table_schema_name, i_driving_table_name, i_label, i_chunk_size [, i_driving_table_alias])`
+`dml_utils.run_migration_chunks(i_sql_text, i_driving_table_schema_name, i_driving_table_name, i_label, i_chunk_size [, i_threads, i_driving_table_alias, i_chunk_by])`
 
 ```sql
 i_sql_text                  dml_utils_data.non_null_text
@@ -99,11 +99,15 @@ i_label                     dml_utils_data.non_null_text
 i_chunk_size                dml_utils_data.positive_integer DEFAULT 1000
 i_threads                   dml_utils_data.positive_integer DEFAULT 1
 i_driving_table_alias       dml_utils_data.non_null_text DEFAULT 't'
+i_chunk_by                  dml_utils_data.chunking_strategy DEFAULT 'primary_key'
 RETURNS void
 ```
 
-`VOLATILE`, `SECURITY INVOKER`. Processes every fixed-row chunk of the driving
-table, up to `i_threads` `pg_background` workers at a time (default 1). Each
+`VOLATILE`, `SECURITY INVOKER`. Processes every chunk of the driving table, up to
+`i_threads` `pg_background` workers at a time (default 1). `i_chunk_by` selects
+the strategy: `primary_key` (the default) chunks fixed rows in primary-key order;
+`blocks` chunks physical heap block ranges and requires a quiescent, read-only
+plain table (see "Chunking strategies" above). Each
 worker runs one chunk in its own transaction; the coordinator only schedules
 and holds no locks on the driving table. On a failed chunk the coordinator
 records it, stops launching new chunks, lets the workers already in flight
@@ -117,8 +121,8 @@ active run for the label, or creates it by running
 `dml_utils_lib.populate_migration_boundaries` in a worker so its boundaries
 commit before the chunks run (run resolution is delegated to
 `dml_utils_lib.resolve_migration_run`). A resumed run uses the recorded SQL
-text, chunk size, threads and driving table; a differing input is ignored with a
-notice, so
+text, chunk size, strategy, threads and driving table; a differing input is
+ignored with a notice, so
 the boundaries and the rendered chunk SQL always refer to the same table. Use
 `set_migration_run_sql_text` or `set_migration_run_threads` to change the
 recorded SQL text or thread count of an unfinished run. Each chunk
@@ -138,7 +142,7 @@ across the call. Bounded worker waits are not part of this first version.
 
 ###
 
-`dml_utils.explain_migration_chunks(i_sql_text, i_driving_table_schema_name, i_driving_table_name [, i_chunk_size, i_driving_table_alias])`
+`dml_utils.explain_migration_chunks(i_sql_text, i_driving_table_schema_name, i_driving_table_name [, i_chunk_size, i_driving_table_alias, i_chunk_by])`
 
 ```sql
 i_sql_text                  dml_utils_data.non_null_text
@@ -146,6 +150,7 @@ i_driving_table_schema_name dml_utils_data.non_null_text
 i_driving_table_name        dml_utils_data.non_null_text
 i_chunk_size                dml_utils_data.positive_integer DEFAULT 1000
 i_driving_table_alias       dml_utils_data.non_null_text DEFAULT 't'
+i_chunk_by                  dml_utils_data.chunking_strategy DEFAULT 'primary_key'
 RETURNS TABLE (o_plan_kind text, o_sql_text text, o_plan json)
 ```
 
@@ -153,14 +158,15 @@ RETURNS TABLE (o_plan_kind text, o_sql_text text, o_plan json)
 `run_migration_chunks`: it returns `EXPLAIN (FORMAT JSON)` of the SQL a chunked
 run would generate, one row per statement, without executing anything and
 without writing a run or boundaries. `o_plan_kind` is `boundary_population` (the
-range scan and boundary INSERT), `chunk_non_final` (a half-open `<` range) or
-`chunk_final` (the inclusive `<=` range); `o_sql_text` is the exact SQL that was
-explained. The boundary INSERT is explained with a synthetic run id (`0`), which
-plans as a `ModifyTable` without evaluating the foreign key, and the chunk ranges
-come from `dml_utils_lib.synthetic_chunk_boundary_values`, so their row estimates
-may differ from a real chunk. It is `VOLATILE` because PostgreSQL forbids
-`EXPLAIN` in a non-volatile function. Use it to inspect the plans before running
-`run_migration_chunks`.
+range scan and boundary INSERT), `chunk_non_final` (a half-open range) or
+`chunk_final`; `o_sql_text` is the exact SQL that was explained. The boundary
+INSERT is explained with a synthetic run id (`0`), which plans as a `ModifyTable`
+without evaluating the foreign key. For `primary_key` the chunk ranges come from
+`dml_utils_lib.synthetic_chunk_boundary_values` (a `<` non-final and a `<=` final
+range); for `blocks` they are two representative half-open ctid ranges. Either
+way the ranges are synthetic, so their row estimates may differ from a real
+chunk. It is `VOLATILE` because PostgreSQL forbids `EXPLAIN` in a non-volatile
+function. Use it to inspect the plans before running `run_migration_chunks`.
 
 ### `dml_utils.set_migration_run_sql_text(i_label, i_sql_text)`
 
@@ -181,7 +187,7 @@ call, which would ignore it.
 
 ###
 
-`dml_utils.run_function_over_table(i_driving_table_schema_name, i_driving_table_name, i_function_schema_name, i_function_name [, i_chunk_size, i_threads, i_label, i_filter])`
+`dml_utils.run_function_over_table(i_driving_table_schema_name, i_driving_table_name, i_function_schema_name, i_function_name [, i_chunk_size, i_threads, i_label, i_filter, i_chunk_by])`
 
 ```sql
 i_driving_table_schema_name dml_utils_data.non_null_text
@@ -192,6 +198,7 @@ i_chunk_size                dml_utils_data.positive_integer DEFAULT 1000
 i_threads                   dml_utils_data.positive_integer DEFAULT 1
 i_label                     text DEFAULT NULL
 i_filter                    text DEFAULT NULL
+i_chunk_by                  dml_utils_data.chunking_strategy DEFAULT 'primary_key'
 RETURNS void
 ```
 
@@ -206,18 +213,20 @@ run. The function's argument types must equal the primary-key column types in ke
 order and it must return `void`; a missing function, a non-`void` return, or
 mismatched argument types raise `invalid_parameter_value` (`22023`) before any
 run is created. When `i_label` is NULL a deterministic label is derived from the
-driving table, function and (when set) filter, so re-running the same call
-resumes the same run and two calls that differ only in their filter derive
-different runs. A non-NULL `i_filter` is ANDed onto every chunk's range predicate (referencing the driving table through
-the fixed alias `t`), so only the rows it
+driving table, function, filter and chunking strategy, so re-running the same
+call resumes the same run and calls that differ only in those derive different
+runs. A non-NULL `i_filter` is ANDed onto every chunk's range predicate
+(referencing the driving table through the fixed alias `t`), so only the rows it
 matches are passed to the function; a filter that contains `<driving_table>` or
-`<chunking_clause>` is rejected when the template is validated. Because a resumed
-run uses the recorded SQL text, use `set_migration_run_function` to point an
-unfinished run at a different function or filter.
+`<chunking_clause>` is rejected when the template is validated. `i_chunk_by`
+selects the strategy; `blocks` requires a quiescent, read-only driving table and
+is unsafe when the function updates the driving table in place. Because a resumed
+run uses the recorded SQL text and strategy, use `set_migration_run_function` to
+point an unfinished run at a different function or filter.
 
 ###
 
-`dml_utils.explain_function_over_table(i_driving_table_schema_name, i_driving_table_name, i_function_schema_name, i_function_name [, i_chunk_size, i_filter])`
+`dml_utils.explain_function_over_table(i_driving_table_schema_name, i_driving_table_name, i_function_schema_name, i_function_name [, i_chunk_size, i_filter, i_chunk_by])`
 
 ```sql
 i_driving_table_schema_name dml_utils_data.non_null_text
@@ -226,6 +235,7 @@ i_function_schema_name      dml_utils_data.non_null_text
 i_function_name             dml_utils_data.non_null_text
 i_chunk_size                dml_utils_data.positive_integer DEFAULT 1000
 i_filter                    text DEFAULT NULL
+i_chunk_by                  dml_utils_data.chunking_strategy DEFAULT 'primary_key'
 RETURNS TABLE (o_plan_kind text, o_sql_text text, o_plan json)
 ```
 
@@ -233,10 +243,11 @@ RETURNS TABLE (o_plan_kind text, o_sql_text text, o_plan json)
 `run_function_over_table`: it validates the function against the driving table's
 primary key, builds the per-row template and returns the same three plans as
 `explain_migration_chunks` (`boundary_population`, `chunk_non_final`,
-`chunk_final`). A missing function, a non-`void` return or mismatched argument
-types raise `invalid_parameter_value` (`22023`) before any plan is produced. A
-non-NULL `i_filter` is ANDed onto the chunk plans' range predicate; the
-boundary-population plan (which does not use the template) is unaffected.
+`chunk_final`) for the given chunking strategy. A missing function, a non-`void`
+return or mismatched argument types raise `invalid_parameter_value` (`22023`)
+before any plan is produced. A non-NULL `i_filter` is ANDed onto the chunk plans'
+range predicate; the boundary-population plan (which does not use the template)
+is unaffected. For `blocks`, the driving table must be a plain heap.
 
 ### `dml_utils.set_migration_run_function(i_label, i_function_schema_name, i_function_name [, i_filter])`
 
@@ -304,16 +315,17 @@ changeset (`function-dml_utils.delete_archived_migration_runs`).
 ```sql
 i_label dml_utils_data.non_null_text
 RETURNS TABLE
-( run_id, label, chunk_size, threads,
-    driving_table_schema_name, driving_table_name,
+( run_id, label, chunk_size, chunk_by, threads,
+    driving_table_schema_name, driving_table_name, driving_table_relation_filepath,
     created_at, started_at, boundaries_calculated_at, completed_at, archived_at,
     boundary_count, completed_boundary_count, error_count)
 ```
 
 `STABLE`, `SECURITY INVOKER`. Returns one high-level row per run for the label,
-including the number of boundaries (chunk starts plus the terminal boundary),
-how many are completed, and the number of recorded errors. Use
-`migration_errors` to list the errors themselves.
+including the chunking strategy (`chunk_by`), the block run's physical filepath
+(`driving_table_relation_filepath`), the number of boundaries (chunk starts plus
+the terminal boundary), how many are completed, and the number of recorded
+errors. Use `migration_errors` to list the errors themselves.
 
 ### `dml_utils.migration_errors(i_run_id)`
 
@@ -461,7 +473,7 @@ fixed alias `t`.
 
 ###
 
-`dml_utils_lib.resolve_migration_run(i_sql_text, i_driving_table_schema_name, i_driving_table_name, i_label, i_chunk_size, i_threads, i_driving_table_alias)`
+`dml_utils_lib.resolve_migration_run(i_sql_text, i_driving_table_schema_name, i_driving_table_name, i_label, i_chunk_size, i_threads, i_driving_table_alias [, i_chunk_by])`
 
 ```sql
 i_sql_text                  dml_utils_data.non_null_text
@@ -471,20 +483,25 @@ i_label                     dml_utils_data.non_null_text
 i_chunk_size                dml_utils_data.positive_integer
 i_threads                   dml_utils_data.positive_integer
 i_driving_table_alias       dml_utils_data.non_null_text
+i_chunk_by                  dml_utils_data.chunking_strategy DEFAULT 'primary_key'
 RETURNS record (o_run_id bigint, o_already_completed boolean,
                 o_effective_sql_text text, o_effective_schema_name text,
                 o_effective_table_name text, o_effective_alias text,
-                o_effective_threads integer, o_primary_key_columns name[],
-                o_key_kinds text[])
+                o_effective_threads integer,
+                o_chunk_by dml_utils_data.chunking_strategy,
+                o_primary_key_columns name[], o_key_kinds text[])
 ```
 
 `SECURITY INVOKER`. The run-resolution half of `run_migration_chunks`: it reuses
 the active run for the label or creates one (populating its boundaries in a
 `pg_background` worker so they commit autonomously), then returns the run id,
 whether it was already complete, the effective sql_text/schema/table/alias/
-threads (the stored values for a resumed run, ignoring differing inputs with a
-notice) and the driving table's primary-key columns and kinds. It validates the
-thread count against `max_worker_processes` before creating a run.
+threads and chunking strategy (the stored values for a resumed run, ignoring
+differing inputs with a notice), and the boundary key columns and kinds (the real
+primary key for `primary_key`, or a single `bigint` block number for `blocks`). A
+resumed block run fails closed if the driving table's physical filepath changed.
+It validates the thread count against `max_worker_processes` before creating a
+run.
 
 ### `dml_utils_lib.assert_chunking_template(i_sql_text)`
 
@@ -540,7 +557,7 @@ migration run already exists for the label.
 
 ###
 
-`dml_utils_lib.populate_migration_boundaries(i_schema_name, i_table_name, i_label, i_sql_text, i_chunk_size, i_threads)`
+`dml_utils_lib.populate_migration_boundaries(i_schema_name, i_table_name, i_label, i_sql_text, i_chunk_size [, i_threads, i_chunk_by])`
 
 ```sql
 i_schema_name dml_utils_data.non_null_text
@@ -549,20 +566,25 @@ i_label       dml_utils_data.non_null_text
 i_sql_text    dml_utils_data.non_null_text
 i_chunk_size  dml_utils_data.positive_integer
 i_threads     dml_utils_data.positive_integer DEFAULT 1
+i_chunk_by    dml_utils_data.chunking_strategy DEFAULT 'primary_key'
 RETURNS bigint
 ```
 
 `SECURITY INVOKER`. Creates a `dml_utils_data.migration_run` row for the label,
-with the recorded SQL text, chunk size, threads and driving table, records the
-run's `started_at` (the run start, when the calculation begins), then inserts one
-fixed-row chunk boundary per chunk plus a terminal high-water boundary at the
-captured maximum primary key and records `boundaries_calculated_at` (when the
-range calculation finishes); returns the new `run_id`. Both timestamps are written
-in this worker's transaction, so they commit with the run and persist across a
-failed processing attempt. The source table must
-exist and have a primary key of one to three columns, each of a supported type (`smallint`, `integer`, `bigint`, `text`
-or `uuid`); the columns are identified
-from the catalog in key order, not assumed to be `id`. Each boundary is stored as
+with the recorded SQL text, chunk size, strategy, threads and driving table,
+records the run's `started_at` (the run start, when the calculation begins), then
+populates the boundaries for the strategy and records `boundaries_calculated_at`
+(when the range calculation finishes); returns the new `run_id`. For `primary_key`
+it inserts one fixed-row chunk boundary per chunk plus a terminal high-water
+boundary at the captured maximum primary key; for `blocks` it inserts one start
+boundary every `i_chunk_size` heap blocks plus a one-past-end terminal boundary
+and records the driving table's physical filepath. Both timestamps are written in
+this worker's transaction, so they commit with the run and persist across a
+failed processing attempt. For `primary_key` the source table must exist and have
+a primary key of one to three columns, each of a supported type (`smallint`,
+`integer`, `bigint`, `text` or `uuid`); the columns are identified from the
+catalog in key order, not assumed to be `id`. For `blocks` the table must be a
+plain heap. Each boundary is stored as
 `dml_utils_data.migration_key`, which holds position-aligned arrays — index i is
 the value of primary-key column i in the array matching that column's kind, and
 exactly one array element is non-NULL per index. The `migration_boundary_key_check`
@@ -628,7 +650,7 @@ because PostgreSQL forbids `EXPLAIN` in a non-volatile function.
 
 ###
 
-`dml_utils_lib.explain_chunk_plans(i_sql_text, i_schema_name, i_table_name, i_table_alias, i_primary_key_columns, i_key_kinds, i_chunk_size)`
+`dml_utils_lib.explain_chunk_plans(i_sql_text, i_schema_name, i_table_name, i_table_alias, i_primary_key_columns, i_key_kinds, i_chunk_size [, i_chunk_by])`
 
 ```sql
 i_sql_text            dml_utils_data.non_null_text
@@ -638,6 +660,7 @@ i_table_alias         dml_utils_data.non_null_text
 i_primary_key_columns name[]
 i_key_kinds           text[]
 i_chunk_size          bigint
+i_chunk_by            dml_utils_data.chunking_strategy DEFAULT 'primary_key'
 RETURNS TABLE
 (o_plan_kind text, o_sql_text text, o_plan json)
 ```
@@ -645,7 +668,10 @@ RETURNS TABLE
 `VOLATILE`, `SECURITY INVOKER`. Renders and explains the three statements a
 chunked run generates — the boundary-population insert (synthetic run id `0`), a
 non-final chunk and the final chunk — using synthetic ranges and reading no
-boundaries. Shared by `explain_migration_chunks` and
+boundaries. For `primary_key` the boundary plan is the primary-key boundary
+insert and the chunk plans are a `<` non-final and a `<=` final range; for
+`blocks` the boundary plan is the block boundary insert and both chunk plans are
+half-open ctid ranges. Shared by `explain_migration_chunks` and
 `explain_function_over_table`.
 
 ### `dml_utils_lib.build_block_boundary_population_sql(i_schema_name, i_table_name, i_run_id, i_chunk_size)`
