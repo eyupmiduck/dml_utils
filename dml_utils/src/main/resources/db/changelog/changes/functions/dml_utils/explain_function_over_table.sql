@@ -6,7 +6,8 @@ CREATE OR REPLACE FUNCTION dml_utils.explain_function_over_table(
     i_chunk_size dml_utils_data.positive_integer DEFAULT 1000,
     -- Plain text, not non_null_text: an omitted filter is NULL and means no
     -- filter. non_null_text would reject the DEFAULT NULL before the body.
-    i_filter text DEFAULT NULL
+    i_filter text DEFAULT NULL,
+    i_chunk_by dml_utils_data.chunking_strategy DEFAULT 'primary_key'
 )
     RETURNS TABLE
             (
@@ -34,12 +35,21 @@ BEGIN
             i_function_name => i_function_name,
             i_filter => i_filter);
 
-    l_primary_key_columns := dml_utils_lib.primary_key_columns(
-            i_schema_name => i_driving_table_schema_name,
-            i_table_name => i_driving_table_name);
-    l_key_kinds := dml_utils_lib.primary_key_kinds(
-            i_schema_name => i_driving_table_schema_name,
-            i_table_name => i_driving_table_name);
+    IF i_chunk_by = 'blocks' THEN
+        PERFORM dml_utils_lib.assert_plain_heap(
+                i_schema_name => i_driving_table_schema_name,
+                i_table_name => i_driving_table_name);
+        -- The placeholder columns and kind are unused by the block renderer.
+        l_primary_key_columns := ARRAY ['ctid']::name[];
+        l_key_kinds := ARRAY ['bigint'];
+    ELSE
+        l_primary_key_columns := dml_utils_lib.primary_key_columns(
+                i_schema_name => i_driving_table_schema_name,
+                i_table_name => i_driving_table_name);
+        l_key_kinds := dml_utils_lib.primary_key_kinds(
+                i_schema_name => i_driving_table_schema_name,
+                i_table_name => i_driving_table_name);
+    END IF;
 
     -- The generated template is a valid <driving_table>/<chunking_clause>
     -- template whose alias is fixed at 't', so the shared explain path renders
@@ -53,7 +63,8 @@ BEGIN
                      i_table_alias => 't',
                      i_primary_key_columns => l_primary_key_columns,
                      i_key_kinds => l_key_kinds,
-                     i_chunk_size => i_chunk_size::bigint) AS p;
+                     i_chunk_size => i_chunk_size::bigint,
+                     i_chunk_by => i_chunk_by) AS p;
 END;
 $$;
 
@@ -61,9 +72,10 @@ COMMENT ON FUNCTION dml_utils.explain_function_over_table IS
     'Returns the EXPLAIN (FORMAT JSON) plans for the SQL a '
         'run_function_over_table call would generate: the boundary-population '
         'insert, a non-final chunk and the final chunk, as rows '
-        'boundary_population, chunk_non_final and chunk_final. The function must '
-        'return void with argument types matching the driving table''s primary '
-        'key, in key order. A non-NULL i_filter is ANDed onto the chunk plans'' '
-        'range predicate (the boundary-population plan is unaffected). It '
-        'resolves no run, reads no boundaries and writes nothing; the chunk '
-        'ranges are synthetic, so their estimates may differ from a real chunk.';
+        'boundary_population, chunk_non_final and chunk_final, for the given '
+        'chunking strategy (primary_key or blocks). The function must return void '
+        'with argument types matching the driving table''s primary key, in key '
+        'order. A non-NULL i_filter is ANDed onto the chunk plans'' range '
+        'predicate (the boundary-population plan is unaffected). It resolves no '
+        'run, reads no boundaries and writes nothing; the chunk ranges are '
+        'synthetic, so their estimates may differ from a real chunk.';

@@ -1,5 +1,6 @@
 package io.github.eyupmiduck.dmlutils;
 
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.enums.ChunkingStrategy;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.ExplainFunctionOverTableRecord;
 import org.jooq.Table;
@@ -61,7 +62,7 @@ class ExplainFunctionOverTableTest extends PostgresTestBase {
 
         List<ExplainFunctionOverTableRecord> plans = Routines.explainFunctionOverTable(
                 dsl.configuration(), schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
-                FN_SCHEMA, "mark_mixed", 10, null);
+                FN_SCHEMA, "mark_mixed", 10, null, ChunkingStrategy.primary_key);
 
         assertEquals(List.of("boundary_population", "chunk_non_final", "chunk_final"),
                 plans.stream().map(ExplainFunctionOverTableRecord::getOPlanKind).toList());
@@ -71,6 +72,25 @@ class ExplainFunctionOverTableTest extends PostgresTestBase {
                 "the non-final chunk explains the per-row function call");
         assertTrue(plans.get(2).getOSqlText().contains("SELECT public.mark_mixed(t.a, t.b)"),
                 "the final chunk explains the per-row function call");
+    }
+
+    /**
+     * The block strategy plans the block boundary insert and half-open ctid
+     * chunk ranges for the per-row function call.
+     */
+    @Test
+    void plansTheBlockStrategy() {
+        createFunction("mark_mixed", "done");
+
+        List<ExplainFunctionOverTableRecord> plans = Routines.explainFunctionOverTable(
+                dsl.configuration(), schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
+                FN_SCHEMA, "mark_mixed", 10, null, ChunkingStrategy.blocks);
+
+        assertEquals(List.of("boundary_population", "chunk_non_final", "chunk_final"),
+                plans.stream().map(ExplainFunctionOverTableRecord::getOPlanKind).toList());
+        assertTrue(plans.get(1).getOSqlText().contains("ctid")
+                        && plans.get(1).getOSqlText().contains("SELECT public.mark_mixed(t.a, t.b)"),
+                "the chunk plan is a ctid range over the per-row function call");
     }
 
     /**
@@ -84,7 +104,7 @@ class ExplainFunctionOverTableTest extends PostgresTestBase {
 
         List<ExplainFunctionOverTableRecord> plans = Routines.explainFunctionOverTable(
                 dsl.configuration(), schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
-                FN_SCHEMA, "mark_mixed", 10, "t.b = 'x'");
+                FN_SCHEMA, "mark_mixed", 10, "t.b = 'x'", ChunkingStrategy.primary_key);
 
         assertTrue(plans.get(1).getOSqlText().contains("AND (t.b = 'x')"),
                 "the non-final chunk ANDs the filter");
@@ -108,7 +128,7 @@ class ExplainFunctionOverTableTest extends PostgresTestBase {
         createFunction("mark_mixed", "done");
 
         Routines.explainFunctionOverTable(dsl.configuration(),
-                schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 10, null);
+                schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 10, null, ChunkingStrategy.primary_key);
 
         assertEquals(0, dsl.fetchCount(MIGRATION_RUN), "no run is created");
         assertEquals(0,
@@ -130,7 +150,7 @@ class ExplainFunctionOverTableTest extends PostgresTestBase {
 
         assertSqlState("22023", () -> Routines.explainFunctionOverTable(dsl.configuration(),
                 schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED), FN_SCHEMA,
-                "wrong_order", 10, null));
+                "wrong_order", 10, null, ChunkingStrategy.primary_key));
     }
 
     /**
@@ -143,7 +163,7 @@ class ExplainFunctionOverTableTest extends PostgresTestBase {
 
         assertSqlState("22023", () -> Routines.explainFunctionOverTable(dsl.configuration(),
                 schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED), FN_SCHEMA,
-                "bad_return", 10, null));
+                "bad_return", 10, null, ChunkingStrategy.primary_key));
     }
 
     /**
@@ -154,7 +174,7 @@ class ExplainFunctionOverTableTest extends PostgresTestBase {
     void rejectsAMissingFunction() {
         assertSqlState("22023", () -> Routines.explainFunctionOverTable(dsl.configuration(),
                 schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED), FN_SCHEMA,
-                "no_such_function", 10, null));
+                "no_such_function", 10, null, ChunkingStrategy.primary_key));
     }
 
     /**
