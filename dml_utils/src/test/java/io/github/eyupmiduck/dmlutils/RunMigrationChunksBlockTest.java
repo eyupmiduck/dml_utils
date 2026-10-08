@@ -2,6 +2,7 @@ package io.github.eyupmiduck.dmlutils;
 
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.enums.ChunkingStrategy;
+import org.jooq.JSON;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -13,15 +14,21 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Verifies {@code run_migration_chunks} with the block (ctid) strategy: it
- * processes every row of a read-only driving table exactly once, records the
- * strategy and the physical filepath, and leaves the source table unchanged.
+ * Verifies {@code run_migration_chunks} with the block (ctid) strategy.
+ *
+ * <p>Block chunking is only valid for a quiescent, read-only driving table: a
+ * non-HOT UPDATE changes a tuple's ctid and may move it to another block, and a
+ * heap rewrite (for example VACUUM FULL or TRUNCATE) changes every ctid. These
+ * tests therefore use a workload that inserts each source row into a separate
+ * target, leaving the source untouched.
  */
 class RunMigrationChunksBlockTest extends PostgresTestBase {
 
     private static final String TEMPLATE =
             "INSERT INTO dml_utils_fixtures.test_other (id, payload) "
                     + "SELECT t.id, t.payload FROM <driving_table> WHERE <chunking_clause>";
+
+    private static final String SCHEMA = "dml_utils_fixtures";
 
     /**
      * Clears the source, target and run metadata between tests.
@@ -50,17 +57,82 @@ class RunMigrationChunksBlockTest extends PostgresTestBase {
         assertEquals(10, dsl.fetchCount(TEST_OTHER), "every source row is inserted exactly once");
         assertEquals(10, dsl.fetchCount(TEST_BIGINT), "the source table is unchanged");
         assertTrue(runCompleted(label), "the run should be complete");
+        assertEquals(ChunkingStrategy.blocks, chunkBy(label), "the run records the block strategy");
+        assertNotNull(filepath(label), "a block run records the driving table filepath");
+    }
 
-        assertEquals(ChunkingStrategy.blocks,
-                dsl.select(MIGRATION_RUN.CHUNK_BY)
-                        .from(MIGRATION_RUN)
-                        .where(MIGRATION_RUN.LABEL.eq(label))
-                        .fetchOne(MIGRATION_RUN.CHUNK_BY),
-                "the run records the block strategy");
-        assertNotNull(dsl.select(MIGRATION_RUN.DRIVING_TABLE_RELATION_FILEPATH)
-                        .from(MIGRATION_RUN)
-                        .where(MIGRATION_RUN.LABEL.eq(label))
-                        .fetchOne(MIGRATION_RUN.DRIVING_TABLE_RELATION_FILEPATH),
-                "a block run records the driving table filepath");
+    /**
+     * A resumed run uses the strategy recorded on the run, not the one passed to
+     * the call: a block run resumed with {@code primary_key} still chunks by
+     * blocks.
+     */
+    @Test
+    void resumesWithTheStoredStrategy() {
+        seedBigint(1, 2, 3, 4, 5);
+        String label = uniqueLabel("block-resume");
+
+        // Create the block run's boundaries without processing it.
+        io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
+                dsl.configuration(), SCHEMA, TEST_BIGINT.getName(), label, TEMPLATE, 1, 1,
+                ChunkingStrategy.blocks);
+
+        // Resume with a different requested strategy; the stored one wins.
+        Routines.runMigrationChunks(dsl.configuration(), TEMPLATE, SCHEMA, TEST_BIGINT.getName(),
+                label, 1, 1, "t", ChunkingStrategy.primary_key);
+
+        assertEquals(5, dsl.fetchCount(TEST_OTHER), "the stored block strategy processed every row");
+        assertEquals(ChunkingStrategy.blocks, chunkBy(label), "the stored strategy is unchanged");
+    }
+
+    /**
+     * A heap rewrite before a resume fails closed: the recorded filepath no
+     * longer matches, so the stale block boundaries are not reused.
+     */
+    @Test
+    void rejectsAResumeAfterARewrite() {
+        seedBigint(1, 2, 3, 4, 5);
+        String label = uniqueLabel("block-rewrite");
+
+        io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
+                dsl.configuration(), SCHEMA, TEST_BIGINT.getName(), label, TEMPLATE, 1, 1,
+                ChunkingStrategy.blocks);
+
+        // TRUNCATE gives the table a new relfilenode, changing its filepath.
+        dsl.execute("TRUNCATE dml_utils_fixtures.test_bigint");
+
+        assertSqlState("22023", () -> Routines.runMigrationChunks(dsl.configuration(), TEMPLATE,
+                SCHEMA, TEST_BIGINT.getName(), label, 1, 1, "t", ChunkingStrategy.blocks));
+    }
+
+    /**
+     * The rendered block chunk SQL plans with a Tid Range Scan. For the INSERT
+     * workload the scan is nested under the ModifyTable root, so the plan text is
+     * searched rather than requiring a particular root node.
+     */
+    @Test
+    void rendersACtidRangeThatPlansAsATidRangeScan() {
+        seedBigint(1, 2, 3, 4, 5);
+
+        String sql = io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.renderBlockChunkSql(
+                dsl.configuration(), TEMPLATE, SCHEMA, TEST_BIGINT.getName(), "t", 0L, 1L);
+        JSON plan = io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.explainQueryPlan(
+                dsl.configuration(), sql);
+
+        assertTrue(plan.data().contains("Tid Range Scan"),
+                "the ctid range should plan as a Tid Range Scan: " + plan.data());
+    }
+
+    private ChunkingStrategy chunkBy(String label) {
+        return dsl.select(MIGRATION_RUN.CHUNK_BY)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.LABEL.eq(label))
+                .fetchOne(MIGRATION_RUN.CHUNK_BY);
+    }
+
+    private String filepath(String label) {
+        return dsl.select(MIGRATION_RUN.DRIVING_TABLE_RELATION_FILEPATH)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.LABEL.eq(label))
+                .fetchOne(MIGRATION_RUN.DRIVING_TABLE_RELATION_FILEPATH);
     }
 }
