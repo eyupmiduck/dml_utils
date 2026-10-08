@@ -359,6 +359,29 @@ class MigrationTablesTest extends PostgresTestBase {
     }
 
     /**
+     * The blocks<->filepath check rejects a block run without a filepath and a
+     * primary-key run with one.
+     */
+    @Test
+    void rejectsAMismatchedChunkByFilepath() {
+        assertDomainViolation(() -> dsl.insertInto(MIGRATION_RUN)
+                .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE,
+                        MIGRATION_RUN.CHUNK_BY, MIGRATION_RUN.THREADS,
+                        MIGRATION_RUN.DRIVING_TABLE_SCHEMA_NAME, MIGRATION_RUN.DRIVING_TABLE_NAME)
+                .values("block-no-filepath-" + UUID.randomUUID(), "SELECT 1", 1,
+                        ChunkingStrategy.blocks, 1, PUBLIC_SCHEMA, "source")
+                .execute());
+        assertDomainViolation(() -> dsl.insertInto(MIGRATION_RUN)
+                .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE,
+                        MIGRATION_RUN.CHUNK_BY, MIGRATION_RUN.THREADS,
+                        MIGRATION_RUN.DRIVING_TABLE_SCHEMA_NAME, MIGRATION_RUN.DRIVING_TABLE_NAME,
+                        MIGRATION_RUN.DRIVING_TABLE_RELATION_FILEPATH)
+                .values("pk-with-filepath-" + UUID.randomUUID(), "SELECT 1", 1,
+                        ChunkingStrategy.primary_key, 1, PUBLIC_SCHEMA, "source", "base/1/2")
+                .execute());
+    }
+
+    /**
      * The shared timestamp columns are {@code timestamptz NOT NULL}, and the
      * primary and foreign keys are the composite ones the routines rely on.
      */

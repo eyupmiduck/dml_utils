@@ -112,6 +112,9 @@ class MigrationMaintenanceTest extends PostgresTestBase {
         assertNotNull(summary.getStartedAt(), "the run start is recorded when the run is created");
         assertNotNull(summary.getBoundariesCalculatedAt(),
                 "the range-calculation completion is recorded");
+        assertEquals("primary_key", summary.getChunkBy(), "a default run uses primary_key");
+        assertNull(summary.getDrivingTableRelationFilepath(),
+                "a primary-key run records no relation filepath");
         assertNull(summary.getCompletedAt(), "a fresh run has not finished");
         assertNull(summary.getArchivedAt());
     }

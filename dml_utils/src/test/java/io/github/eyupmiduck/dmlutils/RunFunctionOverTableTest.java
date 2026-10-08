@@ -13,6 +13,7 @@ import java.util.List;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeMixed.TEST_COMPOSITE_MIXED;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestOther.TEST_OTHER;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -46,7 +47,7 @@ class RunFunctionOverTableTest extends PostgresTestBase {
     @BeforeEach
     void resetFixtures() {
         dsl.deleteFrom(MIGRATION_RUN).execute();
-        for (Table<?> table : List.of(TEST_BIGINT, TEST_COMPOSITE_MIXED)) {
+        for (Table<?> table : List.of(TEST_BIGINT, TEST_COMPOSITE_MIXED, TEST_OTHER)) {
             dsl.truncate(table).execute();
         }
     }
@@ -57,6 +58,7 @@ class RunFunctionOverTableTest extends PostgresTestBase {
     @AfterEach
     void dropFunctions() {
         dsl.execute("DROP FUNCTION IF EXISTS public.mark_mixed(bigint, text)");
+        dsl.execute("DROP FUNCTION IF EXISTS public.copy_mixed(bigint, text)");
         dsl.execute("DROP FUNCTION IF EXISTS public.mark_mixed_2(bigint, text)");
         dsl.execute("DROP FUNCTION IF EXISTS public.mark_bigint(bigint)");
         dsl.execute("DROP FUNCTION IF EXISTS public.wrong_order(text, bigint)");
@@ -342,6 +344,28 @@ class RunFunctionOverTableTest extends PostgresTestBase {
 
         assertFalse(storedSqlText(label).contains("AND ("),
                 "a NULL filter removes the filter from the stored template");
+    }
+
+    /**
+     * A read-only function runs over the table with the block strategy, which is
+     * valid because the function leaves the driving table untouched.
+     */
+    @Test
+    void runsAReadOnlyFunctionWithTheBlockStrategy() {
+        createMixed();
+        dsl.execute("CREATE OR REPLACE FUNCTION public.copy_mixed(p_a bigint, p_b text)"
+                + " RETURNS void LANGUAGE sql AS $$"
+                + " INSERT INTO dml_utils_fixtures.test_other (id, payload)"
+                + " VALUES (hashtext(p_a::text || ':' || p_b)::bigint, p_b) $$");
+        String label = functionTestLabel("block");
+
+        Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_COMPOSITE_MIXED),
+                name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "copy_mixed", 1, 1, label, null,
+                ChunkingStrategy.blocks);
+
+        assertEquals(3, dsl.fetchCount(TEST_OTHER), "the function runs once per row");
+        assertEquals(3, dsl.fetchCount(TEST_COMPOSITE_MIXED), "the source table is unchanged");
+        assertTrue(runCompleted(label), "the run should be complete");
     }
 
     private void createMixed() {

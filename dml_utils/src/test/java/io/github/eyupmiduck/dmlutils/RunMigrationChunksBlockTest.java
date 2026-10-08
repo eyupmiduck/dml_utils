@@ -6,6 +6,7 @@ import org.jooq.JSON;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestOther.TEST_OTHER;
@@ -118,6 +119,42 @@ class RunMigrationChunksBlockTest extends PostgresTestBase {
 
         assertTrue(plan.data().contains("Tid Range Scan"),
                 "the ctid range should plan as a Tid Range Scan: " + plan.data());
+    }
+
+    /**
+     * An empty table produces a run with no boundaries that still completes.
+     */
+    @Test
+    void anEmptyTableCompletesWithNoChunks() {
+        String label = uniqueLabel("block-empty");
+
+        Routines.runMigrationChunks(dsl.configuration(), TEMPLATE, SCHEMA, TEST_BIGINT.getName(),
+                label, 1, 1, "t", ChunkingStrategy.blocks);
+
+        assertTrue(runCompleted(label), "an empty run should complete");
+        long runId = dsl.select(MIGRATION_RUN.RUN_ID)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.LABEL.eq(label))
+                .fetchOne(MIGRATION_RUN.RUN_ID);
+        assertEquals(0, dsl.fetchCount(MIGRATION_BOUNDARY, MIGRATION_BOUNDARY.RUN_ID.eq(runId)),
+                "an empty table has no boundaries");
+    }
+
+    /**
+     * A multi-threaded block run still processes every row exactly once.
+     */
+    @Test
+    void processesEveryRowExactlyOnceAcrossThreads() {
+        dsl.execute("INSERT INTO dml_utils_fixtures.test_bigint (id, payload)"
+                + " SELECT g, repeat('x', 200) FROM generate_series(1, 1000) g");
+        String label = uniqueLabel("block-threads");
+
+        Routines.runMigrationChunks(dsl.configuration(), TEMPLATE, SCHEMA, TEST_BIGINT.getName(),
+                label, 1, 4, "t", ChunkingStrategy.blocks);
+
+        assertEquals(1000, dsl.fetchCount(TEST_OTHER), "every source row is copied exactly once");
+        assertEquals(1000, dsl.fetchCount(TEST_BIGINT), "the source table is unchanged");
+        assertTrue(runCompleted(label), "the run should be complete");
     }
 
     private ChunkingStrategy chunkBy(String label) {

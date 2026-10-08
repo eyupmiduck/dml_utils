@@ -82,6 +82,54 @@ class BuildBlockBoundaryPopulationSqlTest extends PostgresTestBase {
         assertEquals(0, dsl.fetchCount(MIGRATION_BOUNDARY, MIGRATION_BOUNDARY.RUN_ID.eq(runId)));
     }
 
+    /**
+     * Several starts plus a one-past-end terminal boundary, with a short final
+     * chunk when the block count is not a multiple of the chunk size.
+     */
+    @Test
+    void insertsMultipleChunksWithAPartialFinalChunk() {
+        dsl.execute("INSERT INTO dml_utils_fixtures.test_bigint (id, payload)"
+                + " SELECT g, repeat('x', 200) FROM generate_series(1, 1000) g");
+        long blockCount = blockCount();
+        long chunkSize = 10L;
+        long nStarts = (blockCount + chunkSize - 1) / chunkSize;
+        assertTrue(blockCount > chunkSize, "the seeded table should span several chunks");
+
+        long runId = insertBlockRun();
+        dsl.execute(Routines.buildBlockBoundaryPopulationSql(dsl.configuration(),
+                schema(), name(), runId, chunkSize));
+
+        List<MigrationBoundaryRecord> boundaries = dsl.selectFrom(MIGRATION_BOUNDARY)
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .orderBy(MIGRATION_BOUNDARY.BOUNDARY_NO)
+                .fetch();
+
+        assertEquals(nStarts + 1, boundaries.size(), "one start per chunk plus the terminal");
+        for (int i = 0; i < nStarts; i++) {
+            assertEquals(i, boundaries.get(i).getBoundaryNo().intValue());
+            assertEquals(i * chunkSize,
+                    boundaries.get(i).getBoundaryId().getBigintValues()[0].longValue(),
+                    "start boundary i is at block i * chunk_size");
+        }
+        MigrationBoundaryRecord terminal = boundaries.get((int) nStarts);
+        assertEquals(nStarts, terminal.getBoundaryNo().longValue());
+        assertEquals(blockCount, terminal.getBoundaryId().getBigintValues()[0].longValue(),
+                "the terminal boundary is the one-past-end block count");
+    }
+
+    /**
+     * A NULL run id or a non-positive chunk size is rejected with {@code 22023}.
+     */
+    @Test
+    void rejectsBadInputs() {
+        assertSqlState("22023", () -> Routines.buildBlockBoundaryPopulationSql(
+                dsl.configuration(), schema(), name(), null, 1L));
+        assertSqlState("22023", () -> Routines.buildBlockBoundaryPopulationSql(
+                dsl.configuration(), schema(), name(), 1L, 0L));
+        assertSqlState("22023", () -> Routines.buildBlockBoundaryPopulationSql(
+                dsl.configuration(), schema(), name(), 1L, -1L));
+    }
+
     private long blockCount() {
         return dsl.fetchOne(
                         "SELECT pg_relation_size(?::regclass) / current_setting('block_size')::bigint",

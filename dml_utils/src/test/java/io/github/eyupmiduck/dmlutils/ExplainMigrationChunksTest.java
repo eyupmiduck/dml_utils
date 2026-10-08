@@ -210,4 +210,12 @@ class ExplainMigrationChunksTest extends PostgresTestBase {
                 TEMPLATE, "dml_utils_fixtures", "no_such_table", 10, "t", ChunkingStrategy.primary_key));
     }
 
+    /**
+     * The block strategy rejects a partitioned table with {@code 42809}.
+     */
+    @Test
+    void rejectsAPartitionedTableForBlocks() {
+        assertSqlState("42809", () -> Routines.explainMigrationChunks(dsl.configuration(),
+                TEMPLATE, "dml_utils_fixtures", "test_partitioned", 10, "t", ChunkingStrategy.blocks));
+    }
 }

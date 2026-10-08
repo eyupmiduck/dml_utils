@@ -50,4 +50,16 @@ class RenderBlockChunkSqlTest extends PostgresTestBase {
         assertSqlState("22023", () -> Routines.renderBlockChunkSql(dsl.configuration(),
                 "SELECT 1", PUBLIC_SCHEMA, "some_table", "t", 0L, 10L));
     }
+
+    /**
+     * A NULL or empty table alias is rejected by the non-null text domain
+     * before the body runs.
+     */
+    @Test
+    void rejectsABadAlias() {
+        assertDomainViolation(() -> Routines.renderBlockChunkSql(dsl.configuration(),
+                TEMPLATE, PUBLIC_SCHEMA, "some_table", null, 0L, 10L));
+        assertDomainViolation(() -> Routines.renderBlockChunkSql(dsl.configuration(),
+                TEMPLATE, PUBLIC_SCHEMA, "some_table", "", 0L, 10L));
+    }
 }
