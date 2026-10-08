@@ -96,12 +96,13 @@ Open `benchmark/results/report.md`. It contains:
 - the **configuration** that produced the results and a **dataset** section (live
   source rows and blocks),
 - the **hardware and PostgreSQL settings** captured on this machine,
-- a **results table per chunking strategy**, one row per thread value, with the
-  number of chunks, the `rows/chunk` and `blocks/chunk` averages, the mean
+- a **results table per strategy and chunk size**, one row per thread value, with
+  the number of chunks, the `rows/chunk` and `blocks/chunk` averages, the mean
   range-calculation time, the mean chunk-run time, the mean total, and the speedup
   relative to the lowest thread value,
-- a **chart per strategy** (`report-<strategy>.svg`, generated next to the page)
-  of the mean total time against the thread count, embedded in the page.
+- a **chart per strategy and chunk size** (`report-<strategy>-<chunk_size>.svg`,
+  generated next to the page) of the mean total time against the thread count,
+  embedded in the page.
 
 The raw per-run data is `benchmark/results/benchmark.csv` (one row per measured
 run, tagged with the strategy and chunk unit); `benchmark/results/hardware.txt`,
@@ -116,6 +117,7 @@ Each run calls `run_migration_chunks` once and reads the run's timestamps back:
 |-------------------|--------------------------------------------------------------------------|
 | `strategy`        | the chunking strategy (`primary_key` or `blocks`)                        |
 | `chunk_unit`      | the chunk-size unit: `rows` for `primary_key`, `blocks` for `blocks`     |
+| `chunk_size`      | the configured chunk size, in `chunk_unit`                              |
 | `threads`         | the thread count                                                         |
 | `run`             | the measured run number                                                  |
 | `chunks`          | the number of chunks the run processed                                   |
@@ -123,8 +125,9 @@ Each run calls `run_migration_chunks` once and reads the run's timestamps back:
 | `chunk_seconds`   | `completed_at - boundaries_calculated_at` — the workload over all chunks |
 | `total_seconds`   | `completed_at - started_at`                                              |
 
-Warm-up runs are not recorded. `report.sh` averages the timing columns over the
-recorded runs, per strategy and thread value.
+Warm-up runs are not recorded. `report.sh` groups the rows by `(strategy,
+chunk_size)` and averages the timing columns per group and thread value, so runs
+with different chunk sizes are never combined.
 
 ## Parameters
 
@@ -193,10 +196,11 @@ benchmark/
   run.sh                  run the sweep, appending results/<BENCH_CSV>
   report.sh               format the results into results/<BENCH_REPORT>
   chart.awk               render the mean total time as the report's SVG chart
+  psql.sh                 open a psql session on the benchmark container
   sql/create-source.sql   deterministic synthetic source table + data
   sql/create-target.sql   throwaway destination the workload inserts into
-  results/                generated: benchmark.csv, report.md, report-<strategy>.svg,
-                          dataset.txt, hardware.txt, ...
+  results/                generated: benchmark.csv, report.md,
+                          report-<strategy>-<chunk_size>.svg, dataset.txt, hardware.txt, ...
 ```
 
 ## Caveats

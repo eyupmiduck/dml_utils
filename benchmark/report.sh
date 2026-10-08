@@ -85,9 +85,12 @@ src_blocks="$(awk -F'|' '{ gsub(/ /, "", $1); if ($1 == "blocks") { gsub(/ /, ""
     "$dataset_file" 2>/dev/null || true)"
 
 # --- Per-strategy charts ----------------------------------------------------
-strategies="$(awk -F, 'NR > 1 && $1 != "" { print $1 }' "$csv" | sort -u)"
-for s in $strategies; do
-    awk -v strategy="$s" -f "$here/chart.awk" "$csv" > "$results_dir/report-${s}.svg"
+groups="$(awk -F, 'NR > 1 && $1 != "" { print $1 "/" $3 }' "$csv" | sort -u)"
+for g in $groups; do
+    s="${g%%/*}"
+    cs="${g#*/}"
+    awk -v strategy="$s" -v chunk_size="$cs" -f "$here/chart.awk" "$csv" \
+        > "$results_dir/report-${s}-${cs}.svg"
 done
 
 # --- Report -----------------------------------------------------------------
@@ -144,25 +147,27 @@ done
     echo
     echo "## Results (mean over the measured runs)"
     echo
-    if [ -z "$strategies" ]; then
+    if [ -z "$groups" ]; then
         echo "_no results yet_"
     fi
-    for s in $strategies; do
-        unit="$(awk -F, -v s="$s" 'NR > 1 && $1 == s { print $2; exit }' "$csv")"
-        echo "### strategy \`$s\` (chunk unit: $unit)"
+    for g in $groups; do
+        s="${g%%/*}"
+        cs="${g#*/}"
+        unit="$(awk -F, -v s="$s" -v c="$cs" 'NR > 1 && $1 == s && $3 == c { print $2; exit }' "$csv")"
+        echo "### strategy \`$s\`, chunk_size $cs $unit"
         echo
         echo "| threads | runs | chunks | rows/chunk | blocks/chunk | mean range calc (s) | mean chunk run (s) | mean total (s) | speedup vs first |"
         echo "| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
-        awk -F, -v s="$s" -v src_rows="$src_rows" -v src_blocks="$src_blocks" '
+        awk -F, -v s="$s" -v c="$cs" -v src_rows="$src_rows" -v src_blocks="$src_blocks" '
             NR == 1 { next }
-            $1 != s { next }
+            $1 != s || $3 != c { next }
             {
-                t = $3
+                t = $4
                 n[t]++
-                ch[t] += $5
-                r[t] += $6
-                c[t] += $7
-                tt[t] += $8
+                ch[t] += $6
+                r[t] += $7
+                cs2[t] += $8
+                tt[t] += $9
                 if (!(t in seen)) { seen[t] = 1; order[++k] = t }
             }
             END {
@@ -181,11 +186,11 @@ done
                     ms = tt[t] / n[t]
                     sp = (ms > 0) ? base / ms : 0
                     printf "| %s | %d | %.0f | %s | %s | %.3f | %.3f | %.3f | %.2fx |\n",
-                        t, n[t], mc, rpc, bpc, r[t] / n[t], c[t] / n[t], ms, sp
+                        t, n[t], mc, rpc, bpc, r[t] / n[t], cs2[t] / n[t], ms, sp
                 }
             }' "$csv"
         echo
-        echo "![run_migration_chunks ($s): mean total time vs threads](report-${s}.svg)"
+        echo "![run_migration_chunks ($s, chunk_size $cs): mean total time vs threads](report-${s}-${cs}.svg)"
         echo
     done
     echo "## How the times are measured"
