@@ -121,7 +121,8 @@ ones you are most likely to change:
 | parameter                                 | default                | purpose                                                 |
 |-------------------------------------------|------------------------|---------------------------------------------------------|
 | `BENCH_ROWS`                              | `1000000`              | synthetic source rows                                   |
-| `BENCH_CHUNK_SIZE`                        | `1000`                 | rows per chunk                                          |
+| `BENCH_CHUNK_SIZE`                        | `1000`                 | chunk size, in the unit of `BENCH_CHUNK_BY`             |
+| `BENCH_CHUNK_BY`                          | `primary_key`          | chunking strategy: `primary_key` or `blocks`            |
 | `BENCH_THREADS_FROM` / `BENCH_THREADS_TO` | `1` / `20`             | thread sweep                                            |
 | `BENCH_RUNS`                              | `10`                   | measured runs per thread value (the mean is over these) |
 | `BENCH_WARMUP_RUNS`                       | `1`                    | unrecorded warm-up runs per thread value                |
@@ -133,6 +134,14 @@ ones you are most likely to change:
 the driving table is aliased `t`. The default keeps the source table untouched by
 copying each chunk into `benchmark.bench_target`, which is truncated before every
 run.
+
+`BENCH_CHUNK_BY` selects the strategy: `primary_key` (the default) chunks a fixed
+number of rows in primary-key order; `blocks` chunks a fixed number of physical
+heap blocks (`BENCH_CHUNK_SIZE` blocks) and requires a quiescent, read-only source,
+which the default INSERT-into-target workload provides. The two strategies are not
+directly comparable at the same numeric chunk size: a block holds a variable
+number of rows. `run.sh` records the strategy and the chunk unit in each CSV row,
+and `report.sh` reports them separately (one table and chart per strategy).
 
 ## The benchmark database
 

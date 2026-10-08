@@ -14,6 +14,13 @@ set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 . "$here/config.env"
 
+# The chunk-size unit is determined by the strategy.
+case "$BENCH_CHUNK_BY" in
+    primary_key) chunk_unit="rows" ;;
+    blocks) chunk_unit="blocks" ;;
+    *) echo "BENCH_CHUNK_BY must be primary_key or blocks: $BENCH_CHUNK_BY" >&2; exit 2 ;;
+esac
+
 usage() {
     echo "usage: $0 [--reset]" >&2
 }
@@ -42,7 +49,7 @@ results_dir="$here/$BENCH_RESULTS_DIR"
 csv="$results_dir/$BENCH_CSV"
 mkdir -p "$results_dir"
 if [ "$reset" = 1 ] || [ ! -f "$csv" ]; then
-    printf 'threads,run,range_seconds,chunk_seconds,total_seconds\n' > "$csv"
+    printf 'strategy,chunk_unit,threads,run,chunks,range_seconds,chunk_seconds,total_seconds\n' > "$csv"
 fi
 
 psql_run() {
@@ -80,6 +87,7 @@ run_once() {
         -v label="$label" \
         -v chunk="$BENCH_CHUNK_SIZE" \
         -v threads="$threads" \
+        -v chunk_by="$BENCH_CHUNK_BY" \
         -f - >/dev/null <<'SQL'
 SET pg_background.max_workers = :threads;
 SELECT dml_utils.run_migration_chunks(
@@ -88,11 +96,18 @@ SELECT dml_utils.run_migration_chunks(
     i_driving_table_name => :'table',
     i_label => :'label',
     i_chunk_size => :'chunk',
-    i_threads => :'threads');
+    i_threads => :'threads',
+    i_chunk_by => :'chunk_by');
 SQL
 
+    # chunks, range_seconds, chunk_seconds, total_seconds. The chunk count is the
+    # boundary count minus the terminal boundary.
     row="$(psql_stdin -At -F, -v ON_ERROR_STOP=1 -v label="$label" -f - <<'SQL'
-SELECT EXTRACT(EPOCH FROM (boundaries_calculated_at - started_at)),
+SELECT (SELECT count(*) - 1
+        FROM dml_utils_data.migration_boundary AS b
+        JOIN dml_utils_data.migration_run AS r ON r.run_id = b.run_id
+        WHERE r.label = :'label'),
+       EXTRACT(EPOCH FROM (boundaries_calculated_at - started_at)),
        EXTRACT(EPOCH FROM (completed_at - boundaries_calculated_at)),
        EXTRACT(EPOCH FROM (completed_at - started_at))
 FROM dml_utils_data.migration_run
@@ -101,14 +116,14 @@ SQL
 )"
 
     if [ "$record" = 1 ]; then
-        printf '%s,%s,%s\n' "$threads" "$run_no" "$row" >> "$csv"
-        echo "threads=$threads run=$run_no range=$(printf '%s' "$row" | cut -d, -f1)s chunk=$(printf '%s' "$row" | cut -d, -f2)s total=$(printf '%s' "$row" | cut -d, -f3)s" >&2
+        printf '%s,%s,%s,%s,%s\n' "$BENCH_CHUNK_BY" "$chunk_unit" "$threads" "$run_no" "$row" >> "$csv"
+        echo "strategy=$BENCH_CHUNK_BY threads=$threads run=$run_no chunks=$(printf '%s' "$row" | cut -d, -f1) range=$(printf '%s' "$row" | cut -d, -f2)s chunk=$(printf '%s' "$row" | cut -d, -f3)s total=$(printf '%s' "$row" | cut -d, -f4)s" >&2
     else
-        echo "threads=$threads warmup=$run_no done" >&2
+        echo "strategy=$BENCH_CHUNK_BY threads=$threads warmup=$run_no done" >&2
     fi
 }
 
-echo "sweep: threads ${BENCH_THREADS_FROM}..${BENCH_THREADS_TO}, ${BENCH_RUNS} measured + ${BENCH_WARMUP_RUNS} warm-up run(s) each" >&2
+echo "sweep: strategy=${BENCH_CHUNK_BY} (${chunk_unit}), threads ${BENCH_THREADS_FROM}..${BENCH_THREADS_TO}, ${BENCH_RUNS} measured + ${BENCH_WARMUP_RUNS} warm-up run(s) each" >&2
 threads="$BENCH_THREADS_FROM"
 while [ "$threads" -le "$BENCH_THREADS_TO" ]; do
     warmup=1
