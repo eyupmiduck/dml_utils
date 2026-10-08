@@ -78,6 +78,12 @@ else
     echo "(benchmark container not running; dataset unavailable)" > "$dataset_file"
 fi
 
+# Source rows/blocks, for the per-chunk averages (empty when unavailable).
+src_rows="$(awk -F'|' '{ gsub(/ /, "", $1); if ($1 == "rows") { gsub(/ /, "", $2); print $2 } }' \
+    "$dataset_file" 2>/dev/null || true)"
+src_blocks="$(awk -F'|' '{ gsub(/ /, "", $1); if ($1 == "blocks") { gsub(/ /, "", $2); print $2 } }' \
+    "$dataset_file" 2>/dev/null || true)"
+
 # --- Per-strategy charts ----------------------------------------------------
 strategies="$(awk -F, 'NR > 1 && $1 != "" { print $1 }' "$csv" | sort -u)"
 for s in $strategies; do
@@ -145,9 +151,9 @@ done
         unit="$(awk -F, -v s="$s" 'NR > 1 && $1 == s { print $2; exit }' "$csv")"
         echo "### strategy \`$s\` (chunk unit: $unit)"
         echo
-        echo "| threads | runs | chunks | mean range calc (s) | mean chunk run (s) | mean total (s) | speedup vs first |"
-        echo "| ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
-        awk -F, -v s="$s" '
+        echo "| threads | runs | chunks | rows/chunk | blocks/chunk | mean range calc (s) | mean chunk run (s) | mean total (s) | speedup vs first |"
+        echo "| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
+        awk -F, -v s="$s" -v src_rows="$src_rows" -v src_blocks="$src_blocks" '
             NR == 1 { next }
             $1 != s { next }
             {
@@ -160,7 +166,7 @@ done
                 if (!(t in seen)) { seen[t] = 1; order[++k] = t }
             }
             END {
-                if (k == 0) { print "| _no results_ | | | | | | |"; exit }
+                if (k == 0) { print "| _no results_ | | | | | | | | |"; exit }
                 for (i = 1; i <= k; i++)
                     for (j = i + 1; j <= k; j++)
                         if (order[i] + 0 > order[j] + 0) {
@@ -169,10 +175,13 @@ done
                 base = tt[order[1]] / n[order[1]]
                 for (i = 1; i <= k; i++) {
                     t = order[i]
+                    mc = ch[t] / n[t]
+                    rpc = (src_rows + 0 > 0 && mc > 0) ? sprintf("%.0f", src_rows / mc) : "-"
+                    bpc = (src_blocks + 0 > 0 && mc > 0) ? sprintf("%.0f", src_blocks / mc) : "-"
                     ms = tt[t] / n[t]
                     sp = (ms > 0) ? base / ms : 0
-                    printf "| %s | %d | %.0f | %.3f | %.3f | %.3f | %.2fx |\n",
-                        t, n[t], ch[t] / n[t], r[t] / n[t], c[t] / n[t], ms, sp
+                    printf "| %s | %d | %.0f | %s | %s | %.3f | %.3f | %.3f | %.2fx |\n",
+                        t, n[t], mc, rpc, bpc, r[t] / n[t], c[t] / n[t], ms, sp
                 }
             }' "$csv"
         echo
@@ -187,6 +196,10 @@ done
     echo "- **chunk run** = \`completed_at - boundaries_calculated_at\`: the workload SQL"
     echo "  run over every chunk, up to the thread count at a time."
     echo "- **total** = \`completed_at - started_at\`."
+    echo "- **rows/chunk** and **blocks/chunk** are the live source counts (see the"
+    echo "  Dataset section) divided by the mean chunk count. A block holds a variable"
+    echo "  number of rows, so for \`blocks\` these are averages and the final chunk is"
+    echo "  usually smaller than the rest."
     echo "- Warm-up runs are not recorded. The mean is over the measured runs only, and"
     echo "  the CSV accumulates across invocations, so the mean covers every run recorded"
     echo "  for that strategy and thread value."
