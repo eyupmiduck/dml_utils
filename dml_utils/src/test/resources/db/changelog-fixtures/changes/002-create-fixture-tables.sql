@@ -224,3 +224,24 @@ COMMENT ON COLUMN dml_utils_fixtures.test_composite_four.d IS
     'Fixture primary-key part.';
 COMMENT ON COLUMN dml_utils_fixtures.test_composite_four.payload IS
     'Fixture payload column.';
+
+-- A partitioned table, to prove block chunking rejects a relation that has no
+-- single physical heap (ctid is per-partition, and the parent has no storage).
+CREATE TABLE dml_utils_fixtures.test_partitioned
+(
+    id      bigint NOT NULL,
+    payload text
+) PARTITION BY RANGE (id);
+
+COMMENT ON TABLE dml_utils_fixtures.test_partitioned IS
+    'Fixture: a partitioned table, which block chunking must reject.';
+COMMENT ON COLUMN dml_utils_fixtures.test_partitioned.id IS
+    'Fixture partition key.';
+COMMENT ON COLUMN dml_utils_fixtures.test_partitioned.payload IS
+    'Fixture payload column.';
+
+CREATE TABLE dml_utils_fixtures.test_partitioned_p1 PARTITION OF dml_utils_fixtures.test_partitioned
+    FOR VALUES FROM (0) TO (1000);
+
+COMMENT ON TABLE dml_utils_fixtures.test_partitioned_p1 IS
+    'Fixture: the first partition of test_partitioned.';

@@ -34,6 +34,9 @@ BEGIN
     -- heap rewrite. The blocks<->filepath check on migration_run then requires
     -- exactly one of the two to be set.
     IF i_chunk_by = 'blocks' THEN
+        PERFORM dml_utils_lib.assert_plain_heap(
+                i_schema_name => i_schema_name,
+                i_table_name => i_table_name);
         l_relation_filepath := dml_utils_lib.relation_filepath(
                 i_schema_name => i_schema_name,
                 i_table_name => i_table_name);
