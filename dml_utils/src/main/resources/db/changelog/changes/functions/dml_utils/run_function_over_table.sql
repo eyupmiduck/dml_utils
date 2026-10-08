@@ -10,7 +10,11 @@ CREATE OR REPLACE FUNCTION dml_utils.run_function_over_table(
     i_label text DEFAULT NULL,
     -- Plain text for the same reason: an omitted filter is NULL and means no
     -- filter. When set, it is ANDed onto every chunk's range predicate.
-    i_filter text DEFAULT NULL
+    i_filter text DEFAULT NULL,
+    -- The chunking strategy. blocks requires a quiescent, read-only driving
+    -- table on a plain heap (see the block-strategy limitations in the README);
+    -- it is unsafe when the function updates the driving table in place.
+    i_chunk_by dml_utils_data.chunking_strategy DEFAULT 'primary_key'
 )
     RETURNS void
     LANGUAGE plpgsql
@@ -32,30 +36,23 @@ BEGIN
             i_function_name => i_function_name,
             i_filter => i_filter);
 
-    -- Derive a deterministic label from the driving table and function when the
-    -- caller does not supply one, so re-running the same call resumes the same
-    -- run instead of creating a new one. The components are joined as a JSON
-    -- array, which is unambiguous even when a (quoted) name contains a '.', ':'
-    -- or other delimiter: JSON escapes and quotes each element, so distinct
-    -- inputs cannot collide. A non-NULL filter is part of the label, so two calls
-    -- that differ only in their filter derive different runs instead of the
-    -- second silently resuming the first with its stored filter.
+    -- Derive a deterministic label from the driving table, function, filter and
+    -- chunking strategy when the caller does not supply one, so re-running the
+    -- same call resumes the same run instead of creating a new one. The components
+    -- are joined as a JSON array, which is unambiguous even when a (quoted) name
+    -- contains a '.', ':' or other delimiter: JSON escapes and quotes each
+    -- element, so distinct inputs cannot collide. The filter and strategy are part
+    -- of the label, so calls that differ only in those derive different runs
+    -- instead of the second silently resuming the first with its stored values.
     l_label := coalesce(
             i_label,
-            CASE
-                WHEN i_filter IS NULL
-                    THEN 'function:' || pg_catalog.json_build_array(
-                        i_driving_table_schema_name,
-                        i_driving_table_name,
-                        i_function_schema_name,
-                        i_function_name)::text
-                ELSE 'function:' || pg_catalog.json_build_array(
-                        i_driving_table_schema_name,
-                        i_driving_table_name,
-                        i_function_schema_name,
-                        i_function_name,
-                        i_filter)::text
-                END);
+            'function:' || pg_catalog.json_build_array(
+                    i_driving_table_schema_name,
+                    i_driving_table_name,
+                    i_function_schema_name,
+                    i_function_name,
+                    i_filter,
+                    i_chunk_by)::text);
 
     -- Delegate to the base engine: it owns resume, chunk scheduling, error
     -- recording and run completion. The generated template is a valid
@@ -66,7 +63,8 @@ BEGIN
             i_driving_table_name => i_driving_table_name,
             i_label => l_label,
             i_chunk_size => i_chunk_size,
-            i_threads => i_threads);
+            i_threads => i_threads,
+            i_chunk_by => i_chunk_by);
 END;
 $$;
 
@@ -76,4 +74,6 @@ COMMENT ON FUNCTION dml_utils.run_function_over_table IS
         'set, i_filter when i_label is NULL). The function must take the '
         'primary-key column types in key order and return void. A non-NULL '
         'i_filter is ANDed onto every chunk''s range predicate, so only the rows '
-        'it matches are passed to the function.';
+        'it matches are passed to the function. i_chunk_by selects the chunking '
+        'strategy; blocks requires a quiescent, read-only driving table and is '
+        'unsafe when the function updates the driving table in place.';

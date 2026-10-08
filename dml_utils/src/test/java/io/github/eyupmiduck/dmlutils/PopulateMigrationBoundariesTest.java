@@ -1,5 +1,6 @@
 package io.github.eyupmiduck.dmlutils;
 
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.enums.ChunkingStrategy;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.records.MigrationBoundaryRecord;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.records.MigrationRunRecord;
@@ -459,7 +460,7 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
     private long populate(Table<?> table, String label, int chunkSize, int threads) {
         return io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
                 dsl.configuration(), table.getSchema().getName(), table.getName(), label, SQL_TEXT,
-                chunkSize, threads);
+                chunkSize, threads, ChunkingStrategy.primary_key);
     }
 
     private List<MigrationBoundaryRecord> boundaries(long runId) {

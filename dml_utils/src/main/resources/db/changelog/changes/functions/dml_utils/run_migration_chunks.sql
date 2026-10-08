@@ -5,7 +5,8 @@ CREATE OR REPLACE FUNCTION dml_utils.run_migration_chunks(
     i_label dml_utils_data.non_null_text,
     i_chunk_size dml_utils_data.positive_integer DEFAULT 1000,
     i_threads dml_utils_data.positive_integer DEFAULT 1,
-    i_driving_table_alias dml_utils_data.non_null_text DEFAULT 't'
+    i_driving_table_alias dml_utils_data.non_null_text DEFAULT 't',
+    i_chunk_by dml_utils_data.chunking_strategy DEFAULT 'primary_key'
 )
     RETURNS void
     LANGUAGE plpgsql
@@ -15,6 +16,7 @@ $$
 DECLARE
     l_primary_key_columns   name[];
     l_key_kinds             text[];
+    l_chunk_by              dml_utils_data.chunking_strategy;
     l_run_id                bigint;
     l_already_completed     boolean;
     l_effective_sql_text    text;
@@ -56,11 +58,12 @@ BEGIN
            r.o_effective_table_name,
            r.o_effective_alias,
            r.o_effective_threads,
+           r.o_chunk_by,
            r.o_primary_key_columns,
            r.o_key_kinds
     INTO l_run_id, l_already_completed, l_effective_sql_text,
         l_effective_schema_name, l_effective_table_name, l_effective_alias,
-        l_effective_threads, l_primary_key_columns, l_key_kinds
+        l_effective_threads, l_chunk_by, l_primary_key_columns, l_key_kinds
     FROM dml_utils_lib.resolve_migration_run(
                  i_sql_text => i_sql_text,
                  i_driving_table_schema_name => i_driving_table_schema_name,
@@ -68,7 +71,8 @@ BEGIN
                  i_label => i_label,
                  i_chunk_size => i_chunk_size,
                  i_threads => i_threads,
-                 i_driving_table_alias => i_driving_table_alias) AS r;
+                 i_driving_table_alias => i_driving_table_alias,
+                 i_chunk_by => i_chunk_by) AS r;
 
     IF l_already_completed THEN
         RETURN;
@@ -130,16 +134,29 @@ BEGIN
 
                         EXIT WHEN NOT FOUND;
 
-                        l_chunk_sql := dml_utils_lib.render_chunk_sql(
-                                i_sql_text => l_effective_sql_text,
-                                i_schema_name => l_effective_schema_name,
-                                i_table_name => l_effective_table_name,
-                                i_table_alias => l_effective_alias,
-                                i_primary_key_columns => l_primary_key_columns,
-                                i_key_kinds => l_key_kinds,
-                                i_start_values => l_start_values,
-                                i_end_values => l_end_values,
-                                i_is_final => l_is_final);
+                        IF l_chunk_by = 'blocks' THEN
+                            -- The boundary values are the start and end block
+                            -- numbers; render a half-open ctid range. There is no
+                            -- final/inclusive distinction for blocks.
+                            l_chunk_sql := dml_utils_lib.render_block_chunk_sql(
+                                    i_sql_text => l_effective_sql_text,
+                                    i_schema_name => l_effective_schema_name,
+                                    i_table_name => l_effective_table_name,
+                                    i_table_alias => l_effective_alias,
+                                    i_start_block => l_start_values[1]::bigint,
+                                    i_end_block => l_end_values[1]::bigint);
+                        ELSE
+                            l_chunk_sql := dml_utils_lib.render_chunk_sql(
+                                    i_sql_text => l_effective_sql_text,
+                                    i_schema_name => l_effective_schema_name,
+                                    i_table_name => l_effective_table_name,
+                                    i_table_alias => l_effective_alias,
+                                    i_primary_key_columns => l_primary_key_columns,
+                                    i_key_kinds => l_key_kinds,
+                                    i_start_values => l_start_values,
+                                    i_end_values => l_end_values,
+                                    i_is_final => l_is_final);
+                        END IF;
 
                         -- pg_background has no USING, so the run id, boundary number and
                         -- chunk SQL are inlined: the first two are bigint (%s), the chunk
@@ -254,11 +271,12 @@ END;
 $$;
 
 COMMENT ON FUNCTION dml_utils.run_migration_chunks IS
-    'Runs the chunk SQL for every fixed-row chunk of the driving table, up to '
+    'Runs the chunk SQL for every chunk of the driving table (primary_key: fixed '
+        'rows in primary-key order; blocks: half-open physical ctid ranges), up to '
         'i_threads pg_background workers at a time, resuming an active run for '
         'the label and recording its completion. A resumed run uses the stored '
-        'sql_text, chunk size, threads, driving table and alias. On a failed chunk '
-        'it stops launching, lets the in-flight chunks commit, drains and detaches '
-        'them, and re-raises the error; the failure is recorded (best effort) in '
-        'dml_utils_data.migration_error first. A boundary already claimed by '
-        'another coordinator (P0002) is treated as benign.';
+        'sql_text, chunk size, strategy, threads, driving table and alias. On a '
+        'failed chunk it stops launching, lets the in-flight chunks commit, drains '
+        'and detaches them, and re-raises the error; the failure is recorded (best '
+        'effort) in dml_utils_data.migration_error first. A boundary already '
+        'claimed by another coordinator (P0002) is treated as benign.';
