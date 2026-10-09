@@ -24,8 +24,9 @@ knowledge of the scripts is assumed.
 
 ### Step 1 — set the parameters
 
-Open [`config.env`](config.env) in an editor. For the example, make sure these
-lines read:
+Open [`config.env`](config.env) in an editor and set the values for the sweep. For
+the example, the file should contain these lines (each is `NAME=value`; the file
+is sourced by the scripts, so do not `export` them):
 
 ```sh
 BENCH_ROWS=1000000
@@ -42,9 +43,23 @@ Set `BENCH_CHUNK_BY=blocks` to benchmark the physical block (ctid) strategy
 instead, and `BENCH_PK_COLUMNS` to `2` or `3` for a two- or three-column bigint
 primary key (see [Parameters](#parameters)).
 
-These are all the defaults, so the example works out of the box; the point is
-that you change the sweep here. The scripts read this file, so do not rely on
-one-off environment overrides, or `report.sh` will describe the wrong settings.
+These are all the defaults, so the example works out of the box. Edit the file
+rather than overriding the environment: each script sources `config.env`, so a
+value exported for only one of them is not seen by the others, and `report.sh`
+would then describe the wrong settings.
+
+For a one-off override without editing the file, export it in your shell so every
+script sees it:
+
+```sh
+export BENCH_ROWS=100000000
+benchmark/setup.sh
+benchmark/run.sh
+benchmark/report.sh
+```
+
+A `BENCH_ROWS=100000000 benchmark/setup.sh` prefix also works, but then repeat it
+for `run.sh` and `report.sh`, or they fall back to the file's default.
 
 ### Step 2 — create the benchmark database (once)
 
