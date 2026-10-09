@@ -142,6 +142,27 @@ COMMENT ON COLUMN dml_utils_fixtures.test_composite_mixed.b IS
 COMMENT ON COLUMN dml_utils_fixtures.test_composite_mixed.payload IS
     'Fixture payload column.';
 
+-- A two-column primary key whose text column uses an ICU collation, so the key
+-- order differs from byte order (for example '_' sorts before letters and 'a'
+-- before 'B'); proves the chunk predicate uses the column's collation rather
+-- than assuming byte order.
+CREATE TABLE dml_utils_fixtures.test_composite_collated
+(
+    a       bigint,
+    b       text COLLATE "en-x-icu",
+    payload text,
+    PRIMARY KEY (a, b)
+);
+
+COMMENT ON TABLE dml_utils_fixtures.test_composite_collated IS
+    'Fixture: a two-column primary key whose text column uses an ICU collation.';
+COMMENT ON COLUMN dml_utils_fixtures.test_composite_collated.a IS
+    'Fixture first primary-key column (bigint).';
+COMMENT ON COLUMN dml_utils_fixtures.test_composite_collated.b IS
+    'Fixture second primary-key column (text, ICU-collated).';
+COMMENT ON COLUMN dml_utils_fixtures.test_composite_collated.payload IS
+    'Fixture payload column.';
+
 CREATE TABLE dml_utils_fixtures.test_numeric
 (
     id      numeric PRIMARY KEY,

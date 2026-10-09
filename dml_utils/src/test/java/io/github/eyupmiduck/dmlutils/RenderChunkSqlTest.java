@@ -12,6 +12,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeCollated.TEST_COMPOSITE_COLLATED;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositePk.TEST_COMPOSITE_PK;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeThree.TEST_COMPOSITE_THREE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -706,6 +707,64 @@ class RenderChunkSqlTest extends PostgresTestBase {
             assertTrue(tupleEstimate > boxEstimate * 3,
                     "the row-value estimate " + tupleEstimate + " should be far above the boxes' " + boxEstimate);
         }
+    }
+
+    /**
+     * Under an ICU collation, where the text key order differs from byte order
+     * ('_' before letters, 'a' before 'B', ...), the box disjunction still selects
+     * exactly the same rows as the tuple-range predicate, because both use the
+     * column's collation.
+     */
+    @Test
+    void boxDisjunctionMatchesTheTupleRangeUnderAnIcuCollation() {
+        List<String> ordered = dsl.fetch(
+                "SELECT v FROM (VALUES ('B'), ('a'), ('Z'), ('_'), ('0'), ('M'), ('x'), ('e'), ('é')) AS t(v)"
+                        + " ORDER BY v COLLATE \"en-x-icu\"")
+                .stream().map(record -> record.get(0, String.class)).toList();
+
+        dsl.truncate(TEST_COMPOSITE_COLLATED).execute();
+        List<String[]> keys = new ArrayList<>();
+        for (long a = 1; a <= 2; a++) {
+            for (String b : ordered) {
+                dsl.insertInto(TEST_COMPOSITE_COLLATED, TEST_COMPOSITE_COLLATED.A, TEST_COMPOSITE_COLLATED.B)
+                        .values(a, b).execute();
+                keys.add(new String[]{Long.toString(a), b});
+            }
+        }
+
+        assertRandomRangesMatch(TEST_COMPOSITE_COLLATED.getSchema().getName(), TEST_COMPOSITE_COLLATED.getName(),
+                new String[]{"a", "b"}, new String[]{"bigint", "text"}, keys, 150, 20261011L);
+    }
+
+    /**
+     * The box disjunction matches the tuple range for uuid keys whose high bit is
+     * set, where PostgreSQL's unsigned byte order differs from a signed
+     * comparison of the two halves.
+     */
+    @Test
+    void boxDisjunctionMatchesTheTupleRangeForHighBitUuids() {
+        List<String> uuids = dsl.fetch(
+                "SELECT v::text FROM (VALUES"
+                        + " ('00000000-0000-0000-0000-000000000000'::uuid),"
+                        + " ('7fffffff-ffff-ffff-ffff-ffffffffffff'::uuid),"
+                        + " ('80000000-0000-0000-0000-000000000000'::uuid),"
+                        + " ('ffffffff-ffff-ffff-ffff-ffffffffffff'::uuid)) AS t(v)"
+                        + " ORDER BY v")
+                .stream().map(record -> record.get(0, String.class)).toList();
+
+        dsl.truncate(TEST_COMPOSITE_THREE).execute();
+        List<String[]> keys = new ArrayList<>();
+        for (int b = 1; b <= 2; b++) {
+            for (String c : uuids) {
+                dsl.insertInto(TEST_COMPOSITE_THREE,
+                                TEST_COMPOSITE_THREE.A, TEST_COMPOSITE_THREE.B, TEST_COMPOSITE_THREE.C)
+                        .values("a1", b, UUID.fromString(c)).execute();
+                keys.add(new String[]{Integer.toString(b), "a1", c});
+            }
+        }
+
+        assertRandomRangesMatch(TEST_COMPOSITE_THREE.getSchema().getName(), TEST_COMPOSITE_THREE.getName(),
+                new String[]{"b", "a", "c"}, new String[]{"bigint", "text", "uuid"}, keys, 100, 20261012L);
     }
 
     /**

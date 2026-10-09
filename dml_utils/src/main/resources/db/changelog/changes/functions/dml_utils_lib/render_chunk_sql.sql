@@ -31,6 +31,8 @@ DECLARE
     l_chunking_clause                   text;
     l_rendered                          text;
     l_kind                              text;
+    l_collation                         text;
+    l_start_less_than_end               boolean;
     l_start_bigint                      bigint;
     l_end_bigint                        bigint;
     l_start_uuid                        uuid;
@@ -135,12 +137,42 @@ BEGIN
                         l_first_difference_position := l_position;
                     END IF;
                 ELSE
-                    -- text compares with the database collation, as the predicate will.
+                    -- text must be ordered under the column's own collation, which
+                    -- is what the predicate uses; the session default can order the
+                    -- same strings differently (for example 'a' < 'B' under
+                    -- en-x-icu but not under C), which would wrongly reject a valid
+                    -- chunk. Look the column's collation up from the catalog.
                     IF l_first_difference = 0
                         AND i_start_values[l_position] IS DISTINCT FROM i_end_values[l_position]
                     THEN
-                        l_first_difference :=
-                                CASE WHEN i_start_values[l_position] < i_end_values[l_position] THEN -1 ELSE 1 END;
+                        l_collation := NULL;
+                        SELECT CASE
+                                   WHEN a.attcollation = 0 THEN 'default'
+                                   ELSE pg_catalog.quote_ident(c.collname)
+                                   END
+                        INTO l_collation
+                        FROM pg_catalog.pg_attribute AS a
+                                 LEFT JOIN pg_catalog.pg_collation AS c
+                                           ON c.oid = a.attcollation
+                        WHERE a.attrelid = pg_catalog.to_regclass(
+                                pg_catalog.format('%I.%I', i_schema_name, i_table_name))
+                          AND a.attname = i_primary_key_columns[l_position];
+
+                        IF l_collation IS NULL THEN
+                            -- The column is not in the catalog (a renderer unit
+                            -- test with a synthetic table); compare as the default
+                            -- collation, which is what the predicate would use.
+                            l_start_less_than_end :=
+                                    i_start_values[l_position] < i_end_values[l_position];
+                        ELSE
+                            EXECUTE pg_catalog.format(
+                                    'SELECT %L::text COLLATE %s < %L::text COLLATE %s',
+                                    i_start_values[l_position], l_collation,
+                                    i_end_values[l_position], l_collation)
+                                INTO l_start_less_than_end;
+                        END IF;
+
+                        l_first_difference := CASE WHEN l_start_less_than_end THEN -1 ELSE 1 END;
                         l_first_difference_position := l_position;
                     END IF;
                 END IF;
@@ -337,4 +369,5 @@ COMMENT ON FUNCTION dml_utils_lib.render_chunk_sql IS
         'The chunking clause is a disjunction of axis-aligned boxes that exactly '
         'tiles the lexicographic range, so the planner estimates it column by '
         'column and uses the primary-key index. The final chunk uses an inclusive '
-        'upper bound, and a NULL boundary value is rejected.';
+        'upper bound, and a NULL boundary value is rejected. A text key is ordered '
+        'under its column''s collation, matching the predicate.';
