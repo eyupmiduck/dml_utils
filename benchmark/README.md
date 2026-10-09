@@ -212,7 +212,10 @@ database:
   `benchmark.bench_target` is the throwaway destination, with the same key
   columns.
 
-All database access goes through `docker exec`, so no host `psql` is required.
+All database access goes through `docker exec`, so no host `psql` is required;
+use `benchmark/psql.sh` for an interactive session. To remove the container and
+reclaim its disk space, run `benchmark/teardown.sh` (the host results are kept;
+recreate with `benchmark/setup.sh`).
 
 ## Files
 
@@ -225,6 +228,7 @@ benchmark/
   report.sh               format the results into results/<BENCH_REPORT>
   chart.awk               render the mean total time as the report's SVG chart
   psql.sh                 open a psql session on the benchmark container
+  teardown.sh             remove the container, data volume and network
   sql/create-source.sql   deterministic synthetic source table + data
   sql/create-target.sql   throwaway destination the workload inserts into
   results/                generated: benchmark.csv, report.md,
