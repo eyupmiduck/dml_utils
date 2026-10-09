@@ -4,7 +4,9 @@ import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import java.util.UUID;
 
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
@@ -573,6 +575,7 @@ class RenderChunkSqlTest extends PostgresTestBase {
         assertBoxesMatchTupleRange(schema, table, columns, kinds, new String[]{"2", "3"}, new String[]{"3", "1"}, false);
         assertBoxesMatchTupleRange(schema, table, columns, kinds, new String[]{"2", "1"}, new String[]{"2", "3"}, false);
         assertBoxesMatchTupleRange(schema, table, columns, kinds, new String[]{"1", "3"}, new String[]{"3", "2"}, true);
+        assertBoxesMatchTupleRange(schema, table, columns, kinds, new String[]{"2", "1"}, new String[]{"2", "3"}, true);
         assertBoxesMatchTupleRange(schema, table, columns, kinds, new String[]{"2", "2"}, new String[]{"2", "2"}, true);
     }
 
@@ -615,6 +618,72 @@ class RenderChunkSqlTest extends PostgresTestBase {
         assertBoxesMatchTupleRange(schema, table, columns, kinds,
                 new String[]{"1", "a2", first.toString()},
                 new String[]{"3", "a1", second.toString()}, true);
+        assertBoxesMatchTupleRange(schema, table, columns, kinds,
+                new String[]{"2", "a1", first.toString()},
+                new String[]{"2", "a1", second.toString()}, true);
+    }
+
+    /**
+     * Over many randomly chosen ranges (both final and non-final), the box
+     * disjunction selects exactly the same rows as the tuple-range predicate it
+     * replaces, for a two-column and a three-column, mixed-kind key. This sweeps
+     * every shape of the decomposition, including a key that differs only in its
+     * last column and the inclusive final chunk (with and without a fixed
+     * prefix).
+     */
+    @Test
+    void boxDisjunctionMatchesTheTupleRangeOverRandomRanges() {
+        List<String[]> twoColumnKeys = new ArrayList<>();
+        dsl.truncate(TEST_COMPOSITE_PK).execute();
+        for (long a = 1; a <= 3; a++) {
+            for (long b = 1; b <= 3; b++) {
+                dsl.insertInto(TEST_COMPOSITE_PK, TEST_COMPOSITE_PK.A, TEST_COMPOSITE_PK.B)
+                        .values(a, b).execute();
+                twoColumnKeys.add(new String[]{Long.toString(a), Long.toString(b)});
+            }
+        }
+        assertRandomRangesMatch(TEST_COMPOSITE_PK.getSchema().getName(), TEST_COMPOSITE_PK.getName(),
+                new String[]{"a", "b"}, new String[]{"bigint", "bigint"}, twoColumnKeys, 150, 20261009L);
+
+        List<String[]> threeColumnKeys = new ArrayList<>();
+        dsl.truncate(TEST_COMPOSITE_THREE).execute();
+        UUID first = new UUID(0, 1);
+        UUID second = new UUID(0, 2);
+        for (int b = 1; b <= 2; b++) {
+            for (String a : new String[]{"a1", "a2"}) {
+                for (UUID c : new UUID[]{first, second}) {
+                    dsl.insertInto(TEST_COMPOSITE_THREE,
+                                    TEST_COMPOSITE_THREE.A, TEST_COMPOSITE_THREE.B, TEST_COMPOSITE_THREE.C)
+                            .values(a, b, c).execute();
+                    threeColumnKeys.add(new String[]{Integer.toString(b), a, c.toString()});
+                }
+            }
+        }
+        assertRandomRangesMatch(TEST_COMPOSITE_THREE.getSchema().getName(), TEST_COMPOSITE_THREE.getName(),
+                new String[]{"b", "a", "c"}, new String[]{"bigint", "text", "uuid"}, threeColumnKeys, 150, 20261010L);
+    }
+
+    /**
+     * Picks ordered pairs from {@code keys} (which is in key order) with a fixed
+     * seed and asserts each renders the same rows as its tuple range.
+     */
+    private void assertRandomRangesMatch(String schema, String table, String[] columns, String[] kinds,
+                                         List<String[]> keys, int iterations, long seed) {
+        Random random = new Random(seed);
+        for (int i = 0; i < iterations; i++) {
+            int lo = random.nextInt(keys.size());
+            int hi = random.nextInt(keys.size());
+            if (lo > hi) {
+                int swap = lo;
+                lo = hi;
+                hi = swap;
+            }
+            boolean isFinal = random.nextBoolean();
+            if (lo == hi && !isFinal) {
+                continue;
+            }
+            assertBoxesMatchTupleRange(schema, table, columns, kinds, keys.get(lo), keys.get(hi), isFinal);
+        }
     }
 
     /**
