@@ -21,6 +21,9 @@ case "$BENCH_CHUNK_BY" in
     *) echo "BENCH_CHUNK_BY must be primary_key or blocks: $BENCH_CHUNK_BY" >&2; exit 2 ;;
 esac
 
+# The key column names, joined by '+' so a report group key has no spaces.
+pk_columns_csv="$(printf '%s' "$BENCH_PK_COLUMNS" | tr ' ' '+')"
+
 usage() {
     echo "usage: $0 [--reset]" >&2
 }
@@ -49,7 +52,7 @@ results_dir="$here/$BENCH_RESULTS_DIR"
 csv="$results_dir/$BENCH_CSV"
 mkdir -p "$results_dir"
 if [ "$reset" = 1 ] || [ ! -f "$csv" ]; then
-    printf 'strategy,chunk_unit,chunk_size,threads,run,chunks,range_seconds,chunk_seconds,total_seconds\n' > "$csv"
+    printf 'strategy,chunk_unit,chunk_size,threads,run,chunks,range_seconds,chunk_seconds,total_seconds,pk_columns\n' > "$csv"
 fi
 
 psql_run() {
@@ -116,7 +119,7 @@ SQL
 )"
 
     if [ "$record" = 1 ]; then
-        printf '%s,%s,%s,%s,%s,%s\n' "$BENCH_CHUNK_BY" "$chunk_unit" "$BENCH_CHUNK_SIZE" "$threads" "$run_no" "$row" >> "$csv"
+        printf '%s,%s,%s,%s,%s,%s,%s\n' "$BENCH_CHUNK_BY" "$chunk_unit" "$BENCH_CHUNK_SIZE" "$threads" "$run_no" "$row" "$pk_columns_csv" >> "$csv"
         echo "strategy=$BENCH_CHUNK_BY threads=$threads run=$run_no chunks=$(printf '%s' "$row" | cut -d, -f1) range=$(printf '%s' "$row" | cut -d, -f2)s chunk=$(printf '%s' "$row" | cut -d, -f3)s total=$(printf '%s' "$row" | cut -d, -f4)s" >&2
     else
         echo "strategy=$BENCH_CHUNK_BY threads=$threads warmup=$run_no done" >&2

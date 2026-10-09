@@ -96,13 +96,13 @@ Open `benchmark/results/report.md`. It contains:
 - the **configuration** that produced the results and a **dataset** section (live
   source rows and blocks),
 - the **hardware and PostgreSQL settings** captured on this machine,
-- a **results table per strategy and chunk size**, one row per thread value, with
-  the number of chunks, the `rows/chunk` and `blocks/chunk` averages, the mean
+- a **results table per strategy, key and chunk size**, one row per thread value,
+  with the number of chunks, the `rows/chunk` and `blocks/chunk` averages, the mean
   range-calculation time, the mean chunk-run time, the mean total, and the speedup
   relative to the lowest thread value,
-- a **chart per strategy and chunk size** (`report-<strategy>-<chunk_size>.svg`,
-  generated next to the page) of the mean total time against the thread count,
-  embedded in the page.
+- a **chart per strategy, key and chunk size**
+  (`report-<strategy>-<chunk_size>-<pk_columns>.svg`, generated next to the page)
+  of the mean total time against the thread count, embedded in the page.
 
 The raw per-run data is `benchmark/results/benchmark.csv` (one row per measured
 run, tagged with the strategy and chunk unit); `benchmark/results/hardware.txt`,
@@ -124,10 +124,12 @@ Each run calls `run_migration_chunks` once and reads the run's timestamps back:
 | `range_seconds`   | `boundaries_calculated_at - started_at` — the boundary calculation       |
 | `chunk_seconds`   | `completed_at - boundaries_calculated_at` — the workload over all chunks |
 | `total_seconds`   | `completed_at - started_at`                                              |
+| `pk_columns`      | the primary-key columns, joined by `+` (for example `k1+k2`)             |
 
 Warm-up runs are not recorded. `report.sh` groups the rows by `(strategy,
-chunk_size)` and averages the timing columns per group and thread value, so runs
-with different chunk sizes are never combined.
+chunk_size, pk_columns)` and averages the timing columns per group and thread
+value, so runs with different chunk sizes or primary-key shapes are never
+combined.
 
 ## Parameters
 
@@ -137,6 +139,7 @@ ones you are most likely to change:
 | parameter                                 | default                | purpose                                                 |
 |-------------------------------------------|------------------------|---------------------------------------------------------|
 | `BENCH_ROWS`                              | `1000000`              | synthetic source rows                                   |
+| `BENCH_PK_COLUMNS`                        | `k1`                   | space-separated bigint primary-key columns (1 to 3)     |
 | `BENCH_CHUNK_SIZE`                        | `1000`                 | chunk size, in the unit of `BENCH_CHUNK_BY`             |
 | `BENCH_CHUNK_BY`                          | `primary_key`          | chunking strategy: `primary_key` or `blocks`            |
 | `BENCH_THREADS_FROM` / `BENCH_THREADS_TO` | `1` / `20`             | thread sweep                                            |
@@ -180,10 +183,11 @@ database:
   needs no server change.
 - **Schema**: the changelog is applied to the container's `dml_utils` database by
   the Liquibase image, so the routines under test are exactly the repository's.
-- **Data**: `sql/create-source.sql` creates `benchmark.bench_source` with a
-  `bigint` primary key and deterministic payloads (`md5(id)`), so refreshing the
-  database reproduces the table exactly. `benchmark.bench_target` is the
-  throwaway destination.
+- **Data**: `sql/create-source.sql` creates `benchmark.bench_source` with the
+  `BENCH_PK_COLUMNS` primary key (one to three `bigint` columns) and deterministic
+  key tuples and payloads, so refreshing the database reproduces the table
+  exactly. `benchmark.bench_target` is the throwaway destination, with the same
+  key columns.
 
 All database access goes through `docker exec`, so no host `psql` is required.
 
@@ -200,7 +204,7 @@ benchmark/
   sql/create-source.sql   deterministic synthetic source table + data
   sql/create-target.sql   throwaway destination the workload inserts into
   results/                generated: benchmark.csv, report.md,
-                          report-<strategy>-<chunk_size>.svg, dataset.txt, hardware.txt, ...
+                          report-<strategy>-<chunk_size>-<pk_columns>.svg, dataset.txt, ...
 ```
 
 ## Caveats
