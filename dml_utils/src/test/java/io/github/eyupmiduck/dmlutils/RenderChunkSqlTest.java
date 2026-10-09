@@ -718,8 +718,8 @@ class RenderChunkSqlTest extends PostgresTestBase {
     @Test
     void boxDisjunctionMatchesTheTupleRangeUnderAnIcuCollation() {
         List<String> ordered = dsl.fetch(
-                "SELECT v FROM (VALUES ('B'), ('a'), ('Z'), ('_'), ('0'), ('M'), ('x'), ('e'), ('é')) AS t(v)"
-                        + " ORDER BY v COLLATE \"en-x-icu\"")
+                        "SELECT v FROM (VALUES ('B'), ('a'), ('Z'), ('_'), ('0'), ('M'), ('x'), ('e'), ('é')) AS t(v)"
+                                + " ORDER BY v COLLATE \"en-x-icu\"")
                 .stream().map(record -> record.get(0, String.class)).toList();
 
         dsl.truncate(TEST_COMPOSITE_COLLATED).execute();
@@ -744,12 +744,12 @@ class RenderChunkSqlTest extends PostgresTestBase {
     @Test
     void boxDisjunctionMatchesTheTupleRangeForHighBitUuids() {
         List<String> uuids = dsl.fetch(
-                "SELECT v::text FROM (VALUES"
-                        + " ('00000000-0000-0000-0000-000000000000'::uuid),"
-                        + " ('7fffffff-ffff-ffff-ffff-ffffffffffff'::uuid),"
-                        + " ('80000000-0000-0000-0000-000000000000'::uuid),"
-                        + " ('ffffffff-ffff-ffff-ffff-ffffffffffff'::uuid)) AS t(v)"
-                        + " ORDER BY v")
+                        "SELECT v::text FROM (VALUES"
+                                + " ('00000000-0000-0000-0000-000000000000'::uuid),"
+                                + " ('7fffffff-ffff-ffff-ffff-ffffffffffff'::uuid),"
+                                + " ('80000000-0000-0000-0000-000000000000'::uuid),"
+                                + " ('ffffffff-ffff-ffff-ffff-ffffffffffff'::uuid)) AS t(v)"
+                                + " ORDER BY v")
                 .stream().map(record -> record.get(0, String.class)).toList();
 
         dsl.truncate(TEST_COMPOSITE_THREE).execute();
