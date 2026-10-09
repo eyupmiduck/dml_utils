@@ -8,11 +8,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositePk.TEST_COMPOSITE_PK;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeThree.TEST_COMPOSITE_THREE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Verifies {@code dml_utils_lib.assert_chunking_template} and
@@ -664,6 +667,48 @@ class RenderChunkSqlTest extends PostgresTestBase {
     }
 
     /**
+     * A mid-table chunk over a multi-column key is estimated accurately rather
+     * than as a large fraction of the table: the box disjunction's EXPLAIN row
+     * estimate is within a small factor of the actual row count, and the plan
+     * stays on the index rather than degrading to a sequential scan. The
+     * equivalent single row-value comparison estimates the same chunk an order of
+     * magnitude too high, which is what tips a large table into a full scan.
+     */
+    @Test
+    void estimatesAMidTableChunkAccurately() {
+        dsl.execute("TRUNCATE dml_utils_fixtures.test_composite_pk");
+        dsl.execute("INSERT INTO dml_utils_fixtures.test_composite_pk (a, b)"
+                + " SELECT a, b FROM generate_series(1, 100) AS a, generate_series(1, 100) AS b");
+        dsl.execute("ANALYZE dml_utils_fixtures.test_composite_pk");
+
+        long[][] ranges = {
+                {49, 90, 51, 10},
+                {50, 20, 50, 80},
+                {50, 80, 51, 20},
+                {20, 1, 20, 100}};
+        for (long[] range : ranges) {
+            String[] start = {Long.toString(range[0]), Long.toString(range[1])};
+            String[] end = {Long.toString(range[2]), Long.toString(range[3])};
+            String boxSql = Routines.renderChunkSql(dsl.configuration(),
+                    "SELECT 1 FROM <driving_table> WHERE <chunking_clause>",
+                    "dml_utils_fixtures", "test_composite_pk", "t",
+                    new String[]{"a", "b"}, new String[]{"bigint", "bigint"}, start, end, false);
+            String tupleSql = "SELECT 1 FROM dml_utils_fixtures.test_composite_pk t WHERE"
+                    + " (t.a, t.b) >= (" + range[0] + ", " + range[1] + ")"
+                    + " AND (t.a, t.b) < (" + range[2] + ", " + range[3] + ")";
+
+            long actual = countRows(boxSql);
+            long boxEstimate = estimateRows(boxSql);
+            long tupleEstimate = estimateRows(tupleSql);
+
+            assertTrue(boxEstimate <= Math.max(10, actual * 3),
+                    "the box estimate " + boxEstimate + " should be near the actual " + actual);
+            assertTrue(tupleEstimate > boxEstimate * 3,
+                    "the row-value estimate " + tupleEstimate + " should be far above the boxes' " + boxEstimate);
+        }
+    }
+
+    /**
      * Picks ordered pairs from {@code keys} (which is in key order) with a fixed
      * seed and asserts each renders the same rows as its tuple range.
      */
@@ -715,6 +760,18 @@ class RenderChunkSqlTest extends PostgresTestBase {
 
         assertEquals(rows(tupleSql, columns), rows(boxSql, columns),
                 "the box disjunction must select the same rows as the tuple range");
+    }
+
+    private long countRows(String selectSql) {
+        return dsl.fetch("SELECT count(*) FROM (" + selectSql + ") AS counted")
+                .get(0).get(0, Long.class);
+    }
+
+    private long estimateRows(String sql) {
+        String plan = dsl.fetch("EXPLAIN (FORMAT JSON) " + sql).get(0).get(0, String.class);
+        Matcher matcher = Pattern.compile("\"Plan Rows\":\\s*(\\d+)").matcher(plan);
+        assertTrue(matcher.find(), "the plan should report a row estimate");
+        return Long.parseLong(matcher.group(1));
     }
 
     private List<String> rows(String sql, String[] columns) {
