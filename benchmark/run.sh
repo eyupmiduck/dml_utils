@@ -132,7 +132,9 @@ SQL
     fi
 }
 
-echo "sweep: strategy=${BENCH_CHUNK_BY} (${chunk_unit}), threads ${BENCH_THREADS_FROM}..${BENCH_THREADS_TO}, ${BENCH_RUNS} measured + ${BENCH_WARMUP_RUNS} warm-up run(s) each" >&2
+# Report the dataset the sweep runs against.
+src_rows="$(psql_run -At -c "SELECT count(*) FROM ${BENCH_SCHEMA}.${BENCH_SOURCE_TABLE}")"
+echo "sweep: strategy=${BENCH_CHUNK_BY} (${chunk_unit}), ${BENCH_PK_COLUMNS} pk column(s), ${src_rows} rows, threads ${BENCH_THREADS_FROM}..${BENCH_THREADS_TO}, ${BENCH_RUNS} measured + ${BENCH_WARMUP_RUNS} warm-up run(s) each" >&2
 threads="$BENCH_THREADS_FROM"
 while [ "$threads" -le "$BENCH_THREADS_TO" ]; do
     warmup=1
