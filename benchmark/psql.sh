@@ -15,6 +15,10 @@ set -eu
 
 here="$(cd "$(dirname "$0")" && pwd)"
 . "$here/config.env"
+# Optional personal overrides, kept out of git (copy config.local.env.example).
+if [ -f "$here/config.local.env" ]; then
+    . "$here/config.local.env"
+fi
 
 command -v docker >/dev/null 2>&1 || {
     echo "docker is required but was not found on PATH" >&2

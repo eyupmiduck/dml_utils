@@ -50,3 +50,6 @@ __pycache__/
 .beads/
 .dolt/
 .beads-credential-key
+
+# Benchmark personal overrides (see benchmark/README.md)
+benchmark/config.local.env

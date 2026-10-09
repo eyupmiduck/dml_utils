@@ -13,6 +13,10 @@ set -eu
 
 here="$(cd "$(dirname "$0")" && pwd)"
 . "$here/config.env"
+# Optional personal overrides, kept out of git (copy config.local.env.example).
+if [ -f "$here/config.local.env" ]; then
+    . "$here/config.local.env"
+fi
 
 results_dir="$here/$BENCH_RESULTS_DIR"
 csv="$results_dir/$BENCH_CSV"
@@ -85,12 +89,14 @@ src_blocks="$(awk -F'|' '{ gsub(/ /, "", $1); if ($1 == "blocks") { gsub(/ /, ""
     "$dataset_file" 2>/dev/null || true)"
 
 # --- Per-strategy charts ----------------------------------------------------
-groups="$(awk -F, 'NR > 1 && $1 != "" { print $1 "/" $3 }' "$csv" | sort -u)"
+groups="$(awk -F, 'NR > 1 && $1 != "" { print $1 "/" $3 "/" $10 }' "$csv" | sort -u)"
 for g in $groups; do
     s="${g%%/*}"
-    cs="${g#*/}"
-    awk -v strategy="$s" -v chunk_size="$cs" -f "$here/chart.awk" "$csv" \
-        > "$results_dir/report-${s}-${cs}.svg"
+    rest="${g#*/}"
+    cs="${rest%%/*}"
+    pk="${rest#*/}"
+    awk -v strategy="$s" -v chunk_size="$cs" -v pk_columns="$pk" -f "$here/chart.awk" "$csv" \
+        > "$results_dir/report-${s}-${cs}-${pk}.svg"
 done
 
 # --- Report -----------------------------------------------------------------
@@ -152,15 +158,17 @@ done
     fi
     for g in $groups; do
         s="${g%%/*}"
-        cs="${g#*/}"
-        unit="$(awk -F, -v s="$s" -v c="$cs" 'NR > 1 && $1 == s && $3 == c { print $2; exit }' "$csv")"
-        echo "### strategy \`$s\`, chunk_size $cs $unit"
+        rest="${g#*/}"
+        cs="${rest%%/*}"
+        pk="${rest#*/}"
+        unit="$(awk -F, -v s="$s" -v c="$cs" -v k="$pk" 'NR > 1 && $1 == s && $3 == c && $10 == k { print $2; exit }' "$csv")"
+        echo "### strategy \`$s\`, key $pk, chunk_size $cs $unit"
         echo
         echo "| threads | runs | chunks | rows/chunk | blocks/chunk | mean range calc (s) | mean chunk run (s) | mean total (s) | speedup vs first |"
         echo "| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
-        awk -F, -v s="$s" -v c="$cs" -v src_rows="$src_rows" -v src_blocks="$src_blocks" '
+        awk -F, -v s="$s" -v c="$cs" -v k="$pk" -v src_rows="$src_rows" -v src_blocks="$src_blocks" '
             NR == 1 { next }
-            $1 != s || $3 != c { next }
+            $1 != s || $3 != c || $10 != k { next }
             {
                 t = $4
                 n[t]++
@@ -190,7 +198,7 @@ done
                 }
             }' "$csv"
         echo
-        echo "![run_migration_chunks ($s, chunk_size $cs): mean total time vs threads](report-${s}-${cs}.svg)"
+        echo "![run_migration_chunks ($s, key $pk, chunk_size $cs): mean total time vs threads](report-${s}-${cs}-${pk}.svg)"
         echo
     done
     echo "## How the times are measured"

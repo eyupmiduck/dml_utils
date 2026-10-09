@@ -24,11 +24,13 @@ knowledge of the scripts is assumed.
 
 ### Step 1 — set the parameters
 
-Open [`config.env`](config.env) in an editor. For the example, make sure these
-lines read:
+Open [`config.env`](config.env) in an editor and set the values for the sweep. For
+the example, the file should contain these lines (each is `NAME=value`; the file
+is sourced by the scripts, so do not `export` them):
 
 ```sh
 BENCH_ROWS=1000000
+BENCH_PK_COLUMNS=1
 BENCH_CHUNK_SIZE=1000
 BENCH_CHUNK_BY=primary_key
 BENCH_THREADS_FROM=1
@@ -38,11 +40,31 @@ BENCH_WARMUP_RUNS=1
 ```
 
 Set `BENCH_CHUNK_BY=blocks` to benchmark the physical block (ctid) strategy
-instead (see [Parameters](#parameters)).
+instead, and `BENCH_PK_COLUMNS` to `2` or `3` for a two- or three-column bigint
+primary key (see [Parameters](#parameters)).
 
-These are all the defaults, so the example works out of the box; the point is
-that you change the sweep here. The scripts read this file, so do not rely on
-one-off environment overrides, or `report.sh` will describe the wrong settings.
+These are all the defaults, so the example works out of the box. Edit the file
+rather than overriding the environment: each script sources `config.env`, so a
+value exported for only one of them is not seen by the others, and `report.sh`
+would then describe the wrong settings.
+
+To keep personal settings out of git, copy
+[`config.local.env.example`](config.local.env.example) to `config.local.env`
+(gitignored) and set only the values you want to change there; it is sourced after
+`config.env`, so it overrides the defaults.
+
+For a one-off override without editing either file, export it in your shell so
+every script sees it:
+
+```sh
+export BENCH_ROWS=100000000
+benchmark/setup.sh
+benchmark/run.sh
+benchmark/report.sh
+```
+
+A `BENCH_ROWS=100000000 benchmark/setup.sh` prefix also works, but then repeat it
+for `run.sh` and `report.sh`, or they fall back to the file's default.
 
 ### Step 2 — create the benchmark database (once)
 
@@ -96,13 +118,13 @@ Open `benchmark/results/report.md`. It contains:
 - the **configuration** that produced the results and a **dataset** section (live
   source rows and blocks),
 - the **hardware and PostgreSQL settings** captured on this machine,
-- a **results table per strategy and chunk size**, one row per thread value, with
-  the number of chunks, the `rows/chunk` and `blocks/chunk` averages, the mean
+- a **results table per strategy, key and chunk size**, one row per thread value,
+  with the number of chunks, the `rows/chunk` and `blocks/chunk` averages, the mean
   range-calculation time, the mean chunk-run time, the mean total, and the speedup
   relative to the lowest thread value,
-- a **chart per strategy and chunk size** (`report-<strategy>-<chunk_size>.svg`,
-  generated next to the page) of the mean total time against the thread count,
-  embedded in the page.
+- a **chart per strategy, key and chunk size**
+  (`report-<strategy>-<chunk_size>-<pk_columns>.svg`, generated next to the page)
+  of the mean total time against the thread count, embedded in the page.
 
 The raw per-run data is `benchmark/results/benchmark.csv` (one row per measured
 run, tagged with the strategy and chunk unit); `benchmark/results/hardware.txt`,
@@ -124,19 +146,23 @@ Each run calls `run_migration_chunks` once and reads the run's timestamps back:
 | `range_seconds`   | `boundaries_calculated_at - started_at` — the boundary calculation       |
 | `chunk_seconds`   | `completed_at - boundaries_calculated_at` — the workload over all chunks |
 | `total_seconds`   | `completed_at - started_at`                                              |
+| `pk_columns`      | the primary-key columns, joined by `+` (for example `k1+k2`)             |
 
 Warm-up runs are not recorded. `report.sh` groups the rows by `(strategy,
-chunk_size)` and averages the timing columns per group and thread value, so runs
-with different chunk sizes are never combined.
+chunk_size, pk_columns)` and averages the timing columns per group and thread
+value, so runs with different chunk sizes or primary-key shapes are never
+combined.
 
 ## Parameters
 
-All parameters live in [`config.env`](config.env) and are documented there. The
-ones you are most likely to change:
+All parameters live in [`config.env`](config.env) and are documented there; put
+personal overrides in a gitignored `config.local.env` (copy
+`config.local.env.example`). The ones you are most likely to change:
 
 | parameter                                 | default                | purpose                                                 |
 |-------------------------------------------|------------------------|---------------------------------------------------------|
 | `BENCH_ROWS`                              | `1000000`              | synthetic source rows                                   |
+| `BENCH_PK_COLUMNS`                        | `1`                    | number of bigint primary-key columns (1 to 3)           |
 | `BENCH_CHUNK_SIZE`                        | `1000`                 | chunk size, in the unit of `BENCH_CHUNK_BY`             |
 | `BENCH_CHUNK_BY`                          | `primary_key`          | chunking strategy: `primary_key` or `blocks`            |
 | `BENCH_THREADS_FROM` / `BENCH_THREADS_TO` | `1` / `20`             | thread sweep                                            |
@@ -180,27 +206,33 @@ database:
   needs no server change.
 - **Schema**: the changelog is applied to the container's `dml_utils` database by
   the Liquibase image, so the routines under test are exactly the repository's.
-- **Data**: `sql/create-source.sql` creates `benchmark.bench_source` with a
-  `bigint` primary key and deterministic payloads (`md5(id)`), so refreshing the
-  database reproduces the table exactly. `benchmark.bench_target` is the
-  throwaway destination.
+- **Data**: `sql/create-source.sql` creates `benchmark.bench_source` with
+  `BENCH_PK_COLUMNS` bigint key columns (`k1..kN`) and deterministic key tuples
+  and payloads, so refreshing the database reproduces the table exactly.
+  `benchmark.bench_target` is the throwaway destination, with the same key
+  columns.
 
-All database access goes through `docker exec`, so no host `psql` is required.
+All database access goes through `docker exec`, so no host `psql` is required;
+use `benchmark/psql.sh` for an interactive session. To remove the container and
+reclaim its disk space, run `benchmark/teardown.sh` (the host results are kept;
+recreate with `benchmark/setup.sh`).
 
 ## Files
 
 ```
 benchmark/
   config.env              every parameter (edit this to change the sweep)
+  config.local.env.example  template for gitignored personal overrides
   setup.sh                create/refresh the dedicated benchmark database
   run.sh                  run the sweep, appending results/<BENCH_CSV>
   report.sh               format the results into results/<BENCH_REPORT>
   chart.awk               render the mean total time as the report's SVG chart
   psql.sh                 open a psql session on the benchmark container
+  teardown.sh             remove the container, data volume and network
   sql/create-source.sql   deterministic synthetic source table + data
   sql/create-target.sql   throwaway destination the workload inserts into
   results/                generated: benchmark.csv, report.md,
-                          report-<strategy>-<chunk_size>.svg, dataset.txt, hardware.txt, ...
+                          report-<strategy>-<chunk_size>-<pk_columns>.svg, dataset.txt, ...
 ```
 
 ## Caveats

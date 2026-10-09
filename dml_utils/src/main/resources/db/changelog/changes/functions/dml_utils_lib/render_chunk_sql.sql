@@ -22,17 +22,25 @@ DECLARE
     l_driving_table_sentinel   constant text    := pg_catalog.chr(1);
     l_chunking_clause_sentinel constant text    := pg_catalog.chr(2);
     l_driving_table                     text;
-    l_start_tuple                       text;
-    l_end_tuple                         text;
-    l_column_tuple                      text;
+    l_column_count                      integer;
+    l_column_names                      text[];
+    l_start_literals                    text[];
+    l_end_literals                      text[];
+    l_boxes                             text[];
+    l_box                               text;
     l_chunking_clause                   text;
     l_rendered                          text;
     l_kind                              text;
+    l_collation                         text;
+    l_start_less_than_end               boolean;
     l_start_bigint                      bigint;
     l_end_bigint                        bigint;
     l_start_uuid                        uuid;
     l_end_uuid                          uuid;
+    -- Direction of the first differing column (-1 start < end, 1 start > end,
+    -- 0 all equal) and its position, which selects the box decomposition.
     l_first_difference                  integer := 0;
+    l_first_difference_position         integer := 0;
 BEGIN
     PERFORM dml_utils_lib.assert_chunking_template(i_sql_text => i_sql_text);
 
@@ -65,13 +73,15 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
 
-    -- Build the alias-qualified column tuple and the two value tuples. The kind
-    -- selects the explicit cast and is interpolated into the SQL, so it must be
-    -- one of the known kinds (never caller SQL); the values are quoted with %L.
-    l_column_tuple := '';
-    l_start_tuple := '';
-    l_end_tuple := '';
-    FOR l_position IN 1..pg_catalog.array_length(i_primary_key_columns, 1)
+    -- Validate each column and build its alias-qualified reference and its two
+    -- cast literals. The kind selects the explicit cast and is interpolated into
+    -- the SQL, so it must be one of the known kinds (never caller SQL); the values
+    -- are quoted with %L.
+    l_column_count := pg_catalog.array_length(i_primary_key_columns, 1);
+    l_column_names := ARRAY []::text[];
+    l_start_literals := ARRAY []::text[];
+    l_end_literals := ARRAY []::text[];
+    FOR l_position IN 1..l_column_count
         LOOP
             l_kind := i_key_kinds[l_position];
 
@@ -104,12 +114,6 @@ BEGIN
 
             -- A non-NULL value that is not a valid literal for its kind would be
             -- emitted into the chunk SQL and only fail when a worker parses it;
-            -- validate by casting here so the failure is not deferred. text accepts
-            -- any value, so only bigint and uuid need a cast (literals, not
-            -- pg_input_is_valid, whose type-name argument PL/pgSQL caches per
-            -- expression and which therefore misfires in this loop).
-            -- A non-NULL value that is not a valid literal for its kind would be
-            -- emitted into the chunk SQL and only fail when a worker parses it;
             -- validate by casting here (and keep the typed value for the range
             -- check below), so the failure is not deferred. text accepts any
             -- value, so only bigint and uuid need a cast (literals, not
@@ -123,20 +127,53 @@ BEGIN
                     l_end_bigint := i_end_values[l_position]::bigint;
                     IF l_first_difference = 0 AND l_start_bigint IS DISTINCT FROM l_end_bigint THEN
                         l_first_difference := CASE WHEN l_start_bigint < l_end_bigint THEN -1 ELSE 1 END;
+                        l_first_difference_position := l_position;
                     END IF;
                 ELSIF l_kind = 'uuid' THEN
                     l_start_uuid := i_start_values[l_position]::uuid;
                     l_end_uuid := i_end_values[l_position]::uuid;
                     IF l_first_difference = 0 AND l_start_uuid IS DISTINCT FROM l_end_uuid THEN
                         l_first_difference := CASE WHEN l_start_uuid < l_end_uuid THEN -1 ELSE 1 END;
+                        l_first_difference_position := l_position;
                     END IF;
                 ELSE
-                    -- text compares with the database collation, as the predicate will.
+                    -- text must be ordered under the column's own collation, which
+                    -- is what the predicate uses; the session default can order the
+                    -- same strings differently (for example 'a' < 'B' under
+                    -- en-x-icu but not under C), which would wrongly reject a valid
+                    -- chunk. Look the column's collation up from the catalog.
                     IF l_first_difference = 0
                         AND i_start_values[l_position] IS DISTINCT FROM i_end_values[l_position]
                     THEN
-                        l_first_difference :=
-                                CASE WHEN i_start_values[l_position] < i_end_values[l_position] THEN -1 ELSE 1 END;
+                        l_collation := NULL;
+                        SELECT CASE
+                                   WHEN a.attcollation = 0 THEN 'default'
+                                   ELSE pg_catalog.quote_ident(c.collname)
+                                   END
+                        INTO l_collation
+                        FROM pg_catalog.pg_attribute AS a
+                                 LEFT JOIN pg_catalog.pg_collation AS c
+                                           ON c.oid = a.attcollation
+                        WHERE a.attrelid = pg_catalog.to_regclass(
+                                pg_catalog.format('%I.%I', i_schema_name, i_table_name))
+                          AND a.attname = i_primary_key_columns[l_position];
+
+                        IF l_collation IS NULL THEN
+                            -- The column is not in the catalog (a renderer unit
+                            -- test with a synthetic table); compare as the default
+                            -- collation, which is what the predicate would use.
+                            l_start_less_than_end :=
+                                    i_start_values[l_position] < i_end_values[l_position];
+                        ELSE
+                            EXECUTE pg_catalog.format(
+                                    'SELECT %L::text COLLATE %s < %L::text COLLATE %s',
+                                    i_start_values[l_position], l_collation,
+                                    i_end_values[l_position], l_collation)
+                                INTO l_start_less_than_end;
+                        END IF;
+
+                        l_first_difference := CASE WHEN l_start_less_than_end THEN -1 ELSE 1 END;
+                        l_first_difference_position := l_position;
                     END IF;
                 END IF;
             EXCEPTION
@@ -147,18 +184,15 @@ BEGIN
                         USING ERRCODE = '22023';
             END;
 
-            l_column_tuple := l_column_tuple || pg_catalog.format('%s%I.%I',
-                                                                  CASE WHEN l_position > 1 THEN ', ' ELSE '' END,
+            l_column_names := l_column_names || pg_catalog.format('%I.%I',
                                                                   i_table_alias,
                                                                   i_primary_key_columns[l_position]);
-            l_start_tuple := l_start_tuple || pg_catalog.format('%s%L::%s',
-                                                                CASE WHEN l_position > 1 THEN ', ' ELSE '' END,
-                                                                i_start_values[l_position],
-                                                                l_kind);
-            l_end_tuple := l_end_tuple || pg_catalog.format('%s%L::%s',
-                                                            CASE WHEN l_position > 1 THEN ', ' ELSE '' END,
-                                                            i_end_values[l_position],
-                                                            l_kind);
+            l_start_literals := l_start_literals || pg_catalog.format('%L::%s',
+                                                                      i_start_values[l_position],
+                                                                      l_kind);
+            l_end_literals := l_end_literals || pg_catalog.format('%L::%s',
+                                                                  i_end_values[l_position],
+                                                                  l_kind);
         END LOOP;
 
     -- The driving table is referenced as "<schema>.<table> <alias>" so the
@@ -177,15 +211,131 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
 
-    -- The row-value range predicate is parenthesized so it drops into a template
-    -- clause verbatim. The final chunk uses an inclusive upper bound so the
-    -- captured maximum row is processed; every other chunk is half-open. A
-    -- one-column key degenerates to an ordinary scalar comparison.
-    l_chunking_clause := pg_catalog.format(
-            '((%s) >= (%s) AND (%s) %s (%s))',
-            l_column_tuple, l_start_tuple, l_column_tuple,
-            CASE WHEN i_is_final THEN '<=' ELSE '<' END,
-            l_end_tuple);
+    -- Emit the chunk as a disjunction of axis-aligned boxes that exactly tiles the
+    -- lexicographic range [start, end). Each box is a prefix of equalities plus a
+    -- range on the next column, so PostgreSQL estimates it column by column and
+    -- consumes it as a tight index range. A single row-value comparison instead
+    -- multiplies the two bounds' selectivities independently, which overestimates
+    -- a mid-table chunk enough to prefer a sequential scan of the whole table.
+    --
+    -- Let d be the first column whose bounds differ. The boxes are the lower tail
+    -- (c_d = start_d and the suffix >= the lower suffix), the middle
+    -- (start_d < c_d < end_d) and the upper tail (c_d = end_d and the suffix < the
+    -- upper suffix, inclusive on the last column for the final chunk): 2*(n-d)+1
+    -- boxes in all. A key that differs only in its last column is a single scalar
+    -- range, and a key whose bounds are all equal is a single row.
+    l_boxes := ARRAY []::text[];
+    IF l_first_difference_position = 0 THEN
+        -- All columns equal: exactly one row (a final chunk only; the check above
+        -- rejects it otherwise).
+        l_box := '';
+        FOR l_position IN 1..l_column_count
+            LOOP
+                l_box := l_box || pg_catalog.format('%s%s = %s',
+                                                    CASE WHEN l_position > 1 THEN ' AND ' ELSE '' END,
+                                                    l_column_names[l_position],
+                                                    l_start_literals[l_position]);
+            END LOOP;
+        l_boxes := l_boxes || l_box;
+    ELSIF l_first_difference_position = l_column_count THEN
+        -- Only the last column differs: one box, a half-open (final: closed) scalar
+        -- range after the fixed prefix.
+        l_box := '';
+        FOR l_position IN 1..l_column_count - 1
+            LOOP
+                l_box := l_box || pg_catalog.format('%s = %s AND ',
+                                                    l_column_names[l_position],
+                                                    l_start_literals[l_position]);
+            END LOOP;
+        l_box := l_box || pg_catalog.format('%s >= %s AND %s %s %s',
+                                            l_column_names[l_column_count],
+                                            l_start_literals[l_column_count],
+                                            l_column_names[l_column_count],
+                                            CASE WHEN i_is_final THEN '<=' ELSE '<' END,
+                                            l_end_literals[l_column_count]);
+        l_boxes := l_boxes || l_box;
+    ELSE
+        -- Lower tail: c_d = start_d and the suffix >= the lower suffix. One box per
+        -- suffix column: c_j > start_j, and >= start_n on the last column.
+        FOR l_j IN l_first_difference_position + 1..l_column_count
+            LOOP
+                l_box := '';
+                FOR l_position IN 1..l_first_difference_position
+                    LOOP
+                        l_box := l_box || pg_catalog.format('%s = %s AND ',
+                                                            l_column_names[l_position],
+                                                            l_start_literals[l_position]);
+                    END LOOP;
+                FOR l_position IN l_first_difference_position + 1..l_j - 1
+                    LOOP
+                        l_box := l_box || pg_catalog.format('%s = %s AND ',
+                                                            l_column_names[l_position],
+                                                            l_start_literals[l_position]);
+                    END LOOP;
+                IF l_j < l_column_count THEN
+                    l_box := l_box || pg_catalog.format('%s > %s',
+                                                        l_column_names[l_j],
+                                                        l_start_literals[l_j]);
+                ELSE
+                    l_box := l_box || pg_catalog.format('%s >= %s',
+                                                        l_column_names[l_j],
+                                                        l_start_literals[l_j]);
+                END IF;
+                l_boxes := l_boxes || l_box;
+            END LOOP;
+
+        -- Middle: start_d < c_d < end_d, after the fixed prefix.
+        l_box := '';
+        FOR l_position IN 1..l_first_difference_position - 1
+            LOOP
+                l_box := l_box || pg_catalog.format('%s = %s AND ',
+                                                    l_column_names[l_position],
+                                                    l_start_literals[l_position]);
+            END LOOP;
+        l_box := l_box || pg_catalog.format('%s > %s AND %s < %s',
+                                            l_column_names[l_first_difference_position],
+                                            l_start_literals[l_first_difference_position],
+                                            l_column_names[l_first_difference_position],
+                                            l_end_literals[l_first_difference_position]);
+        l_boxes := l_boxes || l_box;
+
+        -- Upper tail: c_d = end_d and the suffix < the upper suffix. One box per
+        -- suffix column: c_j < end_j, and <= end_n on the last column for the
+        -- final chunk (so the captured maximum row is processed).
+        FOR l_j IN l_first_difference_position + 1..l_column_count
+            LOOP
+                l_box := '';
+                FOR l_position IN 1..l_first_difference_position - 1
+                    LOOP
+                        l_box := l_box || pg_catalog.format('%s = %s AND ',
+                                                            l_column_names[l_position],
+                                                            l_start_literals[l_position]);
+                    END LOOP;
+                l_box := l_box || pg_catalog.format('%s = %s AND ',
+                                                    l_column_names[l_first_difference_position],
+                                                    l_end_literals[l_first_difference_position]);
+                FOR l_position IN l_first_difference_position + 1..l_j - 1
+                    LOOP
+                        l_box := l_box || pg_catalog.format('%s = %s AND ',
+                                                            l_column_names[l_position],
+                                                            l_end_literals[l_position]);
+                    END LOOP;
+                IF l_j < l_column_count THEN
+                    l_box := l_box || pg_catalog.format('%s < %s',
+                                                        l_column_names[l_j],
+                                                        l_end_literals[l_j]);
+                ELSE
+                    l_box := l_box || pg_catalog.format('%s %s %s',
+                                                        l_column_names[l_j],
+                                                        CASE WHEN i_is_final THEN '<=' ELSE '<' END,
+                                                        l_end_literals[l_j]);
+                END IF;
+                l_boxes := l_boxes || l_box;
+            END LOOP;
+    END IF;
+
+    -- Parenthesized so the disjunction drops into a template clause verbatim.
+    l_chunking_clause := '(' || pg_catalog.array_to_string(l_boxes, ' OR ') || ')';
 
     -- A quoted identifier, or the caller's template, could in principle contain a
     -- sentinel character; reject that so the substitution below stays unambiguous.
@@ -216,5 +366,8 @@ COMMENT ON FUNCTION dml_utils_lib.render_chunk_sql IS
     'Returns the SQL template with <driving_table> and <chunking_clause> '
         'substituted for the given table, alias, primary-key columns and chunk '
         'range; each key kind (bigint, text or uuid) selects the explicit cast. '
-        'The final chunk uses an inclusive upper bound, and a NULL boundary value '
-        'is rejected.';
+        'The chunking clause is a disjunction of axis-aligned boxes that exactly '
+        'tiles the lexicographic range, so the planner estimates it column by '
+        'column and uses the primary-key index. The final chunk uses an inclusive '
+        'upper bound, and a NULL boundary value is rejected. A text key is ordered '
+        'under its column''s collation, matching the predicate.';

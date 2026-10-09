@@ -9,6 +9,7 @@ DROP TABLE IF EXISTS
     dml_utils_fixtures.test_no_pk,
     dml_utils_fixtures.test_composite_pk,
     dml_utils_fixtures.test_composite_mixed,
+    dml_utils_fixtures.test_composite_collated,
     dml_utils_fixtures.test_numeric,
     dml_utils_fixtures.test_composite_three,
     dml_utils_fixtures.test_composite_id1,

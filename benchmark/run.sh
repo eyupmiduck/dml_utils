@@ -13,6 +13,10 @@ set -eu
 
 here="$(cd "$(dirname "$0")" && pwd)"
 . "$here/config.env"
+# Optional personal overrides, kept out of git (copy config.local.env.example).
+if [ -f "$here/config.local.env" ]; then
+    . "$here/config.local.env"
+fi
 
 # The chunk-size unit is determined by the strategy.
 case "$BENCH_CHUNK_BY" in
@@ -20,6 +24,15 @@ case "$BENCH_CHUNK_BY" in
     blocks) chunk_unit="blocks" ;;
     *) echo "BENCH_CHUNK_BY must be primary_key or blocks: $BENCH_CHUNK_BY" >&2; exit 2 ;;
 esac
+
+# The key column names (k1..kN), joined by '+' so a report group key has no
+# spaces.
+pk_columns_csv=""
+_pk_i=0
+while [ "$_pk_i" -lt "$BENCH_PK_COLUMNS" ]; do
+    _pk_i=$((_pk_i + 1))
+    pk_columns_csv="${pk_columns_csv:+$pk_columns_csv+}k$_pk_i"
+done
 
 usage() {
     echo "usage: $0 [--reset]" >&2
@@ -49,7 +62,7 @@ results_dir="$here/$BENCH_RESULTS_DIR"
 csv="$results_dir/$BENCH_CSV"
 mkdir -p "$results_dir"
 if [ "$reset" = 1 ] || [ ! -f "$csv" ]; then
-    printf 'strategy,chunk_unit,chunk_size,threads,run,chunks,range_seconds,chunk_seconds,total_seconds\n' > "$csv"
+    printf 'strategy,chunk_unit,chunk_size,threads,run,chunks,range_seconds,chunk_seconds,total_seconds,pk_columns\n' > "$csv"
 fi
 
 psql_run() {
@@ -116,14 +129,16 @@ SQL
 )"
 
     if [ "$record" = 1 ]; then
-        printf '%s,%s,%s,%s,%s,%s\n' "$BENCH_CHUNK_BY" "$chunk_unit" "$BENCH_CHUNK_SIZE" "$threads" "$run_no" "$row" >> "$csv"
+        printf '%s,%s,%s,%s,%s,%s,%s\n' "$BENCH_CHUNK_BY" "$chunk_unit" "$BENCH_CHUNK_SIZE" "$threads" "$run_no" "$row" "$pk_columns_csv" >> "$csv"
         echo "strategy=$BENCH_CHUNK_BY threads=$threads run=$run_no chunks=$(printf '%s' "$row" | cut -d, -f1) range=$(printf '%s' "$row" | cut -d, -f2)s chunk=$(printf '%s' "$row" | cut -d, -f3)s total=$(printf '%s' "$row" | cut -d, -f4)s" >&2
     else
         echo "strategy=$BENCH_CHUNK_BY threads=$threads warmup=$run_no done" >&2
     fi
 }
 
-echo "sweep: strategy=${BENCH_CHUNK_BY} (${chunk_unit}), threads ${BENCH_THREADS_FROM}..${BENCH_THREADS_TO}, ${BENCH_RUNS} measured + ${BENCH_WARMUP_RUNS} warm-up run(s) each" >&2
+# Report the dataset the sweep runs against.
+src_rows="$(psql_run -At -c "SELECT count(*) FROM ${BENCH_SCHEMA}.${BENCH_SOURCE_TABLE}")"
+echo "sweep: strategy=${BENCH_CHUNK_BY} (${chunk_unit}), ${BENCH_PK_COLUMNS} pk column(s), ${src_rows} rows, threads ${BENCH_THREADS_FROM}..${BENCH_THREADS_TO}, ${BENCH_RUNS} measured + ${BENCH_WARMUP_RUNS} warm-up run(s) each" >&2
 threads="$BENCH_THREADS_FROM"
 while [ "$threads" -le "$BENCH_THREADS_TO" ]; do
     warmup=1

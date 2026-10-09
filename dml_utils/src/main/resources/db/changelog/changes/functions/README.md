@@ -535,11 +535,19 @@ RETURNS text
 
 `STABLE`, `SECURITY INVOKER`. Validates the template (see
 `assert_chunking_template`) and returns it with `<driving_table>` replaced by
-`"<schema>"."<table>" "<alias>"` and `<chunking_clause>` replaced by the
-parenthesized row-value range predicate
-`((<alias>.<pk1>, ...) >= ('<start1>'::<kind1>, ...) AND (<alias>.<pk1>, ...)
-<op> ('<end1>'::<kind1>, ...))`, where `<op>` is `<` normally and `<=` for the
-final chunk; a one-column key degenerates to an ordinary scalar comparison. Each
+`"<schema>"."<table>" "<alias>"` and `<chunking_clause>` replaced by a
+parenthesized disjunction of axis-aligned boxes that exactly tiles the
+lexicographic key range `[start, end)`. Let `d` be the first key column whose
+start and end differ; the boxes are the lower tail (`c_d = start_d` and the
+suffix `>=` the lower suffix), the middle (`start_d < c_d < end_d`) and the upper
+tail (`c_d = end_d` and the suffix `<` the upper suffix), i.e. `2*(n-d)+1` boxes
+for an `n`-column key (a three-column key uses 5, 3 or 1 boxes). The final
+chunk's last upper bound is `<=` so the captured maximum row is included; a key
+that differs only in its last column is a single scalar range and a key whose
+bounds are all equal is a single row. Each box is a prefix of equalities plus a
+range on the next column, so PostgreSQL estimates it column by column and uses
+the primary-key index, where a single row-value comparison is mis-estimated and
+can sequential-scan the whole table. Each
 `i_key_kinds` entry must be `bigint`, `text` or `uuid` and is interpolated as the
 literal's cast, so any other value raises `22023`; the arrays must all have the
 same length, and a NULL start or end value raises `22023` (a NULL would render

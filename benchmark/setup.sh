@@ -17,6 +17,10 @@ set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 repo_root="$(cd "$here/.." && pwd)"
 . "$here/config.env"
+# Optional personal overrides, kept out of git (copy config.local.env.example).
+if [ -f "$here/config.local.env" ]; then
+    . "$here/config.local.env"
+fi
 
 usage() {
     echo "usage: $0 [--refresh]" >&2
@@ -114,16 +118,44 @@ if ! psql_run -At -c "SELECT 1 FROM pg_catalog.pg_proc p
             update"
 fi
 
+# Build the primary-key SQL fragments from BENCH_PK_COLUMNS, the number of key
+# columns (1 to 3; all bigint, named k1..kN). The row number g maps to a unique
+# key tuple by base-mod digits: with p columns and modulus m = ceil(rows^(1/p)),
+# the i-th column is ((g - 1) / m^(p-i)) % m + 1, so m^p >= rows makes the tuples
+# unique.
+pk_count="$BENCH_PK_COLUMNS"
+if [ "$pk_count" -lt 1 ] || [ "$pk_count" -gt 3 ]; then
+    echo "BENCH_PK_COLUMNS must be 1, 2 or 3: $BENCH_PK_COLUMNS" >&2
+    exit 2
+fi
+pk_mod="$(awk -v n="$BENCH_ROWS" -v p="$pk_count" 'BEGIN { m = 1; while (m ^ p < n) m++; print m }')"
+pk_def=""
+pk_key=""
+pk_exprs=""
+pk_i=0
+while [ "$pk_i" -lt "$pk_count" ]; do
+    pk_i=$((pk_i + 1))
+    pk_name="k$pk_i"
+    pk_def="${pk_def:+$pk_def, }$pk_name bigint"
+    pk_key="${pk_key:+$pk_key, }$pk_name"
+    pk_div="$(awk -v m="$pk_mod" -v e="$((pk_count - pk_i))" 'BEGIN { print m ^ e }')"
+    pk_exprs="${pk_exprs:+$pk_exprs, }((g - 1) / $pk_div) % $pk_mod + 1"
+done
+
 # Deterministic source data, then the throwaway target.
-echo "creating benchmark tables ($BENCH_ROWS source rows) ..." >&2
+echo "creating benchmark tables ($BENCH_ROWS source rows, $BENCH_PK_COLUMNS-column key) ..." >&2
 psql_stdin -v ON_ERROR_STOP=1 \
     -v schema="$BENCH_SCHEMA" \
     -v source_table="$BENCH_SOURCE_TABLE" \
     -v rows="$BENCH_ROWS" \
+    -v pk_def="$pk_def" \
+    -v pk_key="$pk_key" \
+    -v pk_exprs="$pk_exprs" \
     -f - < "$here/sql/create-source.sql"
 psql_stdin -v ON_ERROR_STOP=1 \
     -v schema="$BENCH_SCHEMA" \
     -v target_table="$BENCH_TARGET_TABLE" \
+    -v pk_def="$pk_def" \
     -f - < "$here/sql/create-target.sql"
 
 echo "benchmark database ready: $BENCH_CONTAINER / $BENCH_DB" >&2

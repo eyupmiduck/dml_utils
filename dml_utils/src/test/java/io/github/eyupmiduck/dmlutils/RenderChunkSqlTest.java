@@ -4,18 +4,27 @@ import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeCollated.TEST_COMPOSITE_COLLATED;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositePk.TEST_COMPOSITE_PK;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeThree.TEST_COMPOSITE_THREE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Verifies {@code dml_utils_lib.assert_chunking_template} and
  * {@code dml_utils_lib.render_chunk_sql}: the template tokens must appear
  * exactly once, and substitution produces the expected driving-table reference
- * and half-open (or inclusive, for the final chunk) row-value range predicate
- * with an explicitly cast key literal per column.
+ * and a disjunction of axis-aligned boxes that tiles the half-open (or
+ * inclusive, for the final chunk) key range, with an explicitly cast key
+ * literal per column.
  */
 class RenderChunkSqlTest extends PostgresTestBase {
 
@@ -63,8 +72,8 @@ class RenderChunkSqlTest extends PostgresTestBase {
 
     /**
      * Substitution produces the qualified, aliased driving-table reference and
-     * a non-final (half-open) range predicate with an explicit bigint cast. A
-     * one-column key renders as a one-element row.
+     * a non-final (half-open) scalar range with an explicit bigint cast. A
+     * one-column key renders as a single box.
      */
     @Test
     void rendersNonFinalChunk() {
@@ -72,7 +81,7 @@ class RenderChunkSqlTest extends PostgresTestBase {
 
         assertEquals(
                 "UPDATE public.src t SET processed = true"
-                        + " WHERE ((t.id) >= ('10'::bigint) AND (t.id) < ('20'::bigint))",
+                        + " WHERE (t.id >= '10'::bigint AND t.id < '20'::bigint)",
                 rendered);
     }
 
@@ -85,7 +94,7 @@ class RenderChunkSqlTest extends PostgresTestBase {
 
         assertEquals(
                 "UPDATE public.src t SET processed = true"
-                        + " WHERE ((t.id) >= ('30'::bigint) AND (t.id) <= ('40'::bigint))",
+                        + " WHERE (t.id >= '30'::bigint AND t.id <= '40'::bigint)",
                 rendered);
     }
 
@@ -145,7 +154,7 @@ class RenderChunkSqlTest extends PostgresTestBase {
     void rejectsEqualNonFinalOrReversedRanges() {
         assertEquals(
                 "UPDATE public.src t SET processed = true"
-                        + " WHERE ((t.id) >= ('40'::bigint) AND (t.id) <= ('40'::bigint))",
+                        + " WHERE (t.id = '40'::bigint)",
                 render(true, "bigint", "40", "40"));
         assertSqlState("22023", () -> render(false, "bigint", "40", "40"));
         assertSqlState("22023", () -> render(false, "bigint", "40", "30"));
@@ -161,7 +170,7 @@ class RenderChunkSqlTest extends PostgresTestBase {
 
         assertEquals(
                 "UPDATE public.src t SET processed = true"
-                        + " WHERE ((t.id) >= ('abc'::text) AND (t.id) < ('def'::text))",
+                        + " WHERE (t.id >= 'abc'::text AND t.id < 'def'::text)",
                 rendered);
     }
 
@@ -177,17 +186,17 @@ class RenderChunkSqlTest extends PostgresTestBase {
 
         assertEquals(
                 "UPDATE public.src t SET processed = true"
-                        + " WHERE ((t.id) >= ('11223344-5566-7788-99aa-bbccddeeff00'::uuid)"
-                        + " AND (t.id) < ('11223344-5566-7788-99aa-bbccddeeff01'::uuid))",
+                        + " WHERE (t.id >= '11223344-5566-7788-99aa-bbccddeeff00'::uuid"
+                        + " AND t.id < '11223344-5566-7788-99aa-bbccddeeff01'::uuid)",
                 rendered);
     }
 
     /**
-     * A composite key renders as a row-value comparison with one explicitly cast
-     * literal per column, in key order.
+     * A two-column key whose first column differs renders as three boxes (lower
+     * tail, middle, upper tail) with one explicitly cast literal per column.
      */
     @Test
-    void rendersCompositeKeyAsARowValueComparison() {
+    void rendersCompositeKeyAsADisjunctionOfBoxes() {
         String rendered = Routines.renderChunkSql(
                 dsl.configuration(), TEMPLATE, "public", "src", "t",
                 new String[]{"a", "b"}, new String[]{"bigint", "text"},
@@ -195,17 +204,19 @@ class RenderChunkSqlTest extends PostgresTestBase {
 
         assertEquals(
                 "UPDATE public.src t SET processed = true"
-                        + " WHERE ((t.a, t.b) >= ('1'::bigint, 'x'::text)"
-                        + " AND (t.a, t.b) < ('2'::bigint, 'y'::text))",
+                        + " WHERE (t.a = '1'::bigint AND t.b >= 'x'::text"
+                        + " OR t.a > '1'::bigint AND t.a < '2'::bigint"
+                        + " OR t.a = '2'::bigint AND t.b < 'y'::text)",
                 rendered);
     }
 
     /**
-     * A three-column, mixed-kind key renders one explicitly cast literal per
-     * column, in key order.
+     * A three-column, mixed-kind key whose first column differs renders as five
+     * boxes (two lower-tail, middle, two upper-tail), each with explicitly cast
+     * literals, in key order.
      */
     @Test
-    void rendersAThreeColumnCompositeKeyAsARowValueComparison() {
+    void rendersAThreeColumnCompositeKeyAsADisjunctionOfBoxes() {
         String startUuid = new UUID(0x1122334455667788L, 0x99aabbccddeeff00L).toString();
         String endUuid = new UUID(0x1122334455667788L, 0x99aabbccddeeff01L).toString();
 
@@ -216,10 +227,31 @@ class RenderChunkSqlTest extends PostgresTestBase {
 
         assertEquals(
                 "UPDATE public.src t SET processed = true"
-                        + " WHERE ((t.a, t.b, t.c) >= ('1'::bigint, 'x'::text,"
-                        + " '11223344-5566-7788-99aa-bbccddeeff00'::uuid)"
-                        + " AND (t.a, t.b, t.c) < ('2'::bigint, 'y'::text,"
-                        + " '11223344-5566-7788-99aa-bbccddeeff01'::uuid))",
+                        + " WHERE (t.a = '1'::bigint AND t.b > 'x'::text"
+                        + " OR t.a = '1'::bigint AND t.b = 'x'::text"
+                        + " AND t.c >= '11223344-5566-7788-99aa-bbccddeeff00'::uuid"
+                        + " OR t.a > '1'::bigint AND t.a < '2'::bigint"
+                        + " OR t.a = '2'::bigint AND t.b < 'y'::text"
+                        + " OR t.a = '2'::bigint AND t.b = 'y'::text"
+                        + " AND t.c < '11223344-5566-7788-99aa-bbccddeeff01'::uuid)",
+                rendered);
+    }
+
+    /**
+     * A key that differs only in its last column renders as a single box: a
+     * half-open (or inclusive, final) scalar range after the fixed prefix.
+     */
+    @Test
+    void rendersAKeyThatDiffersOnlyInItsLastColumnAsOneBox() {
+        String rendered = Routines.renderChunkSql(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{"a", "b", "c"}, new String[]{"bigint", "bigint", "bigint"},
+                new String[]{"7", "8", "9"}, new String[]{"7", "8", "20"}, false);
+
+        assertEquals(
+                "UPDATE public.src t SET processed = true"
+                        + " WHERE (t.a = '7'::bigint AND t.b = '8'::bigint"
+                        + " AND t.c >= '9'::bigint AND t.c < '20'::bigint)",
                 rendered);
     }
 
@@ -236,8 +268,9 @@ class RenderChunkSqlTest extends PostgresTestBase {
 
         assertEquals(
                 "UPDATE public.src t SET processed = true"
-                        + " WHERE ((t.a, t.b) >= ('1'::bigint, 'x'::text)"
-                        + " AND (t.a, t.b) <= ('2'::bigint, 'y'::text))",
+                        + " WHERE (t.a = '1'::bigint AND t.b >= 'x'::text"
+                        + " OR t.a > '1'::bigint AND t.a < '2'::bigint"
+                        + " OR t.a = '2'::bigint AND t.b <= 'y'::text)",
                 rendered);
     }
 
@@ -251,7 +284,7 @@ class RenderChunkSqlTest extends PostgresTestBase {
 
         assertEquals(
                 "UPDATE public.src t SET processed = true"
-                        + " WHERE ((t.id) >= ('O''Brien'::text) AND (t.id) < ('O''Dad'::text))",
+                        + " WHERE (t.id >= 'O''Brien'::text AND t.id < 'O''Dad'::text)",
                 rendered);
     }
 
@@ -337,7 +370,7 @@ class RenderChunkSqlTest extends PostgresTestBase {
 
         assertEquals(
                 "UPDATE public.src s SET processed = true"
-                        + " WHERE ((s.pk) >= ('5'::bigint) AND (s.pk) < ('15'::bigint))",
+                        + " WHERE (s.pk >= '5'::bigint AND s.pk < '15'::bigint)",
                 rendered);
     }
 
@@ -353,7 +386,7 @@ class RenderChunkSqlTest extends PostgresTestBase {
 
         assertEquals(
                 "UPDATE public.src src_row SET processed = true"
-                        + " WHERE ((src_row.id) >= ('1'::bigint) AND (src_row.id) < ('2'::bigint))",
+                        + " WHERE (src_row.id >= '1'::bigint AND src_row.id < '2'::bigint)",
                 rendered);
     }
 
@@ -378,8 +411,8 @@ class RenderChunkSqlTest extends PostgresTestBase {
 
         assertEquals(
                 "UPDATE \"my schema\".\"my table\" \"x\"\"y\" SET processed = true"
-                        + " WHERE ((\"x\"\"y\".\"pk\"\"col\") >= ('1'::bigint)"
-                        + " AND (\"x\"\"y\".\"pk\"\"col\") < ('2'::bigint))",
+                        + " WHERE (\"x\"\"y\".\"pk\"\"col\" >= '1'::bigint"
+                        + " AND \"x\"\"y\".\"pk\"\"col\" < '2'::bigint)",
                 rendered);
     }
 
@@ -404,7 +437,7 @@ class RenderChunkSqlTest extends PostgresTestBase {
 
         assertEquals(
                 "UPDATE public.\"<chunking_clause>\" t SET processed = true"
-                        + " WHERE ((t.id) >= ('1'::bigint) AND (t.id) < ('2'::bigint))",
+                        + " WHERE (t.id >= '1'::bigint AND t.id < '2'::bigint)",
                 rendered);
     }
 
@@ -518,6 +551,299 @@ class RenderChunkSqlTest extends PostgresTestBase {
                 dsl.configuration(), TEMPLATE, "public", "src", "t",
                 new String[]{""}, new String[]{"bigint"},
                 new String[]{"1"}, new String[]{"2"}, false));
+    }
+
+    /**
+     * The box disjunction selects exactly the same rows as the tuple-range
+     * predicate it replaces, for a two-column key: a straddle at the leading
+     * column (lower tail, middle, upper tail), an adjacent-value straddle whose
+     * middle box is empty, an equal leading column (single box), a final
+     * (inclusive) chunk and an all-equal single-row final chunk.
+     */
+    @Test
+    void boxDisjunctionSelectsTheSameRowsAsTheTupleRangeForATwoColumnKey() {
+        dsl.truncate(TEST_COMPOSITE_PK).execute();
+        for (long a = 1; a <= 4; a++) {
+            for (long b = 1; b <= 4; b++) {
+                dsl.insertInto(TEST_COMPOSITE_PK, TEST_COMPOSITE_PK.A, TEST_COMPOSITE_PK.B)
+                        .values(a, b).execute();
+            }
+        }
+
+        String schema = TEST_COMPOSITE_PK.getSchema().getName();
+        String table = TEST_COMPOSITE_PK.getName();
+        String[] columns = {"a", "b"};
+        String[] kinds = {"bigint", "bigint"};
+
+        assertBoxesMatchTupleRange(schema, table, columns, kinds, new String[]{"1", "3"}, new String[]{"3", "2"}, false);
+        assertBoxesMatchTupleRange(schema, table, columns, kinds, new String[]{"2", "3"}, new String[]{"3", "1"}, false);
+        assertBoxesMatchTupleRange(schema, table, columns, kinds, new String[]{"2", "1"}, new String[]{"2", "3"}, false);
+        assertBoxesMatchTupleRange(schema, table, columns, kinds, new String[]{"1", "3"}, new String[]{"3", "2"}, true);
+        assertBoxesMatchTupleRange(schema, table, columns, kinds, new String[]{"2", "1"}, new String[]{"2", "3"}, true);
+        assertBoxesMatchTupleRange(schema, table, columns, kinds, new String[]{"2", "2"}, new String[]{"2", "2"}, true);
+    }
+
+    /**
+     * The box disjunction selects exactly the same rows as the tuple-range
+     * predicate for a three-column, mixed-kind key whose physical column order
+     * differs from the key order: a straddle at the leading column (five boxes),
+     * an equal leading column (three boxes), an equal leading and second column
+     * (one box), and an inclusive final chunk.
+     */
+    @Test
+    void boxDisjunctionSelectsTheSameRowsAsTheTupleRangeForAThreeColumnKey() {
+        dsl.truncate(TEST_COMPOSITE_THREE).execute();
+        UUID first = new UUID(0, 1);
+        UUID second = new UUID(0, 2);
+        for (int b = 1; b <= 3; b++) {
+            for (String a : new String[]{"a1", "a2"}) {
+                for (UUID c : new UUID[]{first, second}) {
+                    dsl.insertInto(TEST_COMPOSITE_THREE,
+                                    TEST_COMPOSITE_THREE.A, TEST_COMPOSITE_THREE.B, TEST_COMPOSITE_THREE.C)
+                            .values(a, b, c).execute();
+                }
+            }
+        }
+
+        String schema = TEST_COMPOSITE_THREE.getSchema().getName();
+        String table = TEST_COMPOSITE_THREE.getName();
+        String[] columns = {"b", "a", "c"};
+        String[] kinds = {"bigint", "text", "uuid"};
+
+        assertBoxesMatchTupleRange(schema, table, columns, kinds,
+                new String[]{"1", "a2", first.toString()},
+                new String[]{"3", "a1", second.toString()}, false);
+        assertBoxesMatchTupleRange(schema, table, columns, kinds,
+                new String[]{"2", "a1", first.toString()},
+                new String[]{"2", "a2", second.toString()}, false);
+        assertBoxesMatchTupleRange(schema, table, columns, kinds,
+                new String[]{"2", "a1", first.toString()},
+                new String[]{"2", "a1", second.toString()}, false);
+        assertBoxesMatchTupleRange(schema, table, columns, kinds,
+                new String[]{"1", "a2", first.toString()},
+                new String[]{"3", "a1", second.toString()}, true);
+        assertBoxesMatchTupleRange(schema, table, columns, kinds,
+                new String[]{"2", "a1", first.toString()},
+                new String[]{"2", "a1", second.toString()}, true);
+    }
+
+    /**
+     * Over many randomly chosen ranges (both final and non-final), the box
+     * disjunction selects exactly the same rows as the tuple-range predicate it
+     * replaces, for a two-column and a three-column, mixed-kind key. This sweeps
+     * every shape of the decomposition, including a key that differs only in its
+     * last column and the inclusive final chunk (with and without a fixed
+     * prefix).
+     */
+    @Test
+    void boxDisjunctionMatchesTheTupleRangeOverRandomRanges() {
+        List<String[]> twoColumnKeys = new ArrayList<>();
+        dsl.truncate(TEST_COMPOSITE_PK).execute();
+        for (long a = 1; a <= 3; a++) {
+            for (long b = 1; b <= 3; b++) {
+                dsl.insertInto(TEST_COMPOSITE_PK, TEST_COMPOSITE_PK.A, TEST_COMPOSITE_PK.B)
+                        .values(a, b).execute();
+                twoColumnKeys.add(new String[]{Long.toString(a), Long.toString(b)});
+            }
+        }
+        assertRandomRangesMatch(TEST_COMPOSITE_PK.getSchema().getName(), TEST_COMPOSITE_PK.getName(),
+                new String[]{"a", "b"}, new String[]{"bigint", "bigint"}, twoColumnKeys, 150, 20261009L);
+
+        List<String[]> threeColumnKeys = new ArrayList<>();
+        dsl.truncate(TEST_COMPOSITE_THREE).execute();
+        UUID first = new UUID(0, 1);
+        UUID second = new UUID(0, 2);
+        for (int b = 1; b <= 2; b++) {
+            for (String a : new String[]{"a1", "a2"}) {
+                for (UUID c : new UUID[]{first, second}) {
+                    dsl.insertInto(TEST_COMPOSITE_THREE,
+                                    TEST_COMPOSITE_THREE.A, TEST_COMPOSITE_THREE.B, TEST_COMPOSITE_THREE.C)
+                            .values(a, b, c).execute();
+                    threeColumnKeys.add(new String[]{Integer.toString(b), a, c.toString()});
+                }
+            }
+        }
+        assertRandomRangesMatch(TEST_COMPOSITE_THREE.getSchema().getName(), TEST_COMPOSITE_THREE.getName(),
+                new String[]{"b", "a", "c"}, new String[]{"bigint", "text", "uuid"}, threeColumnKeys, 150, 20261010L);
+    }
+
+    /**
+     * A mid-table chunk over a multi-column key is estimated accurately rather
+     * than as a large fraction of the table: the box disjunction's EXPLAIN row
+     * estimate is within a small factor of the actual row count, and the plan
+     * stays on the index rather than degrading to a sequential scan. The
+     * equivalent single row-value comparison estimates the same chunk an order of
+     * magnitude too high, which is what tips a large table into a full scan.
+     */
+    @Test
+    void estimatesAMidTableChunkAccurately() {
+        dsl.execute("TRUNCATE dml_utils_fixtures.test_composite_pk");
+        dsl.execute("INSERT INTO dml_utils_fixtures.test_composite_pk (a, b)"
+                + " SELECT a, b FROM generate_series(1, 100) AS a, generate_series(1, 100) AS b");
+        dsl.execute("ANALYZE dml_utils_fixtures.test_composite_pk");
+
+        long[][] ranges = {
+                {49, 90, 51, 10},
+                {50, 20, 50, 80},
+                {50, 80, 51, 20},
+                {20, 1, 20, 100}};
+        for (long[] range : ranges) {
+            String[] start = {Long.toString(range[0]), Long.toString(range[1])};
+            String[] end = {Long.toString(range[2]), Long.toString(range[3])};
+            String boxSql = Routines.renderChunkSql(dsl.configuration(),
+                    "SELECT 1 FROM <driving_table> WHERE <chunking_clause>",
+                    "dml_utils_fixtures", "test_composite_pk", "t",
+                    new String[]{"a", "b"}, new String[]{"bigint", "bigint"}, start, end, false);
+            String tupleSql = "SELECT 1 FROM dml_utils_fixtures.test_composite_pk t WHERE"
+                    + " (t.a, t.b) >= (" + range[0] + ", " + range[1] + ")"
+                    + " AND (t.a, t.b) < (" + range[2] + ", " + range[3] + ")";
+
+            long actual = countRows(boxSql);
+            long boxEstimate = estimateRows(boxSql);
+            long tupleEstimate = estimateRows(tupleSql);
+
+            assertTrue(boxEstimate <= Math.max(10, actual * 3),
+                    "the box estimate " + boxEstimate + " should be near the actual " + actual);
+            assertTrue(tupleEstimate > boxEstimate * 3,
+                    "the row-value estimate " + tupleEstimate + " should be far above the boxes' " + boxEstimate);
+        }
+    }
+
+    /**
+     * Under an ICU collation, where the text key order differs from byte order
+     * ('_' before letters, 'a' before 'B', ...), the box disjunction still selects
+     * exactly the same rows as the tuple-range predicate, because both use the
+     * column's collation.
+     */
+    @Test
+    void boxDisjunctionMatchesTheTupleRangeUnderAnIcuCollation() {
+        List<String> ordered = dsl.fetch(
+                        "SELECT v FROM (VALUES ('B'), ('a'), ('Z'), ('_'), ('0'), ('M'), ('x'), ('e'), ('é')) AS t(v)"
+                                + " ORDER BY v COLLATE \"en-x-icu\"")
+                .stream().map(record -> record.get(0, String.class)).toList();
+
+        dsl.truncate(TEST_COMPOSITE_COLLATED).execute();
+        List<String[]> keys = new ArrayList<>();
+        for (long a = 1; a <= 2; a++) {
+            for (String b : ordered) {
+                dsl.insertInto(TEST_COMPOSITE_COLLATED, TEST_COMPOSITE_COLLATED.A, TEST_COMPOSITE_COLLATED.B)
+                        .values(a, b).execute();
+                keys.add(new String[]{Long.toString(a), b});
+            }
+        }
+
+        assertRandomRangesMatch(TEST_COMPOSITE_COLLATED.getSchema().getName(), TEST_COMPOSITE_COLLATED.getName(),
+                new String[]{"a", "b"}, new String[]{"bigint", "text"}, keys, 150, 20261011L);
+    }
+
+    /**
+     * The box disjunction matches the tuple range for uuid keys whose high bit is
+     * set, where PostgreSQL's unsigned byte order differs from a signed
+     * comparison of the two halves.
+     */
+    @Test
+    void boxDisjunctionMatchesTheTupleRangeForHighBitUuids() {
+        List<String> uuids = dsl.fetch(
+                        "SELECT v::text FROM (VALUES"
+                                + " ('00000000-0000-0000-0000-000000000000'::uuid),"
+                                + " ('7fffffff-ffff-ffff-ffff-ffffffffffff'::uuid),"
+                                + " ('80000000-0000-0000-0000-000000000000'::uuid),"
+                                + " ('ffffffff-ffff-ffff-ffff-ffffffffffff'::uuid)) AS t(v)"
+                                + " ORDER BY v")
+                .stream().map(record -> record.get(0, String.class)).toList();
+
+        dsl.truncate(TEST_COMPOSITE_THREE).execute();
+        List<String[]> keys = new ArrayList<>();
+        for (int b = 1; b <= 2; b++) {
+            for (String c : uuids) {
+                dsl.insertInto(TEST_COMPOSITE_THREE,
+                                TEST_COMPOSITE_THREE.A, TEST_COMPOSITE_THREE.B, TEST_COMPOSITE_THREE.C)
+                        .values("a1", b, UUID.fromString(c)).execute();
+                keys.add(new String[]{Integer.toString(b), "a1", c});
+            }
+        }
+
+        assertRandomRangesMatch(TEST_COMPOSITE_THREE.getSchema().getName(), TEST_COMPOSITE_THREE.getName(),
+                new String[]{"b", "a", "c"}, new String[]{"bigint", "text", "uuid"}, keys, 100, 20261012L);
+    }
+
+    /**
+     * Picks ordered pairs from {@code keys} (which is in key order) with a fixed
+     * seed and asserts each renders the same rows as its tuple range.
+     */
+    private void assertRandomRangesMatch(String schema, String table, String[] columns, String[] kinds,
+                                         List<String[]> keys, int iterations, long seed) {
+        Random random = new Random(seed);
+        for (int i = 0; i < iterations; i++) {
+            int lo = random.nextInt(keys.size());
+            int hi = random.nextInt(keys.size());
+            if (lo > hi) {
+                int swap = lo;
+                lo = hi;
+                hi = swap;
+            }
+            boolean isFinal = random.nextBoolean();
+            if (lo == hi && !isFinal) {
+                continue;
+            }
+            assertBoxesMatchTupleRange(schema, table, columns, kinds, keys.get(lo), keys.get(hi), isFinal);
+        }
+    }
+
+    /**
+     * Renders the chunk twice against the same range and asserts the box
+     * disjunction and the equivalent tuple-range predicate select the same rows.
+     */
+    private void assertBoxesMatchTupleRange(String schema, String table, String[] columns, String[] kinds,
+                                            String[] start, String[] end, boolean isFinal) {
+        String template = "SELECT " + String.join(", ", columns) + " FROM <driving_table> WHERE <chunking_clause>";
+        String boxSql = Routines.renderChunkSql(dsl.configuration(), template,
+                schema, table, "t", columns, kinds, start, end, isFinal);
+
+        StringBuilder columnTuple = new StringBuilder();
+        StringBuilder startTuple = new StringBuilder();
+        StringBuilder endTuple = new StringBuilder();
+        for (int i = 0; i < columns.length; i++) {
+            if (i > 0) {
+                columnTuple.append(", ");
+                startTuple.append(", ");
+                endTuple.append(", ");
+            }
+            columnTuple.append("t.").append(columns[i]);
+            startTuple.append("'").append(start[i]).append("'::").append(kinds[i]);
+            endTuple.append("'").append(end[i]).append("'::").append(kinds[i]);
+        }
+        String tupleSql = "SELECT " + String.join(", ", columns) + " FROM " + schema + "." + table + " t WHERE ("
+                + columnTuple + ") >= (" + startTuple + ") AND (" + columnTuple + ") "
+                + (isFinal ? "<=" : "<") + " (" + endTuple + ")";
+
+        assertEquals(rows(tupleSql, columns), rows(boxSql, columns),
+                "the box disjunction must select the same rows as the tuple range");
+    }
+
+    private long countRows(String selectSql) {
+        return dsl.fetch("SELECT count(*) FROM (" + selectSql + ") AS counted")
+                .get(0).get(0, Long.class);
+    }
+
+    private long estimateRows(String sql) {
+        String plan = dsl.fetch("EXPLAIN (FORMAT JSON) " + sql).get(0).get(0, String.class);
+        Matcher matcher = Pattern.compile("\"Plan Rows\":\\s*(\\d+)").matcher(plan);
+        assertTrue(matcher.find(), "the plan should report a row estimate");
+        return Long.parseLong(matcher.group(1));
+    }
+
+    private List<String> rows(String sql, String[] columns) {
+        return dsl.fetch(sql).stream()
+                .map(record -> {
+                    StringBuilder row = new StringBuilder();
+                    for (String column : columns) {
+                        row.append(record.get(column)).append('|');
+                    }
+                    return row.toString();
+                })
+                .sorted()
+                .toList();
     }
 
     private String render(boolean isFinal, String keyKind, String startValue, String endValue) {
