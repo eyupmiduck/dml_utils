@@ -1,5 +1,6 @@
 package io.github.eyupmiduck.dmlutils;
 
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.enums.ChunkingStrategy;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
@@ -181,7 +182,7 @@ class ProcessMigrationChunkTest extends PostgresTestBase {
     private long populate(int chunkSize) {
         return Routines.populateMigrationBoundaries(
                 dsl.configuration(), TEST_BIGINT.getSchema().getName(), TEST_BIGINT.getName(),
-                "process-chunk-test-" + UUID.randomUUID(), "SELECT 1", chunkSize, 1);
+                "process-chunk-test-" + UUID.randomUUID(), "SELECT 1", chunkSize, 1, ChunkingStrategy.primary_key);
     }
 
     private void processChunk(long runId, long boundaryNo, String sql) {

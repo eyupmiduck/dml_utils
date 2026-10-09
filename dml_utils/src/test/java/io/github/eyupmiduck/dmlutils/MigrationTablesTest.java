@@ -1,5 +1,6 @@
 package io.github.eyupmiduck.dmlutils;
 
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.enums.ChunkingStrategy;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.udt.records.MigrationKeyRecord;
 import org.jooq.Record;
 import org.junit.jupiter.api.Test;
@@ -11,8 +12,7 @@ import java.util.UUID;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationError.MIGRATION_ERROR;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Verifies that the Liquibase changelog loads the migration tables with the
@@ -39,6 +39,9 @@ class MigrationTablesTest extends PostgresTestBase {
                 "driving_table_schema_name should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "driving_table_name"),
                 "driving_table_name should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_run", "chunk_by"), "chunk_by should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_run", "driving_table_relation_filepath"),
+                "driving_table_relation_filepath should exist");
 
         assertTrue(tableExists("dml_utils_data", "migration_boundary"), "migration_boundary should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_boundary", "run_id"), "run_id should exist");
@@ -80,8 +83,7 @@ class MigrationTablesTest extends PostgresTestBase {
                 .from(MIGRATION_RUN)
                 .where(MIGRATION_RUN.RUN_ID.eq(runId))
                 .fetchOne(0, Boolean.class);
-        assertTrue(Boolean.TRUE.equals(recent),
-                "the trigger should overwrite updated_at with the transaction timestamp");
+        assertEquals(Boolean.TRUE, recent, "the trigger should overwrite updated_at with the transaction timestamp");
     }
 
     /**
@@ -248,6 +250,14 @@ class MigrationTablesTest extends PostgresTestBase {
                 .set(MIGRATION_RUN.DRIVING_TABLE_NAME, "other")
                 .where(MIGRATION_RUN.RUN_ID.eq(runId))
                 .execute());
+        assertSqlState("22023", () -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.CHUNK_BY, ChunkingStrategy.blocks)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute());
+        assertSqlState("22023", () -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.DRIVING_TABLE_RELATION_FILEPATH, "base/1/2")
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute());
 
         // The mutable started_at/completed_at columns can still be updated, in
         // the order the time-order check requires.
@@ -349,6 +359,29 @@ class MigrationTablesTest extends PostgresTestBase {
     }
 
     /**
+     * The blocks<->filepath check rejects a block run without a filepath and a
+     * primary-key run with one.
+     */
+    @Test
+    void rejectsAMismatchedChunkByFilepath() {
+        assertDomainViolation(() -> dsl.insertInto(MIGRATION_RUN)
+                .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE,
+                        MIGRATION_RUN.CHUNK_BY, MIGRATION_RUN.THREADS,
+                        MIGRATION_RUN.DRIVING_TABLE_SCHEMA_NAME, MIGRATION_RUN.DRIVING_TABLE_NAME)
+                .values("block-no-filepath-" + UUID.randomUUID(), "SELECT 1", 1,
+                        ChunkingStrategy.blocks, 1, PUBLIC_SCHEMA, "source")
+                .execute());
+        assertDomainViolation(() -> dsl.insertInto(MIGRATION_RUN)
+                .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE,
+                        MIGRATION_RUN.CHUNK_BY, MIGRATION_RUN.THREADS,
+                        MIGRATION_RUN.DRIVING_TABLE_SCHEMA_NAME, MIGRATION_RUN.DRIVING_TABLE_NAME,
+                        MIGRATION_RUN.DRIVING_TABLE_RELATION_FILEPATH)
+                .values("pk-with-filepath-" + UUID.randomUUID(), "SELECT 1", 1,
+                        ChunkingStrategy.primary_key, 1, PUBLIC_SCHEMA, "source", "base/1/2")
+                .execute());
+    }
+
+    /**
      * The shared timestamp columns are {@code timestamptz NOT NULL}, and the
      * primary and foreign keys are the composite ones the routines rely on.
      */
@@ -361,7 +394,7 @@ class MigrationTablesTest extends PostgresTestBase {
                                 + " WHERE table_schema = 'dml_utils_data'"
                                 + " AND table_name = ? AND column_name = ?",
                         table, column);
-                assertTrue(row != null, table + "." + column + " should exist");
+                assertNotNull(row, table + "." + column + " should exist");
                 assertEquals("timestamp with time zone", row.get("data_type", String.class),
                         table + "." + column + " should be timestamptz");
                 assertEquals("NO", row.get("is_nullable", String.class),
@@ -437,13 +470,11 @@ class MigrationTablesTest extends PostgresTestBase {
                 .where(MIGRATION_ERROR.RUN_ID.eq(runId))
                 .execute();
 
-        assertTrue(Boolean.TRUE.equals(dsl.select(MIGRATION_BOUNDARY.UPDATED_AT.gt(recent))
-                        .from(MIGRATION_BOUNDARY).where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
-                        .fetchOne(0, Boolean.class)),
-                "the boundary trigger should overwrite updated_at");
-        assertTrue(Boolean.TRUE.equals(dsl.select(MIGRATION_ERROR.UPDATED_AT.gt(recent))
-                        .from(MIGRATION_ERROR).where(MIGRATION_ERROR.RUN_ID.eq(runId))
-                        .fetchOne(0, Boolean.class)),
-                "the error trigger should overwrite updated_at");
+        assertEquals(Boolean.TRUE, dsl.select(MIGRATION_BOUNDARY.UPDATED_AT.gt(recent))
+                .from(MIGRATION_BOUNDARY).where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .fetchOne(0, Boolean.class), "the boundary trigger should overwrite updated_at");
+        assertEquals(Boolean.TRUE, dsl.select(MIGRATION_ERROR.UPDATED_AT.gt(recent))
+                .from(MIGRATION_ERROR).where(MIGRATION_ERROR.RUN_ID.eq(runId))
+                .fetchOne(0, Boolean.class), "the error trigger should overwrite updated_at");
     }
 }

@@ -1,22 +1,22 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="760" height="420" viewBox="0 0 760 420" font-family="sans-serif">
     <rect width="760" height="420" fill="white"/>
-    <text x="402" y="26" font-size="16" font-weight="bold" text-anchor="middle">run_migration_chunks: mean total time vs
-        threads
+    <text x="402" y="26" font-size="16" font-weight="bold" text-anchor="middle">run_migration_chunks (blocks, chunk_size
+        100): mean total time vs threads
     </text>
     <line x1="64" y1="356.0" x2="740" y2="356.0" stroke="#e6e6e6"/>
     <text x="56" y="356.0" font-size="11" text-anchor="end" dominant-baseline="middle">0</text>
     <line x1="64" y1="304.7" x2="740" y2="304.7" stroke="#e6e6e6"/>
-    <text x="56" y="304.7" font-size="11" text-anchor="end" dominant-baseline="middle">10</text>
+    <text x="56" y="304.7" font-size="11" text-anchor="end" dominant-baseline="middle">1</text>
     <line x1="64" y1="253.3" x2="740" y2="253.3" stroke="#e6e6e6"/>
-    <text x="56" y="253.3" font-size="11" text-anchor="end" dominant-baseline="middle">20</text>
+    <text x="56" y="253.3" font-size="11" text-anchor="end" dominant-baseline="middle">2</text>
     <line x1="64" y1="202.0" x2="740" y2="202.0" stroke="#e6e6e6"/>
-    <text x="56" y="202.0" font-size="11" text-anchor="end" dominant-baseline="middle">30</text>
+    <text x="56" y="202.0" font-size="11" text-anchor="end" dominant-baseline="middle">3</text>
     <line x1="64" y1="150.7" x2="740" y2="150.7" stroke="#e6e6e6"/>
-    <text x="56" y="150.7" font-size="11" text-anchor="end" dominant-baseline="middle">40</text>
+    <text x="56" y="150.7" font-size="11" text-anchor="end" dominant-baseline="middle">4</text>
     <line x1="64" y1="99.3" x2="740" y2="99.3" stroke="#e6e6e6"/>
-    <text x="56" y="99.3" font-size="11" text-anchor="end" dominant-baseline="middle">50</text>
+    <text x="56" y="99.3" font-size="11" text-anchor="end" dominant-baseline="middle">5</text>
     <line x1="64" y1="48.0" x2="740" y2="48.0" stroke="#e6e6e6"/>
-    <text x="56" y="48.0" font-size="11" text-anchor="end" dominant-baseline="middle">60</text>
+    <text x="56" y="48.0" font-size="11" text-anchor="end" dominant-baseline="middle">6</text>
     <line x1="64" y1="48" x2="64" y2="356" stroke="#333"/>
     <line x1="64" y1="356" x2="740" y2="356" stroke="#333"/>
     <line x1="64.0" y1="356" x2="64.0" y2="360" stroke="#333"/>
@@ -62,27 +62,27 @@
     <text x="402" y="408" font-size="12" text-anchor="middle">threads</text>
     <text x="16" y="202" font-size="12" text-anchor="middle" transform="rotate(-90 16 202)">seconds (mean)</text>
     <polyline fill="none" stroke="#2ca02c" stroke-width="2"
-              points="64.0,78.8 99.6,210.7 135.2,254.2 170.7,276.8 206.3,289.7 241.9,298.2 277.5,305.3 313.1,323.9 348.6,340.6 384.2,344.5 419.8,345.2 455.4,345.3 490.9,345.3 526.5,345.0 562.1,345.1 597.7,345.2 633.3,345.7 668.8,345.3 704.4,345.2 740.0,345.3 "/>
-    <circle cx="64.0" cy="78.8" r="3" fill="#2ca02c"/>
-    <circle cx="99.6" cy="210.7" r="3" fill="#2ca02c"/>
-    <circle cx="135.2" cy="254.2" r="3" fill="#2ca02c"/>
-    <circle cx="170.7" cy="276.8" r="3" fill="#2ca02c"/>
-    <circle cx="206.3" cy="289.7" r="3" fill="#2ca02c"/>
-    <circle cx="241.9" cy="298.2" r="3" fill="#2ca02c"/>
-    <circle cx="277.5" cy="305.3" r="3" fill="#2ca02c"/>
-    <circle cx="313.1" cy="323.9" r="3" fill="#2ca02c"/>
-    <circle cx="348.6" cy="340.6" r="3" fill="#2ca02c"/>
-    <circle cx="384.2" cy="344.5" r="3" fill="#2ca02c"/>
-    <circle cx="419.8" cy="345.2" r="3" fill="#2ca02c"/>
-    <circle cx="455.4" cy="345.3" r="3" fill="#2ca02c"/>
-    <circle cx="490.9" cy="345.3" r="3" fill="#2ca02c"/>
-    <circle cx="526.5" cy="345.0" r="3" fill="#2ca02c"/>
-    <circle cx="562.1" cy="345.1" r="3" fill="#2ca02c"/>
-    <circle cx="597.7" cy="345.2" r="3" fill="#2ca02c"/>
-    <circle cx="633.3" cy="345.7" r="3" fill="#2ca02c"/>
-    <circle cx="668.8" cy="345.3" r="3" fill="#2ca02c"/>
-    <circle cx="704.4" cy="345.2" r="3" fill="#2ca02c"/>
-    <circle cx="740.0" cy="345.3" r="3" fill="#2ca02c"/>
+              points="64.0,96.8 99.6,220.4 135.2,259.9 170.7,281.0 206.3,294.2 241.9,302.0 277.5,307.4 313.1,312.1 348.6,314.2 384.2,316.8 419.8,319.2 455.4,321.4 490.9,320.7 526.5,321.0 562.1,320.6 597.7,325.7 633.3,325.6 668.8,310.6 704.4,320.5 740.0,323.4 "/>
+    <circle cx="64.0" cy="96.8" r="3" fill="#2ca02c"/>
+    <circle cx="99.6" cy="220.4" r="3" fill="#2ca02c"/>
+    <circle cx="135.2" cy="259.9" r="3" fill="#2ca02c"/>
+    <circle cx="170.7" cy="281.0" r="3" fill="#2ca02c"/>
+    <circle cx="206.3" cy="294.2" r="3" fill="#2ca02c"/>
+    <circle cx="241.9" cy="302.0" r="3" fill="#2ca02c"/>
+    <circle cx="277.5" cy="307.4" r="3" fill="#2ca02c"/>
+    <circle cx="313.1" cy="312.1" r="3" fill="#2ca02c"/>
+    <circle cx="348.6" cy="314.2" r="3" fill="#2ca02c"/>
+    <circle cx="384.2" cy="316.8" r="3" fill="#2ca02c"/>
+    <circle cx="419.8" cy="319.2" r="3" fill="#2ca02c"/>
+    <circle cx="455.4" cy="321.4" r="3" fill="#2ca02c"/>
+    <circle cx="490.9" cy="320.7" r="3" fill="#2ca02c"/>
+    <circle cx="526.5" cy="321.0" r="3" fill="#2ca02c"/>
+    <circle cx="562.1" cy="320.6" r="3" fill="#2ca02c"/>
+    <circle cx="597.7" cy="325.7" r="3" fill="#2ca02c"/>
+    <circle cx="633.3" cy="325.6" r="3" fill="#2ca02c"/>
+    <circle cx="668.8" cy="310.6" r="3" fill="#2ca02c"/>
+    <circle cx="704.4" cy="320.5" r="3" fill="#2ca02c"/>
+    <circle cx="740.0" cy="323.4" r="3" fill="#2ca02c"/>
     <line x1="76" y1="60" x2="96" y2="60" stroke="#2ca02c" stroke-width="2"/>
     <text x="102" y="60" font-size="12" dominant-baseline="middle">total elapsed time</text>
 </svg>

@@ -4,8 +4,11 @@
 # Starts a PostgreSQL container from the custom image with max_worker_processes
 # raised enough for the thread sweep, applies the dml_utils changelog to it, then
 # creates the deterministic synthetic source table and the throwaway target
-# table. Safe to re-run; pass --refresh to drop the container and its data volume
-# first (required after changing the server settings or the image).
+# table. The source is a plain heap with a bigint primary key, so it supports both
+# the primary_key and blocks chunking strategies; the workload (by default an
+# INSERT into the target) leaves it read-only, which blocks requires. Safe to
+# re-run; pass --refresh to drop the container and its data volume first
+# (required after changing the server settings or the image).
 #
 # Usage: benchmark/setup.sh [--refresh]
 

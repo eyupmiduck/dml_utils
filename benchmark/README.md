@@ -3,7 +3,8 @@
 A self-contained, repeatable benchmark of `dml_utils.run_migration_chunks` against
 a synthetic table. It runs the migration with 1 thread, then 2, then 3, ... up to
 a maximum you choose, several times at each value, and reports how long the
-primary-key range calculation and the per-chunk workload took on average.
+chunk-boundary calculation and the per-chunk workload took on average, for the
+`primary_key` and `blocks` chunking strategies.
 
 Everything needed to reproduce a run lives in this directory.
 
@@ -29,11 +30,15 @@ lines read:
 ```sh
 BENCH_ROWS=1000000
 BENCH_CHUNK_SIZE=1000
+BENCH_CHUNK_BY=primary_key
 BENCH_THREADS_FROM=1
 BENCH_THREADS_TO=20
 BENCH_RUNS=10
 BENCH_WARMUP_RUNS=1
 ```
+
+Set `BENCH_CHUNK_BY=blocks` to benchmark the physical block (ctid) strategy
+instead (see [Parameters](#parameters)).
 
 These are all the defaults, so the example works out of the box; the point is
 that you change the sweep here. The scripts read this file, so do not rely on
@@ -88,17 +93,21 @@ path. Re-run it any time to refresh the means after more runs.
 
 Open `benchmark/results/report.md`. It contains:
 
-- the **configuration** that produced the results,
+- the **configuration** that produced the results and a **dataset** section (live
+  source rows and blocks),
 - the **hardware and PostgreSQL settings** captured on this machine,
-- a **results table**, one row per thread value, with the mean range-calculation
-  time, the mean chunk-run time, the mean total, and the speedup relative to the
-  lowest thread value,
-- a **chart** (`report.svg`, generated next to the page) of the mean total time
-  against the thread count, embedded in the page.
+- a **results table per strategy and chunk size**, one row per thread value, with
+  the number of chunks, the `rows/chunk` and `blocks/chunk` averages, the mean
+  range-calculation time, the mean chunk-run time, the mean total, and the speedup
+  relative to the lowest thread value,
+- a **chart per strategy and chunk size** (`report-<strategy>-<chunk_size>.svg`,
+  generated next to the page) of the mean total time against the thread count,
+  embedded in the page.
 
 The raw per-run data is `benchmark/results/benchmark.csv` (one row per measured
-run); `benchmark/results/hardware.txt` and `benchmark/results/postgres-settings.txt`
-hold the captured environment.
+run, tagged with the strategy and chunk unit); `benchmark/results/hardware.txt`,
+`benchmark/results/postgres-settings.txt` and `benchmark/results/dataset.txt` hold
+the captured environment and dataset.
 
 ## What is measured
 
@@ -106,12 +115,19 @@ Each run calls `run_migration_chunks` once and reads the run's timestamps back:
 
 | column in the CSV | meaning                                                                  |
 |-------------------|--------------------------------------------------------------------------|
-| `range_seconds`   | `boundaries_calculated_at - started_at` — the range calculation          |
+| `strategy`        | the chunking strategy (`primary_key` or `blocks`)                        |
+| `chunk_unit`      | the chunk-size unit: `rows` for `primary_key`, `blocks` for `blocks`     |
+| `chunk_size`      | the configured chunk size, in `chunk_unit`                               |
+| `threads`         | the thread count                                                         |
+| `run`             | the measured run number                                                  |
+| `chunks`          | the number of chunks the run processed                                   |
+| `range_seconds`   | `boundaries_calculated_at - started_at` — the boundary calculation       |
 | `chunk_seconds`   | `completed_at - boundaries_calculated_at` — the workload over all chunks |
 | `total_seconds`   | `completed_at - started_at`                                              |
 
-Warm-up runs are not recorded. `report.sh` averages each column over the recorded
-runs for a thread value.
+Warm-up runs are not recorded. `report.sh` groups the rows by `(strategy,
+chunk_size)` and averages the timing columns per group and thread value, so runs
+with different chunk sizes are never combined.
 
 ## Parameters
 
@@ -121,7 +137,8 @@ ones you are most likely to change:
 | parameter                                 | default                | purpose                                                 |
 |-------------------------------------------|------------------------|---------------------------------------------------------|
 | `BENCH_ROWS`                              | `1000000`              | synthetic source rows                                   |
-| `BENCH_CHUNK_SIZE`                        | `1000`                 | rows per chunk                                          |
+| `BENCH_CHUNK_SIZE`                        | `1000`                 | chunk size, in the unit of `BENCH_CHUNK_BY`             |
+| `BENCH_CHUNK_BY`                          | `primary_key`          | chunking strategy: `primary_key` or `blocks`            |
 | `BENCH_THREADS_FROM` / `BENCH_THREADS_TO` | `1` / `20`             | thread sweep                                            |
 | `BENCH_RUNS`                              | `10`                   | measured runs per thread value (the mean is over these) |
 | `BENCH_WARMUP_RUNS`                       | `1`                    | unrecorded warm-up runs per thread value                |
@@ -133,6 +150,14 @@ ones you are most likely to change:
 the driving table is aliased `t`. The default keeps the source table untouched by
 copying each chunk into `benchmark.bench_target`, which is truncated before every
 run.
+
+`BENCH_CHUNK_BY` selects the strategy: `primary_key` (the default) chunks a fixed
+number of rows in primary-key order; `blocks` chunks a fixed number of physical
+heap blocks (`BENCH_CHUNK_SIZE` blocks) and requires a quiescent, read-only source,
+which the default INSERT-into-target workload provides. The two strategies are not
+directly comparable at the same numeric chunk size: a block holds a variable
+number of rows. `run.sh` records the strategy and the chunk unit in each CSV row,
+and `report.sh` reports them separately (one table and chart per strategy).
 
 ## The benchmark database
 
@@ -171,9 +196,11 @@ benchmark/
   run.sh                  run the sweep, appending results/<BENCH_CSV>
   report.sh               format the results into results/<BENCH_REPORT>
   chart.awk               render the mean total time as the report's SVG chart
+  psql.sh                 open a psql session on the benchmark container
   sql/create-source.sql   deterministic synthetic source table + data
   sql/create-target.sql   throwaway destination the workload inserts into
-  results/                generated: benchmark.csv, report.md, report.svg, hardware.txt, ...
+  results/                generated: benchmark.csv, report.md,
+                          report-<strategy>-<chunk_size>.svg, dataset.txt, hardware.txt, ...
 ```
 
 ## Caveats
@@ -184,6 +211,10 @@ benchmark/
   throwaway target, so the source is read-only and each run starts clean. Point
   `BENCH_SQL` at a different statement to benchmark something else, and note that
   `run_migration_chunks` assumes idempotent chunk SQL when resuming.
+- The `blocks` strategy requires a quiescent, read-only, plain-heap source (see
+  the block-chunking limitations in the routines README). The default
+  INSERT-into-target workload satisfies this; a `BENCH_SQL` that updates the
+  source does not.
 - Autovacuum, checkpoints and other background activity add noise. Increase
   `BENCH_RUNS` to tighten the means; warm-ups are excluded.
 - Each thread is one `pg_background` worker, capped by `max_worker_processes`.

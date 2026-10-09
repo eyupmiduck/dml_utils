@@ -4,6 +4,7 @@ import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.MigrationBoundariesRecord;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.MigrationErrorsRecord;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.MigrationRunSummaryRecord;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.enums.ChunkingStrategy;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -111,6 +112,9 @@ class MigrationMaintenanceTest extends PostgresTestBase {
         assertNotNull(summary.getStartedAt(), "the run start is recorded when the run is created");
         assertNotNull(summary.getBoundariesCalculatedAt(),
                 "the range-calculation completion is recorded");
+        assertEquals("primary_key", summary.getChunkBy(), "a default run uses primary_key");
+        assertNull(summary.getDrivingTableRelationFilepath(),
+                "a primary-key run records no relation filepath");
         assertNull(summary.getCompletedAt(), "a fresh run has not finished");
         assertNull(summary.getArchivedAt());
     }
@@ -234,7 +238,7 @@ class MigrationMaintenanceTest extends PostgresTestBase {
         }
         return io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
                 dsl.configuration(), TEST_BIGINT.getSchema().getName(), TEST_BIGINT.getName(),
-                label, "SELECT 1", chunkSize, 1);
+                label, "SELECT 1", chunkSize, 1, ChunkingStrategy.primary_key);
     }
 
     private void recordError(long runId, long boundaryNo, String sqlstate, String message) {

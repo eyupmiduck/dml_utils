@@ -1,4 +1,4 @@
-captured: 2026-10-07T00:27:56Z
+captured: 2026-10-08T05:21:01Z
 host: system76-pc
 
 Linux system76-pc 7.1.5-76070105-generic #202607241434~1787955069~26.04~9520501~dev SMP PREEMPT_DYNAMIC F x86_64 GNU/Linux
@@ -17,7 +17,7 @@ Thread(s) per core:                      2
 Core(s) per socket:                      14
 Socket(s):                               1
 Stepping:                                3
-CPU(s) scaling MHz:                      30%
+CPU(s) scaling MHz:                      54%
 CPU max MHz:                             4700.0000
 CPU min MHz:                             400.0000
 BogoMIPS:                                5376.00
@@ -52,7 +52,7 @@ Vulnerability Vmscape:                   Mitigation; IBPB before exit to userspa
 nproc: 20
 
                total        used        free      shared  buff/cache   available
-Mem:            62Gi        14Gi        31Gi       1.3Gi        18Gi        48Gi
+Mem:            62Gi        15Gi        30Gi       1.4Gi        18Gi        46Gi
 Swap:          4.0Gi          0B       4.0Gi
 
 Filesystem      Size  Used Avail Use% Mounted on

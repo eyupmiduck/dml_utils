@@ -1,17 +1,27 @@
 # chart.awk - emit an SVG line chart of the benchmark means.
 #
-# Reads the results CSV (threads,run,range_seconds,chunk_seconds,total_seconds)
-# on stdin and writes an SVG to stdout. Pure awk: no plotting library needed, so
-# the benchmark keeps working with nothing but Docker and the shell.
+# Reads the results CSV
+# (strategy,chunk_unit,chunk_size,threads,run,chunks,range_seconds,chunk_seconds,total_seconds)
+# on stdin and writes an SVG of the mean total time vs threads to stdout. Pass
+# -v strategy=primary_key|blocks and -v chunk_size=N to plot only that group.
+# Pure awk: no plotting library needed, so the benchmark keeps working with
+# nothing but Docker and the shell.
 
-BEGIN { FS = "," }
+BEGIN {
+    FS = ","
+    if (strategy == "") strategy = ""
+    if (chunk_size == "") chunk_size = ""
+}
 
 NR == 1 { next }   # header
 
+strategy != "" && $1 != strategy { next }
+chunk_size != "" && $3 != chunk_size { next }
+
 {
-    t = $1 + 0
+    t = $4 + 0
     n[t]++
-    s[t] += $5 + 0
+    s[t] += $9 + 0
     if (!(t in seen)) { seen[t] = 1; order[++k] = t }
 }
 
@@ -67,7 +77,7 @@ END {
 
     printf "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"%d\" height=\"%d\" viewBox=\"0 0 %d %d\" font-family=\"sans-serif\">\n", W, H, W, H
     printf "  <rect width=\"%d\" height=\"%d\" fill=\"white\"/>\n", W, H
-    printf "  <text x=\"%d\" y=\"26\" font-size=\"16\" font-weight=\"bold\" text-anchor=\"middle\">run_migration_chunks: mean total time vs threads</text>\n", ml + pw / 2
+    printf "  <text x=\"%d\" y=\"26\" font-size=\"16\" font-weight=\"bold\" text-anchor=\"middle\">run_migration_chunks (%s, chunk_size %s): mean total time vs threads</text>\n", ml + pw / 2, strategy, chunk_size
 
     # Horizontal grid and whole-number y labels.
     for (v = 0; v <= ymax + 1e-9; v += step) {

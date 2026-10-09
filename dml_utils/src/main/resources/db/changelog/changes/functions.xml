@@ -64,6 +64,16 @@
         </rollback>
     </changeSet>
 
+    <changeSet id="function-dml_utils_lib.assert_plain_heap" author="lee.horner" dbms="postgresql"
+               runOnChange="true">
+        <createProcedure path="functions/dml_utils_lib/assert_plain_heap.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils_lib/assert_plain_heap-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
     <changeSet id="function-dml_utils_lib.primary_key_columns" author="lee.horner"
                dbms="postgresql" runOnChange="true">
         <createProcedure path="functions/dml_utils_lib/primary_key_columns.sql"
@@ -144,6 +154,16 @@
         </rollback>
     </changeSet>
 
+    <changeSet id="function-dml_utils_lib.render_block_chunk_sql" author="lee.horner"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils_lib/render_block_chunk_sql.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils_lib/render_block_chunk_sql-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
     <changeSet id="function-dml_utils_lib.synthetic_chunk_boundary_values" author="lee.horner"
                dbms="postgresql" runOnChange="true">
         <createProcedure path="functions/dml_utils_lib/synthetic_chunk_boundary_values.sql"
@@ -180,6 +200,36 @@
                          relativeToChangelogFile="true"/>
         <rollback>
             <sqlFile path="functions-rollback/dml_utils_lib/build_boundary_population_sql-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="function-dml_utils_lib.build_block_boundary_population_sql" author="lee.horner"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils_lib/build_block_boundary_population_sql.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils_lib/build_block_boundary_population_sql-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="function-dml_utils_lib.relation_filepath" author="lee.horner"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils_lib/relation_filepath.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils_lib/relation_filepath-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="function-dml_utils_lib.assert_relation_filepath" author="lee.horner"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils_lib/assert_relation_filepath.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils_lib/assert_relation_filepath-rollback.sql"
                      relativeToChangelogFile="true"/>
         </rollback>
     </changeSet>
