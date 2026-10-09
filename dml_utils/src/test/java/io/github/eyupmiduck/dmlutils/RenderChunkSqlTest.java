@@ -15,7 +15,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * {@code dml_utils_lib.render_chunk_sql}: the template tokens must appear
  * exactly once, and substitution produces the expected driving-table reference
  * and half-open (or inclusive, for the final chunk) row-value range predicate
- * with an explicitly cast key literal per column.
+ * with an explicitly cast key literal per column. A multi-column key also gets
+ * an implied leading-column range so the planner can use the primary-key index.
  */
 class RenderChunkSqlTest extends PostgresTestBase {
 
@@ -183,8 +184,8 @@ class RenderChunkSqlTest extends PostgresTestBase {
     }
 
     /**
-     * A composite key renders as a row-value comparison with one explicitly cast
-     * literal per column, in key order.
+     * A composite key renders as a leading-column range plus a row-value
+     * comparison with one explicitly cast literal per column, in key order.
      */
     @Test
     void rendersCompositeKeyAsARowValueComparison() {
@@ -195,8 +196,9 @@ class RenderChunkSqlTest extends PostgresTestBase {
 
         assertEquals(
                 "UPDATE public.src t SET processed = true"
-                        + " WHERE ((t.a, t.b) >= ('1'::bigint, 'x'::text)"
-                        + " AND (t.a, t.b) < ('2'::bigint, 'y'::text))",
+                        + " WHERE ((t.a) >= '1'::bigint AND (t.a) <= '2'::bigint"
+                        + " AND ((t.a, t.b) >= ('1'::bigint, 'x'::text)"
+                        + " AND (t.a, t.b) < ('2'::bigint, 'y'::text)))",
                 rendered);
     }
 
@@ -216,10 +218,11 @@ class RenderChunkSqlTest extends PostgresTestBase {
 
         assertEquals(
                 "UPDATE public.src t SET processed = true"
-                        + " WHERE ((t.a, t.b, t.c) >= ('1'::bigint, 'x'::text,"
+                        + " WHERE ((t.a) >= '1'::bigint AND (t.a) <= '2'::bigint"
+                        + " AND ((t.a, t.b, t.c) >= ('1'::bigint, 'x'::text,"
                         + " '11223344-5566-7788-99aa-bbccddeeff00'::uuid)"
                         + " AND (t.a, t.b, t.c) < ('2'::bigint, 'y'::text,"
-                        + " '11223344-5566-7788-99aa-bbccddeeff01'::uuid))",
+                        + " '11223344-5566-7788-99aa-bbccddeeff01'::uuid)))",
                 rendered);
     }
 
@@ -236,8 +239,9 @@ class RenderChunkSqlTest extends PostgresTestBase {
 
         assertEquals(
                 "UPDATE public.src t SET processed = true"
-                        + " WHERE ((t.a, t.b) >= ('1'::bigint, 'x'::text)"
-                        + " AND (t.a, t.b) <= ('2'::bigint, 'y'::text))",
+                        + " WHERE ((t.a) >= '1'::bigint AND (t.a) <= '2'::bigint"
+                        + " AND ((t.a, t.b) >= ('1'::bigint, 'x'::text)"
+                        + " AND (t.a, t.b) <= ('2'::bigint, 'y'::text)))",
                 rendered);
     }
 

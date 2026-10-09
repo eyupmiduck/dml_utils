@@ -26,6 +26,9 @@ DECLARE
     l_end_tuple                         text;
     l_column_tuple                      text;
     l_chunking_clause                   text;
+    l_leading_column                    text;
+    l_leading_start                     text;
+    l_leading_end                       text;
     l_rendered                          text;
     l_kind                              text;
     l_start_bigint                      bigint;
@@ -159,6 +162,14 @@ BEGIN
                                                             CASE WHEN l_position > 1 THEN ', ' ELSE '' END,
                                                             i_end_values[l_position],
                                                             l_kind);
+
+            -- Remember the leading column so a multi-column key can be
+            -- additionally constrained on it below.
+            IF l_position = 1 THEN
+                l_leading_column := pg_catalog.format('%I.%I', i_table_alias, i_primary_key_columns[1]);
+                l_leading_start := pg_catalog.format('%L::%s', i_start_values[1], l_kind);
+                l_leading_end := pg_catalog.format('%L::%s', i_end_values[1], l_kind);
+            END IF;
         END LOOP;
 
     -- The driving table is referenced as "<schema>.<table> <alias>" so the
@@ -186,6 +197,21 @@ BEGIN
             l_column_tuple, l_start_tuple, l_column_tuple,
             CASE WHEN i_is_final THEN '<=' ELSE '<' END,
             l_end_tuple);
+
+    -- A multi-column key additionally constrains its leading column to the
+    -- [start, end] range it must fall in. That is implied by the row-value
+    -- comparison above, so it selects the same rows, but it gives the planner a
+    -- well-estimated sargable condition: PostgreSQL derives the row-value
+    -- selectivity from the two bounds independently, which overestimates a
+    -- mid-table range enough to prefer a sequential scan over the primary-key
+    -- index, turning a small chunk into a full table scan.
+    IF pg_catalog.array_length(i_primary_key_columns, 1) > 1 THEN
+        l_chunking_clause := pg_catalog.format(
+                '((%s) >= %s AND (%s) <= %s AND %s)',
+                l_leading_column, l_leading_start,
+                l_leading_column, l_leading_end,
+                l_chunking_clause);
+    END IF;
 
     -- A quoted identifier, or the caller's template, could in principle contain a
     -- sentinel character; reject that so the substitution below stays unambiguous.
@@ -217,4 +243,5 @@ COMMENT ON FUNCTION dml_utils_lib.render_chunk_sql IS
         'substituted for the given table, alias, primary-key columns and chunk '
         'range; each key kind (bigint, text or uuid) selects the explicit cast. '
         'The final chunk uses an inclusive upper bound, and a NULL boundary value '
-        'is rejected.';
+        'is rejected. A multi-column key also constrains its leading column to the '
+        'chunk range so the planner can use the primary-key index.';
