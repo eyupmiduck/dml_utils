@@ -13,6 +13,10 @@ set -eu
 
 here="$(cd "$(dirname "$0")" && pwd)"
 . "$here/config.env"
+# Optional personal overrides, kept out of git (copy config.local.env.example).
+if [ -f "$here/config.local.env" ]; then
+    . "$here/config.local.env"
+fi
 
 # The chunk-size unit is determined by the strategy.
 case "$BENCH_CHUNK_BY" in

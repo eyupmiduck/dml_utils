@@ -13,6 +13,10 @@ set -eu
 
 here="$(cd "$(dirname "$0")" && pwd)"
 . "$here/config.env"
+# Optional personal overrides, kept out of git (copy config.local.env.example).
+if [ -f "$here/config.local.env" ]; then
+    . "$here/config.local.env"
+fi
 
 results_dir="$here/$BENCH_RESULTS_DIR"
 csv="$results_dir/$BENCH_CSV"

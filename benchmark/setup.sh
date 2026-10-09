@@ -17,6 +17,10 @@ set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 repo_root="$(cd "$here/.." && pwd)"
 . "$here/config.env"
+# Optional personal overrides, kept out of git (copy config.local.env.example).
+if [ -f "$here/config.local.env" ]; then
+    . "$here/config.local.env"
+fi
 
 usage() {
     echo "usage: $0 [--refresh]" >&2

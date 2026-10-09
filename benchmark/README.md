@@ -48,8 +48,13 @@ rather than overriding the environment: each script sources `config.env`, so a
 value exported for only one of them is not seen by the others, and `report.sh`
 would then describe the wrong settings.
 
-For a one-off override without editing the file, export it in your shell so every
-script sees it:
+To keep personal settings out of git, copy
+[`config.local.env.example`](config.local.env.example) to `config.local.env`
+(gitignored) and set only the values you want to change there; it is sourced after
+`config.env`, so it overrides the defaults.
+
+For a one-off override without editing either file, export it in your shell so
+every script sees it:
 
 ```sh
 export BENCH_ROWS=100000000
@@ -150,8 +155,9 @@ combined.
 
 ## Parameters
 
-All parameters live in [`config.env`](config.env) and are documented there. The
-ones you are most likely to change:
+All parameters live in [`config.env`](config.env) and are documented there; put
+personal overrides in a gitignored `config.local.env` (copy
+`config.local.env.example`). The ones you are most likely to change:
 
 | parameter                                 | default                | purpose                                                 |
 |-------------------------------------------|------------------------|---------------------------------------------------------|
@@ -213,6 +219,7 @@ All database access goes through `docker exec`, so no host `psql` is required.
 ```
 benchmark/
   config.env              every parameter (edit this to change the sweep)
+  config.local.env.example  template for gitignored personal overrides
   setup.sh                create/refresh the dedicated benchmark database
   run.sh                  run the sweep, appending results/<BENCH_CSV>
   report.sh               format the results into results/<BENCH_REPORT>
