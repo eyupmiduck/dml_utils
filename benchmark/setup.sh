@@ -114,14 +114,14 @@ if ! psql_run -At -c "SELECT 1 FROM pg_catalog.pg_proc p
             update"
 fi
 
-# Build the primary-key SQL fragments from BENCH_PK_COLUMNS (one to three bigint
-# columns). The row number g maps to a unique key tuple by base-mod digits: with
-# p columns and modulus m = ceil(rows^(1/p)), the i-th column is
-# ((g - 1) / m^(p-i)) % m + 1, so m^p >= rows makes the tuples unique.
-pk_count=0
-for _c in $BENCH_PK_COLUMNS; do pk_count=$((pk_count + 1)); done
+# Build the primary-key SQL fragments from BENCH_PK_COLUMNS, the number of key
+# columns (1 to 3; all bigint, named k1..kN). The row number g maps to a unique
+# key tuple by base-mod digits: with p columns and modulus m = ceil(rows^(1/p)),
+# the i-th column is ((g - 1) / m^(p-i)) % m + 1, so m^p >= rows makes the tuples
+# unique.
+pk_count="$BENCH_PK_COLUMNS"
 if [ "$pk_count" -lt 1 ] || [ "$pk_count" -gt 3 ]; then
-    echo "BENCH_PK_COLUMNS must have one to three columns: $BENCH_PK_COLUMNS" >&2
+    echo "BENCH_PK_COLUMNS must be 1, 2 or 3: $BENCH_PK_COLUMNS" >&2
     exit 2
 fi
 pk_mod="$(awk -v n="$BENCH_ROWS" -v p="$pk_count" 'BEGIN { m = 1; while (m ^ p < n) m++; print m }')"
@@ -129,16 +129,17 @@ pk_def=""
 pk_key=""
 pk_exprs=""
 pk_i=0
-for c in $BENCH_PK_COLUMNS; do
+while [ "$pk_i" -lt "$pk_count" ]; do
     pk_i=$((pk_i + 1))
-    pk_def="${pk_def:+$pk_def, }$c bigint"
-    pk_key="${pk_key:+$pk_key, }$c"
+    pk_name="k$pk_i"
+    pk_def="${pk_def:+$pk_def, }$pk_name bigint"
+    pk_key="${pk_key:+$pk_key, }$pk_name"
     pk_div="$(awk -v m="$pk_mod" -v e="$((pk_count - pk_i))" 'BEGIN { print m ^ e }')"
     pk_exprs="${pk_exprs:+$pk_exprs, }((g - 1) / $pk_div) % $pk_mod + 1"
 done
 
 # Deterministic source data, then the throwaway target.
-echo "creating benchmark tables ($BENCH_ROWS source rows, key: $BENCH_PK_COLUMNS) ..." >&2
+echo "creating benchmark tables ($BENCH_ROWS source rows, $BENCH_PK_COLUMNS-column key) ..." >&2
 psql_stdin -v ON_ERROR_STOP=1 \
     -v schema="$BENCH_SCHEMA" \
     -v source_table="$BENCH_SOURCE_TABLE" \

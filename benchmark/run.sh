@@ -21,8 +21,14 @@ case "$BENCH_CHUNK_BY" in
     *) echo "BENCH_CHUNK_BY must be primary_key or blocks: $BENCH_CHUNK_BY" >&2; exit 2 ;;
 esac
 
-# The key column names, joined by '+' so a report group key has no spaces.
-pk_columns_csv="$(printf '%s' "$BENCH_PK_COLUMNS" | tr ' ' '+')"
+# The key column names (k1..kN), joined by '+' so a report group key has no
+# spaces.
+pk_columns_csv=""
+_pk_i=0
+while [ "$_pk_i" -lt "$BENCH_PK_COLUMNS" ]; do
+    _pk_i=$((_pk_i + 1))
+    pk_columns_csv="${pk_columns_csv:+$pk_columns_csv+}k$_pk_i"
+done
 
 usage() {
     echo "usage: $0 [--reset]" >&2

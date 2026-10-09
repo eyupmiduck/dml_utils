@@ -29,6 +29,7 @@ lines read:
 
 ```sh
 BENCH_ROWS=1000000
+BENCH_PK_COLUMNS=1
 BENCH_CHUNK_SIZE=1000
 BENCH_CHUNK_BY=primary_key
 BENCH_THREADS_FROM=1
@@ -38,7 +39,8 @@ BENCH_WARMUP_RUNS=1
 ```
 
 Set `BENCH_CHUNK_BY=blocks` to benchmark the physical block (ctid) strategy
-instead (see [Parameters](#parameters)).
+instead, and `BENCH_PK_COLUMNS` to `2` or `3` for a two- or three-column bigint
+primary key (see [Parameters](#parameters)).
 
 These are all the defaults, so the example works out of the box; the point is
 that you change the sweep here. The scripts read this file, so do not rely on
@@ -139,7 +141,7 @@ ones you are most likely to change:
 | parameter                                 | default                | purpose                                                 |
 |-------------------------------------------|------------------------|---------------------------------------------------------|
 | `BENCH_ROWS`                              | `1000000`              | synthetic source rows                                   |
-| `BENCH_PK_COLUMNS`                        | `k1`                   | space-separated bigint primary-key columns (1 to 3)     |
+| `BENCH_PK_COLUMNS`                        | `1`                    | number of bigint primary-key columns (1 to 3)           |
 | `BENCH_CHUNK_SIZE`                        | `1000`                 | chunk size, in the unit of `BENCH_CHUNK_BY`             |
 | `BENCH_CHUNK_BY`                          | `primary_key`          | chunking strategy: `primary_key` or `blocks`            |
 | `BENCH_THREADS_FROM` / `BENCH_THREADS_TO` | `1` / `20`             | thread sweep                                            |
@@ -183,11 +185,11 @@ database:
   needs no server change.
 - **Schema**: the changelog is applied to the container's `dml_utils` database by
   the Liquibase image, so the routines under test are exactly the repository's.
-- **Data**: `sql/create-source.sql` creates `benchmark.bench_source` with the
-  `BENCH_PK_COLUMNS` primary key (one to three `bigint` columns) and deterministic
-  key tuples and payloads, so refreshing the database reproduces the table
-  exactly. `benchmark.bench_target` is the throwaway destination, with the same
-  key columns.
+- **Data**: `sql/create-source.sql` creates `benchmark.bench_source` with
+  `BENCH_PK_COLUMNS` bigint key columns (`k1..kN`) and deterministic key tuples
+  and payloads, so refreshing the database reproduces the table exactly.
+  `benchmark.bench_target` is the throwaway destination, with the same key
+  columns.
 
 All database access goes through `docker exec`, so no host `psql` is required.
 
