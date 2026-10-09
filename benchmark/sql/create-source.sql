@@ -13,10 +13,19 @@ DROP TABLE IF EXISTS :"schema".:"source_table";
 
 CREATE TABLE :"schema".:"source_table"
 (
-    :pk_def,
-    payload text NOT NULL,
-    PRIMARY KEY (:pk_key)
-);
+    :
+    pk_def,
+    payload
+    text
+    NOT
+    NULL,
+    PRIMARY
+    KEY
+(
+    :
+    pk_key
+)
+    );
 
 COMMENT ON TABLE :"schema".:"source_table" IS
     'Benchmark fixture: deterministic synthetic rows keyed by the configured bigint primary key.';
