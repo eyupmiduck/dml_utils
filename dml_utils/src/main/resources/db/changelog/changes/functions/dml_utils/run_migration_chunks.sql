@@ -175,10 +175,12 @@ BEGIN
             -- Nothing running and nothing left to launch: done (or draining is done).
             EXIT WHEN pg_catalog.cardinality(l_in_flight) = 0;
 
-            -- Wait for any in-flight worker to finish. wait_any() with a zero timeout
-            -- does not block, so poll with a short timeout.
+            -- Wait for any in-flight worker to finish. Poll with a 1ms timeout and
+            -- let the loop retry: pg_background_wait_any adds roughly 50ms of
+            -- latency whenever timeout_ms is 2 or more (observed with pg_background
+            -- 2.0), which otherwise dominates the per-chunk cost of the whole run.
             LOOP
-                l_handle := public.pg_background_wait_any(l_in_flight, 1000);
+                l_handle := public.pg_background_wait_any(l_in_flight, 1);
                 EXIT WHEN l_handle IS NOT NULL;
             END LOOP;
 
