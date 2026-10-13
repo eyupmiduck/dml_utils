@@ -95,9 +95,9 @@ BEGIN
     -- an empty source has no boundaries, so it is clamped to 0.
     UPDATE dml_utils_data.migration_run
     SET boundaries_calculated_at = pg_catalog.clock_timestamp(),
-        total_chunks = (SELECT greatest(pg_catalog.count(*) - 1, 0::bigint)
-                        FROM dml_utils_data.migration_boundary
-                        WHERE run_id = l_run_id)
+        total_chunks             = (SELECT greatest(pg_catalog.count(*) - 1, 0::bigint)
+                                    FROM dml_utils_data.migration_boundary
+                                    WHERE run_id = l_run_id)
     WHERE run_id = l_run_id;
 
     RETURN l_run_id;
