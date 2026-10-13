@@ -42,6 +42,10 @@ class MigrationTablesTest extends PostgresTestBase {
         assertTrue(hasColumn("dml_utils_data", "migration_run", "chunk_by"), "chunk_by should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "driving_table_relation_filepath"),
                 "driving_table_relation_filepath should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_run", "total_chunks"),
+                "total_chunks should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_run", "total_chunks_completed"),
+                "total_chunks_completed should exist");
 
         assertTrue(tableExists("dml_utils_data", "migration_boundary"), "migration_boundary should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_boundary", "run_id"), "run_id should exist");
@@ -223,6 +227,63 @@ class MigrationTablesTest extends PostgresTestBase {
                         MIGRATION_RUN.DRIVING_TABLE_SCHEMA_NAME, MIGRATION_RUN.DRIVING_TABLE_NAME)
                 .values("chunk-size-check", "SELECT 1", 0, 1, PUBLIC_SCHEMA, "migration_tables_source")
                 .execute());
+    }
+
+    /**
+     * The progress counters are non-negative and a run cannot report more
+     * completed chunks than it has.
+     */
+    @Test
+    void rejectsInvalidProgressCounters() {
+        assertDomainViolation(() -> dsl.insertInto(MIGRATION_RUN)
+                .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE,
+                        MIGRATION_RUN.THREADS, MIGRATION_RUN.DRIVING_TABLE_SCHEMA_NAME,
+                        MIGRATION_RUN.DRIVING_TABLE_NAME, MIGRATION_RUN.TOTAL_CHUNKS)
+                .values("negative-total-chunks-" + UUID.randomUUID(), "SELECT 1", 1, 1,
+                        PUBLIC_SCHEMA, "migration_tables_source", -1L)
+                .execute());
+        assertDomainViolation(() -> dsl.insertInto(MIGRATION_RUN)
+                .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE,
+                        MIGRATION_RUN.THREADS, MIGRATION_RUN.DRIVING_TABLE_SCHEMA_NAME,
+                        MIGRATION_RUN.DRIVING_TABLE_NAME, MIGRATION_RUN.TOTAL_CHUNKS_COMPLETED)
+                .values("negative-completed-" + UUID.randomUUID(), "SELECT 1", 1, 1,
+                        PUBLIC_SCHEMA, "migration_tables_source", -1L)
+                .execute());
+        assertDomainViolation(() -> dsl.insertInto(MIGRATION_RUN)
+                .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE,
+                        MIGRATION_RUN.THREADS, MIGRATION_RUN.DRIVING_TABLE_SCHEMA_NAME,
+                        MIGRATION_RUN.DRIVING_TABLE_NAME, MIGRATION_RUN.TOTAL_CHUNKS,
+                        MIGRATION_RUN.TOTAL_CHUNKS_COMPLETED)
+                .values("too-many-completed-" + UUID.randomUUID(), "SELECT 1", 1, 1,
+                        PUBLIC_SCHEMA, "migration_tables_source", 2L, 3L)
+                .execute());
+    }
+
+    /**
+     * {@code total_chunks} may be written with {@code boundaries_calculated_at}
+     * but is immutable afterwards; {@code total_chunks_completed} stays mutable.
+     */
+    @Test
+    void freezesTotalChunksAfterBoundariesAreCalculated() {
+        Long runId = insertRun();
+
+        dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.STARTED_AT, OffsetDateTime.parse("2020-01-01T00:00:00Z"))
+                .set(MIGRATION_RUN.BOUNDARIES_CALCULATED_AT, OffsetDateTime.parse("2020-01-01T00:00:01Z"))
+                .set(MIGRATION_RUN.TOTAL_CHUNKS, 5L)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute();
+
+        assertSqlState("22023", () -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.TOTAL_CHUNKS, 3L)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute());
+
+        // total_chunks_completed remains mutable, up to total_chunks.
+        dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.TOTAL_CHUNKS_COMPLETED, 2L)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute();
     }
 
     /**

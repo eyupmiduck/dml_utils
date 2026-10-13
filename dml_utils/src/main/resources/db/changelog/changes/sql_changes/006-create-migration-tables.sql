@@ -14,6 +14,8 @@ CREATE TABLE dml_utils_data.migration_run
     updated_at                      timestamptz                      NOT NULL DEFAULT pg_catalog.now(),
     started_at                      timestamptz,
     boundaries_calculated_at        timestamptz,
+    total_chunks                    bigint                           NOT NULL DEFAULT 0,
+    total_chunks_completed          bigint                           NOT NULL DEFAULT 0,
     completed_at                    timestamptz,
     archived_at                     timestamptz,
     CONSTRAINT migration_run_chunk_size_check CHECK (chunk_size > 0),
@@ -33,7 +35,14 @@ CREATE TABLE dml_utils_data.migration_run
             OR (started_at IS NOT NULL AND completed_at >= started_at))
             AND (boundaries_calculated_at IS NULL
             OR (started_at IS NOT NULL AND boundaries_calculated_at >= started_at))
-        )
+        ),
+    -- The run's progress counters: total_chunks is written once by
+    -- populate_migration_boundaries (the boundaries minus the terminal high-water
+    -- boundary) and total_chunks_completed is advanced by each chunk worker. Both
+    -- are non-negative and a run cannot complete more chunks than it has.
+    CONSTRAINT migration_run_total_chunks_check CHECK (total_chunks >= 0),
+    CONSTRAINT migration_run_total_chunks_completed_check CHECK (total_chunks_completed >= 0),
+    CONSTRAINT migration_run_progress_check CHECK (total_chunks_completed <= total_chunks)
 );
 
 COMMENT ON TABLE dml_utils_data.migration_run IS
@@ -78,6 +87,14 @@ COMMENT ON COLUMN dml_utils_data.migration_run.boundaries_calculated_at IS
         'after the boundaries were inserted; written in the same worker '
         'transaction as started_at, so it persists across a failed processing '
         'attempt and a resume.';
+COMMENT ON COLUMN dml_utils_data.migration_run.total_chunks IS
+    'Total number of chunks in the run: the boundary count minus the terminal '
+        'high-water boundary, and 0 for an empty source. Written once by '
+        'populate_migration_boundaries when the boundaries are calculated.';
+COMMENT ON COLUMN dml_utils_data.migration_run.total_chunks_completed IS
+    'Number of chunks whose worker recorded a completion; advanced in the same '
+        'transaction as the boundary completion, so it cannot drift from '
+        'migration_boundary.';
 COMMENT ON COLUMN dml_utils_data.migration_run.completed_at IS
     'Actual server time when the run finished processing all chunks; NULL while '
         'the run is unfinished. Written in the caller''s transaction, so a failed '

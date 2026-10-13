@@ -20,6 +20,19 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
 
+    -- total_chunks cannot be set at INSERT (the run row exists before its
+    -- boundaries), so populate_migration_boundaries writes it in the same
+    -- statement that sets boundaries_calculated_at. Freeze it from then on: the
+    -- boundaries it counts are never recomputed, so a later change would
+    -- invalidate the completed <= total invariant. total_chunks_completed stays
+    -- mutable; the chunk workers advance it.
+    IF NEW.total_chunks IS DISTINCT FROM OLD.total_chunks
+        AND OLD.boundaries_calculated_at IS NOT NULL
+    THEN
+        RAISE EXCEPTION 'migration_run total_chunks is immutable once the boundaries are calculated'
+            USING ERRCODE = '22023';
+    END IF;
+
     RETURN NEW;
 END;
 $$;
@@ -27,4 +40,7 @@ $$;
 COMMENT ON FUNCTION dml_utils_data.reject_migration_run_update IS
     'BEFORE UPDATE trigger that rejects any change to migration_run.label, '
         'migration_run.chunk_size, migration_run.chunk_by, the driving table '
-        'schema/name or the driving table relation filepath.';
+        'schema/name or the driving table relation filepath. It also rejects a '
+        'change to migration_run.total_chunks once boundaries_calculated_at is '
+        'set (the value is written with that milestone); '
+        'migration_run.total_chunks_completed stays mutable.';

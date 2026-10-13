@@ -5,7 +5,8 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.populate_migration_boundaries(
     i_sql_text dml_utils_data.non_null_text,
     i_chunk_size dml_utils_data.positive_integer,
     i_threads dml_utils_data.positive_integer DEFAULT 1,
-    i_chunk_by dml_utils_data.chunking_strategy DEFAULT 'primary_key'
+    i_chunk_by dml_utils_data.chunking_strategy DEFAULT 'primary_key',
+    i_driving_table_alias dml_utils_data.non_null_text DEFAULT 't'
 )
     RETURNS bigint
     LANGUAGE plpgsql
@@ -52,10 +53,14 @@ BEGIN
     -- started_at is the run's start: the boundary calculation begins here. It is
     -- written in this worker's transaction, so it commits with the run and the
     -- boundaries and survives a later failed chunk-processing attempt.
+    -- The alias is a creation-time input, stored with the run so a resume
+    -- renders with the same alias the first call used.
     INSERT INTO dml_utils_data.migration_run (label, sql_text, chunk_size, chunk_by, threads,
                                               driving_table_schema_name, driving_table_name,
+                                              driving_table_alias,
                                               driving_table_relation_filepath, started_at)
     VALUES (i_label, i_sql_text, i_chunk_size, i_chunk_by, i_threads, i_schema_name, i_table_name,
+            i_driving_table_alias,
             l_relation_filepath, pg_catalog.clock_timestamp())
     RETURNING run_id
         INTO l_run_id;
@@ -85,9 +90,14 @@ BEGIN
 
     -- The range calculation is done once the boundaries are inserted. Record it
     -- in this worker's transaction, so it commits with the run and is the
-    -- milestone a resume relies on: the boundaries are never recomputed.
+    -- milestone a resume relies on: the boundaries are never recomputed. The
+    -- chunk count is the boundary count minus the terminal high-water boundary;
+    -- an empty source has no boundaries, so it is clamped to 0.
     UPDATE dml_utils_data.migration_run
-    SET boundaries_calculated_at = pg_catalog.clock_timestamp()
+    SET boundaries_calculated_at = pg_catalog.clock_timestamp(),
+        total_chunks = (SELECT greatest(pg_catalog.count(*) - 1, 0::bigint)
+                        FROM dml_utils_data.migration_boundary
+                        WHERE run_id = l_run_id)
     WHERE run_id = l_run_id;
 
     RETURN l_run_id;
@@ -97,9 +107,10 @@ $$;
 COMMENT ON FUNCTION dml_utils_lib.populate_migration_boundaries IS
     'Creates a migration run for the label and populates its chunk boundaries for '
         'the given table and chunking strategy (primary_key or blocks), returning '
-        'the new run_id. Records the run''s started_at when the calculation begins '
-        'and boundaries_calculated_at when it finishes, both in the worker''s '
-        'transaction so they commit with the run; a block run also records the '
-        'driving table''s physical filepath. Boundaries are written as the '
+        'the new run_id. Stores the driving table alias with the run at creation. '
+        'Records the run''s started_at when the calculation begins '
+        'and boundaries_calculated_at and total_chunks when it finishes, all in the '
+        'worker''s transaction so they commit with the run; a block run also records '
+        'the driving table''s physical filepath. Boundaries are written as the '
         'contiguous sequence 0..N in one statement; this is the only supported '
         'write path for boundaries.';

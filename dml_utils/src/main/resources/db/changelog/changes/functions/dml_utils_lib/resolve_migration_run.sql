@@ -134,14 +134,15 @@ BEGIN
         o_chunk_by := i_chunk_by;
 
         l_handle := public.pg_background_launch(pg_catalog.format(
-                'SELECT dml_utils_lib.populate_migration_boundaries(%L, %L, %L, %L, %s, %s, %L) AS run_id',
+                'SELECT dml_utils_lib.populate_migration_boundaries(%L, %L, %L, %L, %s, %s, %L, %L) AS run_id',
                 i_driving_table_schema_name,
                 i_driving_table_name,
                 i_label,
                 i_sql_text,
                 i_chunk_size,
                 i_threads,
-                i_chunk_by::text));
+                i_chunk_by::text,
+                i_driving_table_alias));
         PERFORM public.pg_background_wait(l_handle.pid, l_handle.cookie);
 
         -- result() is one-time consumption and auto-detaches; it re-raises the
@@ -150,13 +151,6 @@ BEGIN
         INTO l_worker_run_id
         FROM public.pg_background_result(l_handle.pid, l_handle.cookie) AS (run_id bigint);
         o_run_id := l_worker_run_id;
-
-        -- Persist the alias with the run so a later resume renders with the same
-        -- alias the first call used; on a resume the caller's alias is ignored
-        -- like the other creation-time inputs.
-        UPDATE dml_utils_data.migration_run
-        SET driving_table_alias = i_driving_table_alias
-        WHERE run_id = o_run_id;
     END IF;
 
     -- Resolve the key the coordinator uses to read boundary values: the real

@@ -168,6 +168,88 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     /**
+     * A completed run records the total number of chunks and the number
+     * completed: 10 rows at chunk size 4 give three chunks, all completed.
+     */
+    @Test
+    void recordsTheChunkProgressCounters() {
+        createSource(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+        String label = label("counters");
+
+        run(label, 4, TEST_BIGINT);
+
+        long runId = runId(label);
+        assertEquals(3L, totalChunks(runId), "three chunks for 10 rows at chunk size 4");
+        assertEquals(3L, totalChunksCompleted(runId), "every chunk should be counted as completed");
+    }
+
+    /**
+     * An empty driving table records zero total chunks and zero completed.
+     */
+    @Test
+    void recordsZeroCountersForAnEmptyRun() {
+        String label = label("counters-empty");
+
+        run(label, 4, TEST_BIGINT);
+
+        long runId = runId(label);
+        assertEquals(0L, totalChunks(runId), "an empty run has no chunks");
+        assertEquals(0L, totalChunksCompleted(runId), "an empty run has no completed chunks");
+    }
+
+    /**
+     * A run that stops after a chunk failure counts only the chunks that
+     * completed before it; the counter never exceeds the total.
+     */
+    @Test
+    void countsOnlyCompletedChunksWhenAChunkFails() {
+        createSource(1, 2, 3, 4);
+        String label = label("counters-error");
+        String template =
+                "UPDATE <driving_table> SET payload ="
+                        + " CASE WHEN id = 3 THEN (id / 0)::text ELSE 'done' END"
+                        + " WHERE <chunking_clause>";
+
+        assertSqlState("22012", () -> runWith(label, template, 1, 1, TEST_BIGINT));
+
+        long runId = runId(label);
+        assertEquals(4L, totalChunks(runId), "four chunks for 4 rows at chunk size 1");
+        // Rows 1 and 2 complete, then the chunk for row 3 fails and the run stops.
+        assertEquals(2L, totalChunksCompleted(runId),
+                "only the two chunks before the failure should be counted");
+    }
+
+    /**
+     * A resume keeps the counter consistent: the already-completed chunk is not
+     * recounted and the remaining chunks add to it.
+     */
+    @Test
+    void countsCompletedChunksAcrossAResume() {
+        createSource(1, 2, 3, 4);
+        String label = label("counters-resume");
+
+        long runId = populate(TEST_BIGINT, label, TEMPLATE, 2);
+        // Simulate the first chunk having completed, as process_migration_chunk
+        // would have counted it.
+        dsl.update(MIGRATION_BOUNDARY)
+                .set(MIGRATION_BOUNDARY.STARTED_AT, OffsetDateTime.parse("2020-01-01T00:00:00Z"))
+                .set(MIGRATION_BOUNDARY.COMPLETED_AT, OffsetDateTime.now())
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId)
+                        .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(0L)))
+                .execute();
+        dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.TOTAL_CHUNKS_COMPLETED, 1L)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute();
+
+        run(label, 2, TEST_BIGINT);
+
+        assertEquals(2L, totalChunks(runId), "two chunks for 4 rows at chunk size 2");
+        assertEquals(2L, totalChunksCompleted(runId),
+                "the pre-completed chunk plus the resumed one should be counted");
+    }
+
+    /**
      * A row count that is not a multiple of the chunk size still processes every
      * row: the last (partial) chunk is bounded inclusively by the high-water
      * boundary.
@@ -877,7 +959,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
 
     private long populate(Table<?> table, String label, String template, int chunkSize, int threads) {
         return io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
-                dsl.configuration(), schema(table), name(table), label, template, chunkSize, threads, ChunkingStrategy.primary_key);
+                dsl.configuration(), schema(table), name(table), label, template, chunkSize, threads, ChunkingStrategy.primary_key, "t");
     }
 
     private String label(String suffix) {
@@ -899,6 +981,20 @@ class RunMigrationChunksTest extends PostgresTestBase {
                 .from(MIGRATION_RUN)
                 .where(MIGRATION_RUN.LABEL.eq(label))
                 .fetchOne(MIGRATION_RUN.RUN_ID);
+    }
+
+    private long totalChunks(long runId) {
+        return dsl.select(MIGRATION_RUN.TOTAL_CHUNKS)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_RUN.TOTAL_CHUNKS);
+    }
+
+    private long totalChunksCompleted(long runId) {
+        return dsl.select(MIGRATION_RUN.TOTAL_CHUNKS_COMPLETED)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_RUN.TOTAL_CHUNKS_COMPLETED);
     }
 
     private int completedBoundaries(long runId) {
