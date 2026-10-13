@@ -72,8 +72,14 @@ jOOQ codegen and tests. CI: GitHub Actions (`.github/workflows/maven.yml`) runs
 - Versioning is CI-friendly: the root POM declares `<revision>` and uses
   `flatten-maven-plugin` (`resolveCiFriendliesOnly`), and each module's
   `<parent>` version is `${revision}`. `flatten` resolves it in the installed/
-  deployed POM. A release does not edit the POM; a snapshot bump changes the
-  single `<revision>` line.
+  deployed POM. A release does not edit the POM: the tag is the version source
+  of truth. After a release, the `Release` workflow opens an automated
+  follow-up PR (the reusable `bump-snapshot` input) that bumps the single
+  `<revision>` line to the next patch snapshot, so local builds stay current.
+  That PR is opened with the `RELEASE_TOKEN` secret (a PAT or GitHub App token
+  with `contents` and `pull-requests` write); the default `GITHUB_TOKEN` is not
+  used because GitHub suppresses workflow runs for events it creates, which
+  would leave the PR without the required checks.
 - A release is a `v<version>` tag pushed to `main`. The `Release` workflow (`.github/workflows/release.yml`) derives the
   version from the tag (`-Drevision=${tag#v}`), runs the full `verify` gate, deploys to GitHub
   Packages, then creates the GitHub Release. Do not tag a commit that CI has

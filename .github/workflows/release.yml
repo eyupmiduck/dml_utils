@@ -2,8 +2,9 @@ name: Release
 
 # Publishes a tagged commit to GitHub Packages and opens the matching GitHub
 # Release. The reusable workflow derives -Drevision from the tag, so the tag is
-# the single source of truth for the version: bump <revision> in the POM only
-# for local/snapshot builds, a release never edits it.
+# the single source of truth for the release version; the POM's <revision> is
+# kept current afterwards by an automated follow-up PR (bump-snapshot), not by
+# the release itself.
 on:
   push:
     tags:
@@ -18,6 +19,7 @@ concurrency:
 permissions:
   contents: write
   packages: write
+  pull-requests: write
 
 jobs:
   release:
@@ -26,8 +28,15 @@ jobs:
     permissions:
       contents: write
       packages: write
-    uses: eyupmiduck/workflow_library/.github/workflows/maven-release.yml@593fcd4bd1fe5a5cb9921360d7365747fc249b62
+      pull-requests: write
+    uses: eyupmiduck/workflow_library/.github/workflows/maven-release.yml@16adb4400f7e82020f791cc367775819220ebb60
     with:
       java-version: "25"
       postgres-version: postgres:17-alpine
       project: dml_utils
+      # After the release, open a PR bumping the POM's <revision> to the next
+      # patch snapshot. The PR is opened with RELEASE_TOKEN (a PAT/App token),
+      # because GITHUB_TOKEN-opened PRs do not trigger the required checks.
+      bump-snapshot: true
+    secrets:
+      release-token: ${{ secrets.RELEASE_TOKEN }}
