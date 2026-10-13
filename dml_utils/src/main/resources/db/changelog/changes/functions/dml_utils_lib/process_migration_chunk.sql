@@ -53,12 +53,21 @@ BEGIN
     SET completed_at = pg_catalog.clock_timestamp()
     WHERE run_id = i_run_id
       AND boundary_no = i_boundary_no;
+
+    -- Advance the run's completed-chunk counter in the same transaction as the
+    -- boundary completion, so the counter can never drift from the boundaries and
+    -- a failed chunk rolls both back together. The row is locked for the rest of
+    -- this transaction, so a concurrent worker's increment serialises behind it.
+    UPDATE dml_utils_data.migration_run
+    SET total_chunks_completed = total_chunks_completed + 1
+    WHERE run_id = i_run_id;
 END;
 $$;
 
 COMMENT ON FUNCTION dml_utils_lib.process_migration_chunk IS
     'Claims one migration boundary (recording started_at) and runs its chunk SQL '
-        'in the caller''s transaction, then records completed_at; raises P0002 when '
+        'in the caller''s transaction, then records completed_at and advances the '
+        'run''s total_chunks_completed in that same transaction; raises P0002 when '
         'the boundary is missing or already completed. Both timestamps are the '
         'actual server time of the event, not the transaction start. Intended to '
         'run inside a pg_background worker. SECURITY INVOKER by design: it runs '

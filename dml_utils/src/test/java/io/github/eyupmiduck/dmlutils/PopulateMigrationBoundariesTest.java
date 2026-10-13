@@ -460,7 +460,7 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
     private long populate(Table<?> table, String label, int chunkSize, int threads) {
         return io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
                 dsl.configuration(), table.getSchema().getName(), table.getName(), label, SQL_TEXT,
-                chunkSize, threads, ChunkingStrategy.primary_key);
+                chunkSize, threads, ChunkingStrategy.primary_key, "t");
     }
 
     private List<MigrationBoundaryRecord> boundaries(long runId) {

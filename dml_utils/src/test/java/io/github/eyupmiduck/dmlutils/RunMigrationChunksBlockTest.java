@@ -73,7 +73,7 @@ class RunMigrationChunksBlockTest extends PostgresTestBase {
         // Create the block run's boundaries without processing it.
         io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
                 dsl.configuration(), SCHEMA, TEST_BIGINT.getName(), label, TEMPLATE, 1, 1,
-                ChunkingStrategy.blocks);
+                ChunkingStrategy.blocks, "t");
 
         // Resume with a different requested strategy; the stored one wins.
         Routines.runMigrationChunks(dsl.configuration(), TEMPLATE, SCHEMA, TEST_BIGINT.getName(),
@@ -94,7 +94,7 @@ class RunMigrationChunksBlockTest extends PostgresTestBase {
 
         io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
                 dsl.configuration(), SCHEMA, TEST_BIGINT.getName(), label, TEMPLATE, 1, 1,
-                ChunkingStrategy.blocks);
+                ChunkingStrategy.blocks, "t");
 
         // TRUNCATE gives the table a new relfilenode, changing its filepath.
         dsl.execute("TRUNCATE dml_utils_fixtures.test_bigint");

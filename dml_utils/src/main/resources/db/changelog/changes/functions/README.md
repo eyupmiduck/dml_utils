@@ -577,14 +577,18 @@ i_sql_text    dml_utils_data.non_null_text
 i_chunk_size  dml_utils_data.positive_integer
 i_threads     dml_utils_data.positive_integer DEFAULT 1
 i_chunk_by    dml_utils_data.chunking_strategy DEFAULT 'primary_key'
+i_driving_table_alias dml_utils_data.non_null_text DEFAULT 't'
 RETURNS bigint
 ```
 
 `SECURITY INVOKER`. Creates a `dml_utils_data.migration_run` row for the label,
-with the recorded SQL text, chunk size, strategy, threads and driving table,
-records the run's `started_at` (the run start, when the calculation begins), then
+with the recorded SQL text, chunk size, strategy, threads, driving table and
+driving table alias (storing the alias at creation so a resume renders with the
+same alias), records the run's `started_at` (the run start, when the calculation begins), then
 populates the boundaries for the strategy and records `boundaries_calculated_at`
-(when the range calculation finishes); returns the new `run_id`. For `primary_key`
+(when the range calculation finishes) and `total_chunks` (the boundary count minus
+the terminal high-water boundary, clamped to 0 for an empty source); returns the
+new `run_id`. For `primary_key`
 it inserts one fixed-row chunk boundary per chunk plus a terminal high-water
 boundary at the captured maximum primary key; for `blocks` it inserts one start
 boundary every `i_chunk_size` heap blocks plus a one-past-end terminal boundary
@@ -759,7 +763,9 @@ RETURNS void
 
 `SECURITY INVOKER`. Claims one boundary by setting its `started_at` (an atomic
 `UPDATE ... RETURNING` that locks the row for the caller's transaction), runs
-the fully-formed chunk SQL, then sets its `completed_at`. Both timestamps are the
+the fully-formed chunk SQL, then sets its `completed_at` and advances the run's
+`total_chunks_completed` in that same transaction, so the counter cannot drift
+from the completed boundaries. Both timestamps are the
 actual server time of the event (`clock_timestamp()`), not the transaction start.
 Raises `no_data_found` (`P0002`) when the boundary does not exist or is already
 completed. If the chunk SQL fails, the transaction aborts and the claim rolls
@@ -806,7 +812,9 @@ RETURNS trigger
 granted to no one). The `BEFORE UPDATE ... FOR EACH ROW` trigger on
 `migration_run` that rejects any change to `label`, `chunk_size` or the driving
 table (`driving_table_schema_name`, `driving_table_name`), all fixed when the run
-is created.
+is created, and to `total_chunks` once `boundaries_calculated_at` is set (the two
+are written together); `total_chunks_completed` stays mutable for the chunk
+workers.
 
 ### `dml_utils_data.reject_migration_boundary_update()`
 
