@@ -1,0 +1,19 @@
+         name         | setting | unit 
+----------------------+---------+------
+ autovacuum           | on      | 
+ checkpoint_timeout   | 300     | s
+ effective_cache_size | 524288  | 8kB
+ fsync                | on      | 
+ full_page_writes     | on      | 
+ maintenance_work_mem | 65536   | kB
+ max_connections      | 100     | 
+ max_worker_processes | 30      | 
+ random_page_cost     | 4       | 
+ seq_page_cost        | 1       | 
+ server_version       | 17.11   | 
+ shared_buffers       | 65536   | 8kB
+ synchronous_commit   | on      | 
+ wal_level            | replica | 
+ work_mem             | 4096    | kB
+(15 rows)
+
