@@ -144,6 +144,40 @@ GRANT EXECUTE ON FUNCTION dml_utils_lib.resolve_migration_run(
     dml_utils_data.non_null_text,
     dml_utils_data.chunking_strategy
     ) TO dml_utils_caller;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.prepare_chunk_sql_render(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    name[],
+    text[]
+    ) FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.prepare_chunk_sql_render(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    name[],
+    text[]
+    ) TO dml_utils_caller;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.render_prepared_chunk_sql(
+    text,
+    text[],
+    text[],
+    text[],
+    text[],
+    text[],
+    boolean
+    ) FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.render_prepared_chunk_sql(
+    text,
+    text[],
+    text[],
+    text[],
+    text[],
+    text[],
+    boolean
+    ) TO dml_utils_caller;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.render_chunk_sql(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text,

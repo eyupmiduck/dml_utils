@@ -29,6 +29,9 @@ DECLARE
     l_end_values            text[];
     l_is_final              boolean;
     l_chunk_sql             text;
+    -- Run-invariant chunk-render context, prepared once before the loop so the
+    -- per-chunk render does not repeat the template validation and quoting.
+    l_render_prepared       record;
     -- The workers kept in flight, and the boundary each one was launched for
     -- (parallel arrays, aligned by position).
     l_in_flight             public.pg_background_handle[] := ARRAY []::public.pg_background_handle[];
@@ -97,6 +100,22 @@ BEGIN
     -- boundary (for example the terminal one) is already completed. The join on
     -- boundary_no + 1 excludes the terminal boundary, so the end key is never
     -- null.
+    --
+    -- Prepare the run-invariant chunk-render context once: the template is
+    -- validated, the driving table and column names are quoted and each text
+    -- column's collation is resolved here, so the per-chunk render below only
+    -- builds the range predicate and substitutes the clause. A block run renders a
+    -- trivial ctid range, so it needs no context.
+    IF l_chunk_by <> 'blocks' THEN
+        l_render_prepared := dml_utils_lib.prepare_chunk_sql_render(
+                i_sql_text => l_effective_sql_text,
+                i_schema_name => l_effective_schema_name,
+                i_table_name => l_effective_table_name,
+                i_table_alias => l_effective_alias,
+                i_primary_key_columns => l_primary_key_columns,
+                i_key_kinds => l_key_kinds);
+    END IF;
+
     BEGIN
         LOOP
             -- Keep launching until i_threads are in flight (or there is nothing left
@@ -146,13 +165,11 @@ BEGIN
                                     i_start_block => l_start_values[1]::bigint,
                                     i_end_block => l_end_values[1]::bigint);
                         ELSE
-                            l_chunk_sql := dml_utils_lib.render_chunk_sql(
-                                    i_sql_text => l_effective_sql_text,
-                                    i_schema_name => l_effective_schema_name,
-                                    i_table_name => l_effective_table_name,
-                                    i_table_alias => l_effective_alias,
-                                    i_primary_key_columns => l_primary_key_columns,
+                            l_chunk_sql := dml_utils_lib.render_prepared_chunk_sql(
+                                    i_template => l_render_prepared.o_template,
+                                    i_column_names => l_render_prepared.o_column_names,
                                     i_key_kinds => l_key_kinds,
+                                    i_key_collations => l_render_prepared.o_key_collations,
                                     i_start_values => l_start_values,
                                     i_end_values => l_end_values,
                                     i_is_final => l_is_final);
