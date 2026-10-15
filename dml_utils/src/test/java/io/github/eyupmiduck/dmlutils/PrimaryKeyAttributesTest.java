@@ -19,6 +19,12 @@ class PrimaryKeyAttributesTest extends PostgresTestBase {
 
     private static final String FIXTURE_SCHEMA = "dml_utils_fixtures";
 
+    private static void assertAttribute(PrimaryKeyAttributesRecord row, int ordinality, String name, String kind) {
+        assertEquals(ordinality, row.getOrdinality());
+        assertEquals(name, row.getColumnName());
+        assertEquals(kind, row.getKeyKind());
+    }
+
     /**
      * A three-column key is returned in key order (not physical column order)
      * with each column's collapsed kind.
@@ -87,11 +93,5 @@ class PrimaryKeyAttributesTest extends PostgresTestBase {
                 dsl.configuration(), "no_such_schema", "test_bigint"));
         assertSqlState("42P01", () -> Routines.primaryKeyAttributes(
                 dsl.configuration(), FIXTURE_SCHEMA, "no_such_table"));
-    }
-
-    private static void assertAttribute(PrimaryKeyAttributesRecord row, int ordinality, String name, String kind) {
-        assertEquals(ordinality, row.getOrdinality());
-        assertEquals(name, row.getColumnName());
-        assertEquals(kind, row.getKeyKind());
     }
 }

@@ -558,7 +558,8 @@ is the one-shot pair of `prepare_chunk_sql_render` and
 `render_prepared_chunk_sql`; a caller that renders many chunks for one table
 calls those two directly and prepares once.
 
-### `dml_utils_lib.prepare_chunk_sql_render(i_sql_text, i_schema_name, i_table_name, i_table_alias, i_primary_key_columns, i_key_kinds)`
+###
+`dml_utils_lib.prepare_chunk_sql_render(i_sql_text, i_schema_name, i_table_name, i_table_alias, i_primary_key_columns, i_key_kinds)`
 
 ```sql
 i_sql_text            dml_utils_data.non_null_text
@@ -584,7 +585,8 @@ template that is not a valid chunking template, or an identifier/template
 containing a reserved substitution character (`22023`). Prepare once per run and
 pass the result to `render_prepared_chunk_sql` for every chunk.
 
-### `dml_utils_lib.render_prepared_chunk_sql(i_template, i_column_names, i_key_kinds, i_key_collations, i_start_values, i_end_values, i_is_final)`
+###
+`dml_utils_lib.render_prepared_chunk_sql(i_template, i_column_names, i_key_kinds, i_key_collations, i_start_values, i_end_values, i_is_final)`
 
 ```sql
 i_template       text

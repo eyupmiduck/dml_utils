@@ -22,10 +22,10 @@ DECLARE
     -- substitution can be re-scanned by the other.
     l_driving_table_sentinel   constant text := pg_catalog.chr(1);
     l_chunking_clause_sentinel constant text := pg_catalog.chr(2);
-    l_driving_table text;
-    l_column_count  integer;
-    l_kind          text;
-    l_collation     text;
+    l_driving_table                     text;
+    l_column_count                      integer;
+    l_kind                              text;
+    l_collation                         text;
 BEGIN
     PERFORM dml_utils_lib.assert_chunking_template(i_sql_text => i_sql_text);
 

@@ -22,6 +22,17 @@ class ExplainChunkPlansTest extends PostgresTestBase {
     private static final String TEMPLATE =
             "UPDATE <driving_table> SET payload = 'x' WHERE <chunking_clause>";
 
+    private static void assertPlanKinds(List<ExplainChunkPlansRecord> plans) {
+        assertEquals(3, plans.size(), "one row per generated statement");
+        assertEquals("boundary_population", plans.get(0).getOPlanKind());
+        assertEquals("chunk_non_final", plans.get(1).getOPlanKind());
+        assertEquals("chunk_final", plans.get(2).getOPlanKind());
+        for (ExplainChunkPlansRecord plan : plans) {
+            assertNotNull(plan.getOSqlText(), "each row carries the SQL it explained");
+            assertNotNull(plan.getOPlan(), "each row carries a JSON plan");
+        }
+    }
+
     /**
      * A primary-key run yields the boundary-population, non-final and final plans.
      */
@@ -55,16 +66,5 @@ class ExplainChunkPlansTest extends PostgresTestBase {
         assertSqlState("22023", () -> Routines.explainChunkPlans(
                 dsl.configuration(), "UPDATE t SET x = 1", FIXTURE_SCHEMA, "test_bigint", "t",
                 new String[]{"id"}, new String[]{"bigint"}, 1000L, ChunkingStrategy.primary_key));
-    }
-
-    private static void assertPlanKinds(List<ExplainChunkPlansRecord> plans) {
-        assertEquals(3, plans.size(), "one row per generated statement");
-        assertEquals("boundary_population", plans.get(0).getOPlanKind());
-        assertEquals("chunk_non_final", plans.get(1).getOPlanKind());
-        assertEquals("chunk_final", plans.get(2).getOPlanKind());
-        for (ExplainChunkPlansRecord plan : plans) {
-            assertNotNull(plan.getOSqlText(), "each row carries the SQL it explained");
-            assertNotNull(plan.getOPlan(), "each row carries a JSON plan");
-        }
     }
 }

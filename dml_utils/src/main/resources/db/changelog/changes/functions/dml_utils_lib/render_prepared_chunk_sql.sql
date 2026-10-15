@@ -17,25 +17,25 @@ DECLARE
     -- The sentinels prepare_chunk_sql_render left in the prepared template (and
     -- rejects in a substituted value). Both are checked on the chunking clause so
     -- no substituted value can reintroduce a token.
-    l_driving_table_sentinel   constant text := pg_catalog.chr(1);
-    l_chunking_clause_sentinel constant text := pg_catalog.chr(2);
-    l_column_count              integer;
-    l_start_literals            text[];
-    l_end_literals              text[];
-    l_boxes                     text[];
-    l_box                       text;
-    l_chunking_clause           text;
-    l_rendered                  text;
-    l_kind                      text;
-    l_start_less_than_end       boolean;
-    l_start_bigint              bigint;
-    l_end_bigint                bigint;
-    l_start_uuid                uuid;
-    l_end_uuid                  uuid;
+    l_driving_table_sentinel   constant text    := pg_catalog.chr(1);
+    l_chunking_clause_sentinel constant text    := pg_catalog.chr(2);
+    l_column_count                      integer;
+    l_start_literals                    text[];
+    l_end_literals                      text[];
+    l_boxes                             text[];
+    l_box                               text;
+    l_chunking_clause                   text;
+    l_rendered                          text;
+    l_kind                              text;
+    l_start_less_than_end               boolean;
+    l_start_bigint                      bigint;
+    l_end_bigint                        bigint;
+    l_start_uuid                        uuid;
+    l_end_uuid                          uuid;
     -- Direction of the first differing column (-1 start < end, 1 start > end,
     -- 0 all equal) and its position, which selects the box decomposition.
-    l_first_difference          integer := 0;
-    l_first_difference_position integer := 0;
+    l_first_difference                  integer := 0;
+    l_first_difference_position         integer := 0;
 BEGIN
     -- The per-chunk render consumes only the run-invariant context prepared once
     -- by prepare_chunk_sql_render; it reads no catalog and validates no template.

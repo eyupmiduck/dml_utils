@@ -23,6 +23,14 @@ class ResolveMigrationRunTest extends PostgresTestBase {
     private static final String TEMPLATE =
             "UPDATE <driving_table> SET payload = 'x' WHERE <chunking_clause>";
 
+    private static String schema() {
+        return TEST_BIGINT.getSchema().getName();
+    }
+
+    private static String name() {
+        return TEST_BIGINT.getName();
+    }
+
     /**
      * Resets the run metadata and the fixture table between tests.
      */
@@ -109,13 +117,5 @@ class ResolveMigrationRunTest extends PostgresTestBase {
     private ResolveMigrationRun resolve(String label, String sqlText, String alias, int chunkSize, int threads) {
         return Routines.resolveMigrationRun(dsl.configuration(), sqlText, schema(), name(),
                 label, chunkSize, threads, alias, ChunkingStrategy.primary_key);
-    }
-
-    private static String schema() {
-        return TEST_BIGINT.getSchema().getName();
-    }
-
-    private static String name() {
-        return TEST_BIGINT.getName();
     }
 }
