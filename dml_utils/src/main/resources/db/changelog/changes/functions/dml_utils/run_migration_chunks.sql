@@ -142,9 +142,9 @@ BEGIN
                             WHERE run_id = b.run_id
                             ) AS last
                                  CROSS JOIN LATERAL dml_utils_lib.migration_key_pair_values(
-                                         i_start_key => b.boundary_id,
-                                         i_end_key => next.boundary_id,
-                                         i_key_kinds => l_key_kinds) AS pair
+                                i_start_key => b.boundary_id,
+                                i_end_key => next.boundary_id,
+                                i_key_kinds => l_key_kinds) AS pair
                         WHERE b.run_id = l_run_id
                           AND b.completed_at IS NULL
                           AND b.boundary_no <> ALL (l_in_flight_boundaries)

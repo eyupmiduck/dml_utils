@@ -48,16 +48,13 @@ BEGIN
             -- position-aligned with the key instead of shifting later values.
             -- render_chunk_sql rejects the NULL when it renders the predicate.
             CASE l_kind
-                WHEN 'bigint' THEN
-                    l_start := (i_start_key).bigint_values[l_position]::text;
-                    l_end := (i_end_key).bigint_values[l_position]::text;
-                WHEN 'text' THEN
-                    l_start := (i_start_key).text_values[l_position];
-                    l_end := (i_end_key).text_values[l_position];
-                WHEN 'uuid' THEN
-                    l_start := (i_start_key).uuid_values[l_position]::text;
-                    l_end := (i_end_key).uuid_values[l_position]::text;
-            END CASE;
+                WHEN 'bigint' THEN l_start := (i_start_key).bigint_values[l_position]::text;
+                                   l_end := (i_end_key).bigint_values[l_position]::text;
+                WHEN 'text' THEN l_start := (i_start_key).text_values[l_position];
+                                 l_end := (i_end_key).text_values[l_position];
+                WHEN 'uuid' THEN l_start := (i_start_key).uuid_values[l_position]::text;
+                                 l_end := (i_end_key).uuid_values[l_position]::text;
+                END CASE;
 
             o_start_values := o_start_values || l_start;
             o_end_values := o_end_values || l_end;

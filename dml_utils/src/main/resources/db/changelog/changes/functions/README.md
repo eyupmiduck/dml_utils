@@ -575,6 +575,7 @@ is the one-shot pair of `prepare_chunk_sql_render` and
 calls those two directly and prepares once.
 
 ###
+
 `dml_utils_lib.prepare_chunk_sql_render(i_sql_text, i_schema_name, i_table_name, i_table_alias, i_primary_key_columns, i_key_kinds)`
 
 ```sql
@@ -602,6 +603,7 @@ containing a reserved substitution character (`22023`). Prepare once per run and
 pass the result to `render_prepared_chunk_sql` for every chunk.
 
 ###
+
 `dml_utils_lib.render_prepared_chunk_sql(i_template, i_column_names, i_key_kinds, i_key_collations, i_start_values, i_end_values, i_is_final)`
 
 ```sql

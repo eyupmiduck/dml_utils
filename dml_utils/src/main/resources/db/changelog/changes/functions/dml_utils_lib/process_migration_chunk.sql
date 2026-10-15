@@ -25,7 +25,7 @@ BEGIN
     WHERE run_id = i_run_id
       AND boundary_no = i_boundary_no
       AND completed_at IS NULL
-    FOR UPDATE;
+        FOR UPDATE;
 
     -- No row claimed means the boundary is missing or already completed.
     IF l_boundary_no IS NULL THEN
@@ -55,7 +55,7 @@ BEGIN
     -- finish time. The row is locked by the claim above, so no other transaction
     -- can interleave; completed_at >= started_at, satisfying the time-order check.
     UPDATE dml_utils_data.migration_boundary
-    SET started_at = l_started_at,
+    SET started_at   = l_started_at,
         completed_at = pg_catalog.clock_timestamp()
     WHERE run_id = i_run_id
       AND boundary_no = i_boundary_no;
