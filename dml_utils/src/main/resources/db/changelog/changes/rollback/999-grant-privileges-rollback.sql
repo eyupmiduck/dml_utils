@@ -60,6 +60,16 @@ GRANT EXECUTE ON FUNCTION dml_utils_lib.migration_key_values(
     dml_utils_data.migration_key,
     text[]
     ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.migration_key_pair_values(
+    dml_utils_data.migration_key,
+    dml_utils_data.migration_key,
+    text[]
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.migration_key_pair_values(
+    dml_utils_data.migration_key,
+    dml_utils_data.migration_key,
+    text[]
+    ) TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.migration_key_is_canonical(
     dml_utils_data.migration_key
     ) FROM dml_utils_caller;

@@ -124,16 +124,12 @@ BEGIN
                 WHILE pg_catalog.cardinality(l_in_flight) < l_effective_threads
                     LOOP
                     -- Extract the per-position key values of the start and end
-                    -- boundaries. Each kind populates a different position-aligned
-                    -- array of migration_key; the extract below flattens them back
-                    -- into a value list, in primary-key order.
+                    -- boundaries in one call. Each kind populates a different
+                    -- position-aligned array of migration_key; the helper flattens
+                    -- both back into a value list each, in primary-key order.
                         SELECT b.boundary_no,
-                               dml_utils_lib.migration_key_values(
-                                       i_key => b.boundary_id,
-                                       i_key_kinds => l_key_kinds),
-                               dml_utils_lib.migration_key_values(
-                                       i_key => next.boundary_id,
-                                       i_key_kinds => l_key_kinds),
+                               pair.o_start_values,
+                               pair.o_end_values,
                                next.boundary_no = last.boundary_no
                         INTO l_boundary_no, l_start_values, l_end_values, l_is_final
                         FROM dml_utils_data.migration_boundary AS b
@@ -145,6 +141,10 @@ BEGIN
                             FROM dml_utils_data.migration_boundary
                             WHERE run_id = b.run_id
                             ) AS last
+                                 CROSS JOIN LATERAL dml_utils_lib.migration_key_pair_values(
+                                         i_start_key => b.boundary_id,
+                                         i_end_key => next.boundary_id,
+                                         i_key_kinds => l_key_kinds) AS pair
                         WHERE b.run_id = l_run_id
                           AND b.completed_at IS NULL
                           AND b.boundary_no <> ALL (l_in_flight_boundaries)

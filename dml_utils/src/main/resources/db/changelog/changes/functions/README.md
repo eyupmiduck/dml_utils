@@ -450,6 +450,22 @@ into one text value per primary-key column, in key order, using `i_key_kinds` to
 pick the array for each position. The chunk predicate re-casts each value. Pure
 casts and array element access, so it is `IMMUTABLE`.
 
+### `dml_utils_lib.migration_key_pair_values(i_start_key, i_end_key, i_key_kinds)`
+
+```sql
+i_start_key dml_utils_data.migration_key
+i_end_key   dml_utils_data.migration_key
+i_key_kinds text[]
+RETURNS record (o_start_values text[], o_end_values text[])
+```
+
+`IMMUTABLE`, `SECURITY INVOKER`. Flattens a chunk's two boundaries (its start
+and end `migration_key`) in one pass, returning one text value per primary-key
+column for each, in key order. It is the two-key form of
+`migration_key_values`, so the coordinator extracts both bounds with a single
+call per chunk instead of two. Rejects malformed kinds or an unsupported kind
+with `22023`.
+
 ###
 
 `dml_utils_lib.build_function_chunk_template(i_table_schema_name, i_table_name, i_function_schema_name, i_function_name [, i_filter])`
