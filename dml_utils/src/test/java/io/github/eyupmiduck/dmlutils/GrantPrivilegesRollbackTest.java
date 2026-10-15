@@ -28,30 +28,6 @@ class GrantPrivilegesRollbackTest {
     private static final String ROLLBACK =
             "db/changelog/changes/rollback/999-grant-privileges-rollback.sql";
 
-    /**
-     * Every function granted to the caller in the forward changeset is revoked
-     * from the caller in the rollback, with the same signature.
-     */
-    @Test
-    void rollbackRevokesEveryFunctionGrantedToTheCaller() throws IOException {
-        assertMirrors("GRANT EXECUTE ON FUNCTION\\s+(.*?)\\s+TO dml_utils_caller;",
-                "REVOKE EXECUTE ON FUNCTION\\s+(.*?)\\s+FROM dml_utils_caller;",
-                "every function granted to the caller should be revoked in the rollback");
-    }
-
-    /**
-     * Every function whose default {@code PUBLIC} execute the forward revokes has
-     * a matching {@code PUBLIC} grant restored in the rollback (including the
-     * trigger functions, which the forward revokes from {@code PUBLIC} and grants
-     * to no one).
-     */
-    @Test
-    void rollbackRestoresPublicExecuteForEveryFunctionRevokedFromPublic() throws IOException {
-        assertMirrors("REVOKE EXECUTE ON FUNCTION\\s+(.*?)\\s+FROM public;",
-                "GRANT EXECUTE ON FUNCTION\\s+(.*?)\\s+TO public;",
-                "every function revoked from PUBLIC should have its PUBLIC grant restored");
-    }
-
     private static void assertMirrors(String forwardRegex, String rollbackRegex, String message)
             throws IOException {
         Set<String> forward = extract(FORWARD, forwardRegex);
@@ -80,5 +56,29 @@ class GrantPrivilegesRollbackTest {
             assertNotNull(in, () -> "resource not found: " + resource);
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         }
+    }
+
+    /**
+     * Every function granted to the caller in the forward changeset is revoked
+     * from the caller in the rollback, with the same signature.
+     */
+    @Test
+    void rollbackRevokesEveryFunctionGrantedToTheCaller() throws IOException {
+        assertMirrors("GRANT EXECUTE ON FUNCTION\\s+(.*?)\\s+TO dml_utils_caller;",
+                "REVOKE EXECUTE ON FUNCTION\\s+(.*?)\\s+FROM dml_utils_caller;",
+                "every function granted to the caller should be revoked in the rollback");
+    }
+
+    /**
+     * Every function whose default {@code PUBLIC} execute the forward revokes has
+     * a matching {@code PUBLIC} grant restored in the rollback (including the
+     * trigger functions, which the forward revokes from {@code PUBLIC} and grants
+     * to no one).
+     */
+    @Test
+    void rollbackRestoresPublicExecuteForEveryFunctionRevokedFromPublic() throws IOException {
+        assertMirrors("REVOKE EXECUTE ON FUNCTION\\s+(.*?)\\s+FROM public;",
+                "GRANT EXECUTE ON FUNCTION\\s+(.*?)\\s+TO public;",
+                "every function revoked from PUBLIC should have its PUBLIC grant restored");
     }
 }
