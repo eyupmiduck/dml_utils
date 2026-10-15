@@ -1,0 +1,92 @@
+package io.github.eyupmiduck.dmlutils;
+
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.routines.PrepareChunkSqlRender;
+import org.junit.jupiter.api.Test;
+
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeCollated.TEST_COMPOSITE_COLLATED;
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * Verifies {@code dml_utils_lib.prepare_chunk_sql_render}: it validates the
+ * template and the primary-key columns and kinds once and returns the
+ * run-invariant render context — the template with the driving table
+ * substituted and the chunking clause left as a sentinel, the alias-qualified
+ * column names, and each text column's collation, position-aligned with the
+ * columns.
+ */
+class PrepareChunkSqlRenderTest extends PostgresTestBase {
+
+    private static final String TEMPLATE =
+            "UPDATE <driving_table> SET processed = true WHERE <chunking_clause>";
+
+    /**
+     * The prepared template has the driving table substituted and no longer
+     * contains the token, and the column names are the alias-qualified key
+     * columns in key order.
+     */
+    @Test
+    void substitutesTheDrivingTableAndQuotesTheColumnNames() {
+        PrepareChunkSqlRender prepared = Routines.prepareChunkSqlRender(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{"a", "b"}, new String[]{"bigint", "text"});
+
+        assertTrue(prepared.getOTemplate().contains("public.src t"),
+                "the driving table should be substituted");
+        assertFalse(prepared.getOTemplate().contains("<driving_table>"),
+                "the driving-table token should be gone");
+        assertArrayEquals(new String[]{"t.a", "t.b"}, prepared.getOColumnNames(),
+                "the column names should be alias-qualified and in key order");
+    }
+
+    /**
+     * A text column's collation is resolved from the catalog and aligned with its
+     * position, while a non-text column's entry is NULL.
+     */
+    @Test
+    void resolvesAndAlignsTextColumnCollations() {
+        PrepareChunkSqlRender prepared = Routines.prepareChunkSqlRender(
+                dsl.configuration(), TEMPLATE,
+                TEST_COMPOSITE_COLLATED.getSchema().getName(), TEST_COMPOSITE_COLLATED.getName(), "t",
+                new String[]{"a", "b"}, new String[]{"bigint", "text"});
+
+        String[] collations = prepared.getOKeyCollations();
+        assertEquals(2, collations.length, "one collation entry per key column");
+        assertNull(collations[0], "a bigint column has no collation entry");
+        assertEquals("\"en-x-icu\"", collations[1], "the text column's ICU collation");
+    }
+
+    /**
+     * A kind outside the whitelist is rejected, since it is interpolated into the
+     * generated SQL.
+     */
+    @Test
+    void rejectsAnUnsupportedKeyKind() {
+        assertSqlState("22023", () -> Routines.prepareChunkSqlRender(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{"a"}, new String[]{"int; DROP TABLE src"}));
+    }
+
+    /**
+     * A template that already contains a reserved substitution character is
+     * rejected.
+     */
+    @Test
+    void rejectsATemplateWithASentinelCharacter() {
+        String template = "UPDATE <driving_table> SET processed = '" + (char) 1
+                + "' WHERE <chunking_clause>";
+        assertSqlState("22023", () -> Routines.prepareChunkSqlRender(
+                dsl.configuration(), template, "public", "src", "t",
+                new String[]{"a"}, new String[]{"bigint"}));
+    }
+
+    /**
+     * Mismatched primary-key columns and kinds arrays are rejected.
+     */
+    @Test
+    void rejectsMismatchedColumnsAndKinds() {
+        assertSqlState("22023", () -> Routines.prepareChunkSqlRender(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{"a", "b"}, new String[]{"bigint"}));
+    }
+}

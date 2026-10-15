@@ -553,7 +553,61 @@ literal's cast, so any other value raises `22023`; the arrays must all have the
 same length, and a NULL start or end value raises `22023` (a NULL would render
 as an unquoted `NULL`, making the predicate match no rows). The start and end
 values are the text form of the packed boundary key. Identifiers are quoted with
-`%I` and values with `%L`, so neither substitution can reintroduce a token.
+`%I` and values with `%L`, so neither substitution can reintroduce a token. It
+is the one-shot pair of `prepare_chunk_sql_render` and
+`render_prepared_chunk_sql`; a caller that renders many chunks for one table
+calls those two directly and prepares once.
+
+###
+`dml_utils_lib.prepare_chunk_sql_render(i_sql_text, i_schema_name, i_table_name, i_table_alias, i_primary_key_columns, i_key_kinds)`
+
+```sql
+i_sql_text            dml_utils_data.non_null_text
+i_schema_name         dml_utils_data.non_null_text
+i_table_name          dml_utils_data.non_null_text
+i_table_alias         dml_utils_data.non_null_text
+i_primary_key_columns name[]
+i_key_kinds           text[]
+RETURNS record
+    (o_template text, o_column_names text[], o_key_collations text[])
+```
+
+`STABLE`, `SECURITY INVOKER`. Validates the chunking template (see
+`assert_chunking_template`) and the primary-key columns and kinds once, and
+returns the run-invariant render context for `render_prepared_chunk_sql`: the
+template with `<driving_table>` already substituted and `<chunking_clause>`
+replaced by an internal sentinel, the alias-qualified quoted column names, and
+each text column's collation (the quoted collation name, `default`, or NULL when
+the column is not in the catalog, in which case the per-chunk render compares
+under the default operator). It reads the catalog for the collations and rejects
+an unsupported kind, a NULL/empty column name, a malformed columns/kinds array, a
+template that is not a valid chunking template, or an identifier/template
+containing a reserved substitution character (`22023`). Prepare once per run and
+pass the result to `render_prepared_chunk_sql` for every chunk.
+
+###
+`dml_utils_lib.render_prepared_chunk_sql(i_template, i_column_names, i_key_kinds, i_key_collations, i_start_values, i_end_values, i_is_final)`
+
+```sql
+i_template       text
+i_column_names   text[]
+i_key_kinds      text[]
+i_key_collations text[]
+i_start_values   text[]
+i_end_values     text[]
+i_is_final       boolean
+RETURNS text
+```
+
+`STABLE`, `SECURITY INVOKER`. Renders one chunk from the context returned by
+`prepare_chunk_sql_render`: it validates and casts the start/end boundary values,
+builds the same axis-aligned box disjunction as `render_chunk_sql`, and
+substitutes it for the prepared template's chunking-clause sentinel. It reads no
+catalog, so calling it per chunk avoids repeating the template validation and
+quoting that `render_chunk_sql` would redo. A NULL template, a prepared template
+without the clause sentinel, a NULL `i_is_final`, malformed arrays, a NULL or
+invalid-for-its-kind boundary value, or a reversed/empty non-final range raises
+`22023`.
 
 ### `dml_utils_lib.assert_no_active_run_for_label(i_label)`
 

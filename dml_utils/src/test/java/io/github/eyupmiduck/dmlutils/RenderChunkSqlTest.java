@@ -554,6 +554,32 @@ class RenderChunkSqlTest extends PostgresTestBase {
     }
 
     /**
+     * The split renderer is equivalent to the one-shot renderer: preparing the
+     * context once and rendering the chunk from it yields the same SQL as
+     * {@code render_chunk_sql}, which composes the same two steps. This also
+     * exercises the two routines directly, including their grants.
+     */
+    @Test
+    void preparedRendererMatchesTheOneShotRenderer() {
+        String direct = Routines.renderChunkSql(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{"a", "b"}, new String[]{"bigint", "text"},
+                new String[]{"1", "x"}, new String[]{"2", "y"}, false);
+
+        String viaPrepared = dsl.fetchOne(
+                        "SELECT dml_utils_lib.render_prepared_chunk_sql("
+                                + " (r).o_template, (r).o_column_names, ARRAY['bigint', 'text'],"
+                                + " (r).o_key_collations, ARRAY['1', 'x'], ARRAY['2', 'y'], false)"
+                                + " FROM dml_utils_lib.prepare_chunk_sql_render("
+                                + " '" + TEMPLATE + "', 'public', 'src', 't',"
+                                + " ARRAY['a', 'b']::name[], ARRAY['bigint', 'text']) AS r")
+                .get(0, String.class);
+
+        assertEquals(direct, viaPrepared,
+                "prepare + render_prepared must match the one-shot render");
+    }
+
+    /**
      * The box disjunction selects exactly the same rows as the tuple-range
      * predicate it replaces, for a two-column key: a straddle at the leading
      * column (lower tail, middle, upper tail), an adjacent-value straddle whose
