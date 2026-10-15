@@ -419,7 +419,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
         assertSqlState("22012", () -> Routines.runMigrationChunks(
                 dsl.configuration(),
                 "UPDATE <driving_table> SET payload = (1 / 0)::text WHERE <chunking_clause>",
-                schema(TEST_BIGINT), name(TEST_BIGINT), label, 2, 1, "t", ChunkingStrategy.primary_key));
+                schema(TEST_BIGINT), name(TEST_BIGINT), label, 2, 1, "t", ChunkingStrategy.primary_key, 1));
 
         long runId = runId(label);
         assertFalse(runCompleted(runId), "a failed run must not be marked complete");
@@ -571,7 +571,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     @Test
     void rejectsNullSqlText() {
         assertDomainViolation(() -> Routines.runMigrationChunks(
-                dsl.configuration(), null, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 1, "t", ChunkingStrategy.primary_key));
+                dsl.configuration(), null, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 1, "t", ChunkingStrategy.primary_key, 1));
     }
 
     /**
@@ -580,7 +580,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     @Test
     void rejectsBlankLabel() {
         assertDomainViolation(() -> Routines.runMigrationChunks(
-                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "   ", 2, 1, "t", ChunkingStrategy.primary_key));
+                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "   ", 2, 1, "t", ChunkingStrategy.primary_key, 1));
     }
 
     /**
@@ -589,7 +589,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     @Test
     void rejectsNonPositiveChunkSize() {
         assertDomainViolation(() -> Routines.runMigrationChunks(
-                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 0, 1, "t", ChunkingStrategy.primary_key));
+                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 0, 1, "t", ChunkingStrategy.primary_key, 1));
     }
 
     /**
@@ -598,7 +598,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     @Test
     void rejectsNullAlias() {
         assertDomainViolation(() -> Routines.runMigrationChunks(
-                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 1, null, ChunkingStrategy.primary_key));
+                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 1, null, ChunkingStrategy.primary_key, 1));
     }
 
     /**
@@ -756,7 +756,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
 
         assertSqlState("22023", () -> Routines.runMigrationChunks(
                 dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2,
-                tooMany, "t", ChunkingStrategy.primary_key));
+                tooMany, "t", ChunkingStrategy.primary_key, 1));
     }
 
     /**
@@ -818,7 +818,36 @@ class RunMigrationChunksTest extends PostgresTestBase {
     void rejectsNonPositiveThreads() {
         assertDomainViolation(() -> Routines.runMigrationChunks(
                 dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 0,
-                "t", ChunkingStrategy.primary_key));
+                "t", ChunkingStrategy.primary_key, 1));
+    }
+
+    /**
+     * A non-positive poll timeout is rejected by the positive-integer domain:
+     * {@code pg_background_wait_any} treats a non-positive timeout as
+     * wait-forever, which the coordinator must not use.
+     */
+    @Test
+    void rejectsNonPositivePollTimeout() {
+        assertDomainViolation(() -> Routines.runMigrationChunks(
+                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 1,
+                "t", ChunkingStrategy.primary_key, 0));
+    }
+
+    /**
+     * A larger poll timeout (fewer coordinator wake-ups) still processes every
+     * chunk and completes the run.
+     */
+    @Test
+    void processesEveryChunkWithALargerPollTimeout() {
+        createSource(1, 2, 3, 4);
+        String label = label("poll-timeout");
+
+        Routines.runMigrationChunks(
+                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), label, 2, 1,
+                "t", ChunkingStrategy.primary_key, 50);
+
+        assertEquals(4, doneCount(TEST_BIGINT), "every row should be processed");
+        assertTrue(runCompleted(runId(label)), "the run should be marked complete");
     }
 
     /**
@@ -973,7 +1002,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     private void runWith(String label, String template, int chunkSize, int threads, Table<?> table) {
         Routines.runMigrationChunks(
                 dsl.configuration(), template, schema(table), name(table), label, chunkSize, threads,
-                "t", ChunkingStrategy.primary_key);
+                "t", ChunkingStrategy.primary_key, 1);
     }
 
     private long runId(String label) {

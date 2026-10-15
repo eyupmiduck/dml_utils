@@ -77,7 +77,7 @@ class RunFunctionOverTableTest extends PostgresTestBase {
         String label = functionTestLabel("mixed");
 
         Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_COMPOSITE_MIXED),
-                name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 2, 1, label, null, ChunkingStrategy.primary_key);
+                name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 2, 1, label, null, ChunkingStrategy.primary_key, 1);
 
         assertEquals(3, payloadCount(TEST_COMPOSITE_MIXED, "done"),
                 "the function should update every row");
@@ -95,10 +95,10 @@ class RunFunctionOverTableTest extends PostgresTestBase {
         createMarkMixed("done");
 
         Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_COMPOSITE_MIXED),
-                name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 2, 1, null, null, ChunkingStrategy.primary_key);
+                name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 2, 1, null, null, ChunkingStrategy.primary_key, 1);
         Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_COMPOSITE_MIXED),
                 name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 99, 4, null, null,
-                ChunkingStrategy.primary_key);
+                ChunkingStrategy.primary_key, 1);
 
         String derivedLabel = "function:"
                 + dsl.fetchOne("SELECT pg_catalog.json_build_array(?, ?, ?, ?, CAST(? AS text), CAST(? AS text))::text",
@@ -147,7 +147,7 @@ class RunFunctionOverTableTest extends PostgresTestBase {
                 "the stored sql_text should now reference the new function");
 
         Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_COMPOSITE_MIXED),
-                name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed_2", 2, 1, label, null, ChunkingStrategy.primary_key);
+                name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed_2", 2, 1, label, null, ChunkingStrategy.primary_key, 1);
 
         assertEquals(3, payloadCount(TEST_COMPOSITE_MIXED, "second"),
                 "the run should apply the swapped-in function");
@@ -179,7 +179,7 @@ class RunFunctionOverTableTest extends PostgresTestBase {
         int runsBefore = dsl.fetchCount(MIGRATION_RUN);
         assertSqlState("22023", () -> Routines.runFunctionOverTable(dsl.configuration(),
                 schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED), FN_SCHEMA,
-                "wrong_order", 2, 1, null, null, ChunkingStrategy.primary_key));
+                "wrong_order", 2, 1, null, null, ChunkingStrategy.primary_key, 1));
         assertEquals(runsBefore, dsl.fetchCount(MIGRATION_RUN),
                 "a rejected function must not create a run");
     }
@@ -194,7 +194,7 @@ class RunFunctionOverTableTest extends PostgresTestBase {
 
         assertSqlState("22023", () -> Routines.runFunctionOverTable(dsl.configuration(),
                 schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED), FN_SCHEMA,
-                "bad_return", 2, 1, null, null, ChunkingStrategy.primary_key));
+                "bad_return", 2, 1, null, null, ChunkingStrategy.primary_key, 1));
     }
 
     /**
@@ -210,7 +210,7 @@ class RunFunctionOverTableTest extends PostgresTestBase {
         int runsBefore = dsl.fetchCount(MIGRATION_RUN);
         assertSqlState("22023", () -> Routines.runFunctionOverTable(dsl.configuration(),
                 schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED), FN_SCHEMA,
-                "mark_mixed_proc", 2, 1, null, null, ChunkingStrategy.primary_key));
+                "mark_mixed_proc", 2, 1, null, null, ChunkingStrategy.primary_key, 1));
         assertEquals(runsBefore, dsl.fetchCount(MIGRATION_RUN),
                 "a rejected procedure must not create a run");
     }
@@ -222,7 +222,7 @@ class RunFunctionOverTableTest extends PostgresTestBase {
     void rejectsAMissingFunction() {
         assertSqlState("22023", () -> Routines.runFunctionOverTable(dsl.configuration(),
                 schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED), FN_SCHEMA,
-                "no_such_function", 2, 1, null, null, ChunkingStrategy.primary_key));
+                "no_such_function", 2, 1, null, null, ChunkingStrategy.primary_key, 1));
     }
 
     /**
@@ -267,10 +267,28 @@ class RunFunctionOverTableTest extends PostgresTestBase {
         createMarkMixed("done");
 
         Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_COMPOSITE_MIXED),
-                name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 2, 1, null, "t.b = 'x'", ChunkingStrategy.primary_key);
+                name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 2, 1, null, "t.b = 'x'", ChunkingStrategy.primary_key, 1);
 
         assertEquals(2, payloadCount(TEST_COMPOSITE_MIXED, "done"),
                 "only the two rows with b = x are updated");
+    }
+
+    /**
+     * A larger coordinator poll timeout is passed through to
+     * {@code run_migration_chunks} and still processes every row.
+     */
+    @Test
+    void runFunctionOverTablePassesThroughThePollTimeout() {
+        createMixed();
+        createMarkMixed("done");
+        String label = functionTestLabel("poll-timeout");
+
+        Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_COMPOSITE_MIXED),
+                name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 2, 1, label, null,
+                ChunkingStrategy.primary_key, 50);
+
+        assertEquals(3, payloadCount(TEST_COMPOSITE_MIXED, "done"), "every row should be updated");
+        assertTrue(runCompleted(label), "the run should be marked complete");
     }
 
     /**
@@ -283,9 +301,9 @@ class RunFunctionOverTableTest extends PostgresTestBase {
         createMarkMixed("done");
 
         Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_COMPOSITE_MIXED),
-                name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 2, 1, null, "t.b = 'x'", ChunkingStrategy.primary_key);
+                name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 2, 1, null, "t.b = 'x'", ChunkingStrategy.primary_key, 1);
         Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_COMPOSITE_MIXED),
-                name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 2, 1, null, "t.b = 'y'", ChunkingStrategy.primary_key);
+                name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 2, 1, null, "t.b = 'y'", ChunkingStrategy.primary_key, 1);
 
         assertEquals(2, dsl.fetchCount(MIGRATION_RUN),
                 "a different filter derives a different run");
@@ -314,7 +332,7 @@ class RunFunctionOverTableTest extends PostgresTestBase {
                 "the stored sql_text carries the filter");
 
         Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_COMPOSITE_MIXED),
-                name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed_2", 2, 1, label, null, ChunkingStrategy.primary_key);
+                name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed_2", 2, 1, label, null, ChunkingStrategy.primary_key, 1);
 
         assertEquals(2, payloadCount(TEST_COMPOSITE_MIXED, "second"),
                 "only the filtered rows run the swapped-in function");
@@ -361,7 +379,7 @@ class RunFunctionOverTableTest extends PostgresTestBase {
 
         Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_COMPOSITE_MIXED),
                 name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "copy_mixed", 1, 1, label, null,
-                ChunkingStrategy.blocks);
+                ChunkingStrategy.blocks, 1);
 
         assertEquals(3, dsl.fetchCount(TEST_OTHER), "the function runs once per row");
         assertEquals(3, dsl.fetchCount(TEST_COMPOSITE_MIXED), "the source table is unchanged");

@@ -1,10 +1,16 @@
--- Rollback of the caller grants: revoke what the forward changeset granted and
--- restore PostgreSQL's defaults.
-GRANT EXECUTE ON FUNCTION dml_utils_data.set_updated_at() TO public;
-GRANT EXECUTE ON FUNCTION dml_utils_data.reject_migration_run_update() TO public;
-GRANT EXECUTE ON FUNCTION dml_utils_data.reject_migration_boundary_update() TO public;
-
--- Restore PostgreSQL's default privileges for future objects.
+-- Rollback of the caller grants: revoke what the forward changeset granted
+-- and restore PostgreSQL's defaults. Mirrors 999-grant-privileges.sql.
+REVOKE USAGE ON SCHEMA dml_utils FROM dml_utils_caller;
+REVOKE USAGE ON SCHEMA dml_utils_lib FROM dml_utils_caller;
+REVOKE USAGE ON SCHEMA dml_utils_data FROM dml_utils_caller;
+GRANT USAGE ON DOMAIN dml_utils_data.non_null_text TO public;
+REVOKE USAGE ON DOMAIN dml_utils_data.non_null_text FROM dml_utils_caller;
+GRANT USAGE ON DOMAIN dml_utils_data.positive_integer TO public;
+REVOKE USAGE ON DOMAIN dml_utils_data.positive_integer FROM dml_utils_caller;
+GRANT USAGE ON TYPE dml_utils_data.migration_key TO public;
+REVOKE USAGE ON TYPE dml_utils_data.migration_key FROM dml_utils_caller;
+GRANT USAGE ON TYPE dml_utils_data.chunking_strategy TO public;
+REVOKE USAGE ON TYPE dml_utils_data.chunking_strategy FROM dml_utils_caller;
 ALTER DEFAULT PRIVILEGES FOR ROLE dml_utils_owner IN SCHEMA dml_utils
     GRANT EXECUTE ON FUNCTIONS TO public;
 ALTER DEFAULT PRIVILEGES FOR ROLE dml_utils_owner IN SCHEMA dml_utils_lib
@@ -13,7 +19,12 @@ ALTER DEFAULT PRIVILEGES FOR ROLE dml_utils_owner IN SCHEMA dml_utils_data
     GRANT EXECUTE ON FUNCTIONS TO public;
 ALTER DEFAULT PRIVILEGES FOR ROLE dml_utils_owner IN SCHEMA dml_utils_data
     GRANT USAGE ON TYPES TO public;
-
+REVOKE SELECT, INSERT, UPDATE, DELETE ON dml_utils_data.migration_run FROM dml_utils_caller;
+REVOKE SELECT, INSERT, UPDATE, DELETE ON dml_utils_data.migration_boundary FROM dml_utils_caller;
+REVOKE SELECT, INSERT, UPDATE, DELETE ON dml_utils_data.migration_error FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils_data.set_updated_at() TO public;
+GRANT EXECUTE ON FUNCTION dml_utils_data.reject_migration_run_update() TO public;
+GRANT EXECUTE ON FUNCTION dml_utils_data.reject_migration_boundary_update() TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_schema_exists(
     dml_utils_data.non_null_text
     ) FROM dml_utils_caller;
@@ -25,6 +36,14 @@ REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_table_exists(
     dml_utils_data.non_null_text
     ) FROM dml_utils_caller;
 GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_table_exists(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text
+    ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_plain_heap(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_plain_heap(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text
     ) TO public;
@@ -80,13 +99,15 @@ REVOKE EXECUTE ON FUNCTION dml_utils_lib.build_function_chunk_template(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text,
-    dml_utils_data.non_null_text
+    dml_utils_data.non_null_text,
+    text
     ) FROM dml_utils_caller;
 GRANT EXECUTE ON FUNCTION dml_utils_lib.build_function_chunk_template(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text,
-    dml_utils_data.non_null_text
+    dml_utils_data.non_null_text,
+    text
     ) TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_chunking_template(
     dml_utils_data.non_null_text
@@ -101,7 +122,8 @@ REVOKE EXECUTE ON FUNCTION dml_utils_lib.resolve_migration_run(
     dml_utils_data.non_null_text,
     dml_utils_data.positive_integer,
     dml_utils_data.positive_integer,
-    dml_utils_data.non_null_text
+    dml_utils_data.non_null_text,
+    dml_utils_data.chunking_strategy
     ) FROM dml_utils_caller;
 GRANT EXECUTE ON FUNCTION dml_utils_lib.resolve_migration_run(
     dml_utils_data.non_null_text,
@@ -110,7 +132,8 @@ GRANT EXECUTE ON FUNCTION dml_utils_lib.resolve_migration_run(
     dml_utils_data.non_null_text,
     dml_utils_data.positive_integer,
     dml_utils_data.positive_integer,
-    dml_utils_data.non_null_text
+    dml_utils_data.non_null_text,
+    dml_utils_data.chunking_strategy
     ) TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.prepare_chunk_sql_render(
     dml_utils_data.non_null_text,
@@ -180,7 +203,9 @@ REVOKE EXECUTE ON FUNCTION dml_utils_lib.populate_migration_boundaries(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text,
     dml_utils_data.positive_integer,
-    dml_utils_data.positive_integer
+    dml_utils_data.positive_integer,
+    dml_utils_data.chunking_strategy,
+    dml_utils_data.non_null_text
     ) FROM dml_utils_caller;
 GRANT EXECUTE ON FUNCTION dml_utils_lib.populate_migration_boundaries(
     dml_utils_data.non_null_text,
@@ -188,7 +213,9 @@ GRANT EXECUTE ON FUNCTION dml_utils_lib.populate_migration_boundaries(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text,
     dml_utils_data.positive_integer,
-    dml_utils_data.positive_integer
+    dml_utils_data.positive_integer,
+    dml_utils_data.chunking_strategy,
+    dml_utils_data.non_null_text
     ) TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.process_migration_chunk(
     bigint,
@@ -212,7 +239,102 @@ GRANT EXECUTE ON FUNCTION dml_utils_lib.record_migration_error(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text
     ) TO public;
-
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.build_boundary_population_sql(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    name[],
+    text[],
+    bigint,
+    bigint
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.build_boundary_population_sql(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    name[],
+    text[],
+    bigint,
+    bigint
+    ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.build_block_boundary_population_sql(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    bigint,
+    bigint
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.build_block_boundary_population_sql(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    bigint,
+    bigint
+    ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.render_block_chunk_sql(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    bigint,
+    bigint
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.render_block_chunk_sql(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    bigint,
+    bigint
+    ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.relation_filepath(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.relation_filepath(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text
+    ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_relation_filepath(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    text
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_relation_filepath(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    text
+    ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.synthetic_chunk_boundary_values(
+    text[],
+    bigint
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.synthetic_chunk_boundary_values(
+    text[],
+    bigint
+    ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.explain_query_plan(
+    text
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.explain_query_plan(
+    text
+    ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.explain_chunk_plans(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    name[],
+    text[],
+    bigint,
+    dml_utils_data.chunking_strategy
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.explain_chunk_plans(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    name[],
+    text[],
+    bigint,
+    dml_utils_data.chunking_strategy
+    ) TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils.run_migration_chunks(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text,
@@ -220,7 +342,9 @@ REVOKE EXECUTE ON FUNCTION dml_utils.run_migration_chunks(
     dml_utils_data.non_null_text,
     dml_utils_data.positive_integer,
     dml_utils_data.positive_integer,
-    dml_utils_data.non_null_text
+    dml_utils_data.non_null_text,
+    dml_utils_data.chunking_strategy,
+    dml_utils_data.positive_integer
     ) FROM dml_utils_caller;
 GRANT EXECUTE ON FUNCTION dml_utils.run_migration_chunks(
     dml_utils_data.non_null_text,
@@ -229,7 +353,9 @@ GRANT EXECUTE ON FUNCTION dml_utils.run_migration_chunks(
     dml_utils_data.non_null_text,
     dml_utils_data.positive_integer,
     dml_utils_data.positive_integer,
-    dml_utils_data.non_null_text
+    dml_utils_data.non_null_text,
+    dml_utils_data.chunking_strategy,
+    dml_utils_data.positive_integer
     ) TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils.run_function_over_table(
     dml_utils_data.non_null_text,
@@ -238,7 +364,10 @@ REVOKE EXECUTE ON FUNCTION dml_utils.run_function_over_table(
     dml_utils_data.non_null_text,
     dml_utils_data.positive_integer,
     dml_utils_data.positive_integer,
-    text
+    text,
+    text,
+    dml_utils_data.chunking_strategy,
+    dml_utils_data.positive_integer
     ) FROM dml_utils_caller;
 GRANT EXECUTE ON FUNCTION dml_utils.run_function_over_table(
     dml_utils_data.non_null_text,
@@ -247,17 +376,56 @@ GRANT EXECUTE ON FUNCTION dml_utils.run_function_over_table(
     dml_utils_data.non_null_text,
     dml_utils_data.positive_integer,
     dml_utils_data.positive_integer,
-    text
+    text,
+    text,
+    dml_utils_data.chunking_strategy,
+    dml_utils_data.positive_integer
+    ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils.explain_migration_chunks(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.positive_integer,
+    dml_utils_data.non_null_text,
+    dml_utils_data.chunking_strategy
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils.explain_migration_chunks(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.positive_integer,
+    dml_utils_data.non_null_text,
+    dml_utils_data.chunking_strategy
+    ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils.explain_function_over_table(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.positive_integer,
+    text,
+    dml_utils_data.chunking_strategy
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils.explain_function_over_table(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.positive_integer,
+    text,
+    dml_utils_data.chunking_strategy
     ) TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils.set_migration_run_function(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text,
-    dml_utils_data.non_null_text
+    dml_utils_data.non_null_text,
+    text
     ) FROM dml_utils_caller;
 GRANT EXECUTE ON FUNCTION dml_utils.set_migration_run_function(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text,
-    dml_utils_data.non_null_text
+    dml_utils_data.non_null_text,
+    text
     ) TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils.set_migration_run_sql_text(
     dml_utils_data.non_null_text,
@@ -281,7 +449,6 @@ REVOKE EXECUTE ON FUNCTION dml_utils.archive_migration_run(
 GRANT EXECUTE ON FUNCTION dml_utils.archive_migration_run(
     dml_utils_data.non_null_text
     ) TO public;
-
 REVOKE EXECUTE ON FUNCTION dml_utils.delete_archived_migration_runs() FROM dml_utils_caller;
 GRANT EXECUTE ON FUNCTION dml_utils.delete_archived_migration_runs() TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils.delete_archived_migration_runs(
@@ -308,15 +475,3 @@ REVOKE EXECUTE ON FUNCTION dml_utils.migration_boundaries(
 GRANT EXECUTE ON FUNCTION dml_utils.migration_boundaries(
     bigint
     ) TO public;
-REVOKE SELECT, INSERT, UPDATE, DELETE ON dml_utils_data.migration_boundary FROM dml_utils_caller;
-REVOKE SELECT, INSERT, UPDATE, DELETE ON dml_utils_data.migration_error FROM dml_utils_caller;
-REVOKE SELECT, INSERT, UPDATE, DELETE ON dml_utils_data.migration_run FROM dml_utils_caller;
-GRANT USAGE ON DOMAIN dml_utils_data.positive_integer TO public;
-REVOKE USAGE ON DOMAIN dml_utils_data.positive_integer FROM dml_utils_caller;
-GRANT USAGE ON DOMAIN dml_utils_data.non_null_text TO public;
-REVOKE USAGE ON DOMAIN dml_utils_data.non_null_text FROM dml_utils_caller;
-GRANT USAGE ON TYPE dml_utils_data.migration_key TO public;
-REVOKE USAGE ON TYPE dml_utils_data.migration_key FROM dml_utils_caller;
-REVOKE USAGE ON SCHEMA dml_utils_data FROM dml_utils_caller;
-REVOKE USAGE ON SCHEMA dml_utils_lib FROM dml_utils_caller;
-REVOKE USAGE ON SCHEMA dml_utils FROM dml_utils_caller;

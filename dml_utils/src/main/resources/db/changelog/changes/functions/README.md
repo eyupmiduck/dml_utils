@@ -89,7 +89,7 @@ heap rewrites safe; it does not replace a quiescent source.
 
 ###
 
-`dml_utils.run_migration_chunks(i_sql_text, i_driving_table_schema_name, i_driving_table_name, i_label, i_chunk_size [, i_threads, i_driving_table_alias, i_chunk_by])`
+`dml_utils.run_migration_chunks(i_sql_text, i_driving_table_schema_name, i_driving_table_name, i_label, i_chunk_size [, i_threads, i_driving_table_alias, i_chunk_by, i_poll_timeout_ms])`
 
 ```sql
 i_sql_text                  dml_utils_data.non_null_text
@@ -100,6 +100,7 @@ i_chunk_size                dml_utils_data.positive_integer DEFAULT 1000
 i_threads                   dml_utils_data.positive_integer DEFAULT 1
 i_driving_table_alias       dml_utils_data.non_null_text DEFAULT 't'
 i_chunk_by                  dml_utils_data.chunking_strategy DEFAULT 'primary_key'
+i_poll_timeout_ms           dml_utils_data.positive_integer DEFAULT 1
 RETURNS void
 ```
 
@@ -138,7 +139,12 @@ when another active run already exists for the label, and re-raises a chunk
 worker's failure
 with its original SQLSTATE. `RAISE NOTICE` and returns when the run is already
 complete. Run under `READ COMMITTED`; do not hold locks on the driving table
-across the call. Bounded worker waits are not part of this first version.
+across the call. `i_poll_timeout_ms` is how long the coordinator waits for a
+worker before re-checking (`pg_background_wait_any`): the default `1` keeps
+per-chunk detection latency low, and a larger value polls less often, cutting
+coordinator CPU for chunks that run in non-trivial time. It must be positive:
+`0` is rejected because `pg_background_wait_any` treats a non-positive timeout
+as wait-forever.
 
 ###
 
@@ -188,7 +194,7 @@ call, which would ignore it.
 
 ###
 
-`dml_utils.run_function_over_table(i_driving_table_schema_name, i_driving_table_name, i_function_schema_name, i_function_name [, i_chunk_size, i_threads, i_label, i_filter, i_chunk_by])`
+`dml_utils.run_function_over_table(i_driving_table_schema_name, i_driving_table_name, i_function_schema_name, i_function_name [, i_chunk_size, i_threads, i_label, i_filter, i_chunk_by, i_poll_timeout_ms])`
 
 ```sql
 i_driving_table_schema_name dml_utils_data.non_null_text
@@ -200,6 +206,7 @@ i_threads                   dml_utils_data.positive_integer DEFAULT 1
 i_label                     text DEFAULT NULL
 i_filter                    text DEFAULT NULL
 i_chunk_by                  dml_utils_data.chunking_strategy DEFAULT 'primary_key'
+i_poll_timeout_ms           dml_utils_data.positive_integer DEFAULT 1
 RETURNS void
 ```
 
@@ -223,7 +230,8 @@ matches are passed to the function; a filter that contains `<driving_table>` or
 selects the strategy; `blocks` requires a quiescent, read-only driving table and
 is unsafe when the function updates the driving table in place. Because a resumed
 run uses the recorded SQL text and strategy, use `set_migration_run_function` to
-point an unfinished run at a different function or filter.
+point an unfinished run at a different function or filter. `i_poll_timeout_ms` is
+passed through to `run_migration_chunks` (see there for its meaning).
 
 ###
 

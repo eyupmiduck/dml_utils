@@ -14,7 +14,11 @@ CREATE OR REPLACE FUNCTION dml_utils.run_function_over_table(
     -- The chunking strategy. blocks requires a quiescent, read-only driving
     -- table on a plain heap (see the block-strategy limitations in the README);
     -- it is unsafe when the function updates the driving table in place.
-    i_chunk_by dml_utils_data.chunking_strategy DEFAULT 'primary_key'
+    i_chunk_by dml_utils_data.chunking_strategy DEFAULT 'primary_key',
+    -- How long the chunk coordinator waits for a worker before re-checking; see
+    -- dml_utils.run_migration_chunks. 1ms keeps latency low; raise it for chunks
+    -- that run in non-trivial time to cut coordinator CPU.
+    i_poll_timeout_ms dml_utils_data.positive_integer DEFAULT 1
 )
     RETURNS void
     LANGUAGE plpgsql
@@ -64,7 +68,8 @@ BEGIN
             i_label => l_label,
             i_chunk_size => i_chunk_size,
             i_threads => i_threads,
-            i_chunk_by => i_chunk_by);
+            i_chunk_by => i_chunk_by,
+            i_poll_timeout_ms => i_poll_timeout_ms);
 END;
 $$;
 
