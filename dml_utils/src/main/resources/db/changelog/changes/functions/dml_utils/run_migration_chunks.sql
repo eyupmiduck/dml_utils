@@ -6,7 +6,14 @@ CREATE OR REPLACE FUNCTION dml_utils.run_migration_chunks(
     i_chunk_size dml_utils_data.positive_integer DEFAULT 1000,
     i_threads dml_utils_data.positive_integer DEFAULT 1,
     i_driving_table_alias dml_utils_data.non_null_text DEFAULT 't',
-    i_chunk_by dml_utils_data.chunking_strategy DEFAULT 'primary_key'
+    i_chunk_by dml_utils_data.chunking_strategy DEFAULT 'primary_key',
+    -- How long pg_background_wait_any waits for a worker before returning so this
+    -- coordinator can re-check. 1ms keeps per-chunk detection latency low; a
+    -- caller whose chunks take non-trivial time can raise it to cut coordinator
+    -- CPU, at the cost of up to ~50ms added detection latency. positive_integer,
+    -- so 0 is rejected: pg_background_wait_any treats a non-positive timeout as
+    -- "block forever", which would stop this coordinator re-checking its state.
+    i_poll_timeout_ms dml_utils_data.positive_integer DEFAULT 1
 )
     RETURNS void
     LANGUAGE plpgsql
@@ -192,12 +199,16 @@ BEGIN
             -- Nothing running and nothing left to launch: done (or draining is done).
             EXIT WHEN pg_catalog.cardinality(l_in_flight) = 0;
 
-            -- Wait for any in-flight worker to finish. Poll with a 1ms timeout and
-            -- let the loop retry: pg_background_wait_any adds roughly 50ms of
+            -- Wait for any in-flight worker to finish, polling with
+            -- i_poll_timeout_ms and letting the loop retry. The default of 1ms
+            -- keeps per-chunk detection latency low; a larger value polls less
+            -- often and so uses less coordinator CPU, which suits chunks that run
+            -- in non-trivial time. pg_background_wait_any adds roughly 50ms of
             -- latency whenever timeout_ms is 2 or more (observed with pg_background
-            -- 2.0), which otherwise dominates the per-chunk cost of the whole run.
+            -- 2.0), which is why the coordinator wraps it in this retry loop
+            -- instead of waiting longer inside a single call.
             LOOP
-                l_handle := public.pg_background_wait_any(l_in_flight, 1);
+                l_handle := public.pg_background_wait_any(l_in_flight, i_poll_timeout_ms);
                 EXIT WHEN l_handle IS NOT NULL;
             END LOOP;
 
