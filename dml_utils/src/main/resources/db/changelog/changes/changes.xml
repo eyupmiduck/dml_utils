@@ -57,6 +57,30 @@
         </rollback>
     </changeSet>
 
+    <!-- A partial index so the coordinator's next-chunk lookup (the first
+         boundary with completed_at IS NULL) seeks straight to the pending rows
+         instead of scanning the completed prefix on every launch. CREATE INDEX
+         CONCURRENTLY cannot run in a transaction, so it is its own
+         runInTransaction=false changeset with a single statement. -->
+    <changeSet id="007-create-migration-boundary-pending-index" author="lee.horner"
+               dbms="postgresql" runInTransaction="false">
+        <sqlFile path="sql_changes/007-create-migration-boundary-pending-index.sql"
+                 relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="rollback/007-create-migration-boundary-pending-index-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="008-comment-migration-boundary-pending-index" author="lee.horner" dbms="postgresql">
+        <sqlFile path="sql_changes/008-comment-migration-boundary-pending-index.sql"
+                 relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="rollback/008-comment-migration-boundary-pending-index-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
     <!-- Stored routines: one changeset each, one file per routine. They run
          after the tables so routines may reference them. -->
     <include file="functions.xml" relativeToChangelogFile="true"/>

@@ -450,6 +450,22 @@ into one text value per primary-key column, in key order, using `i_key_kinds` to
 pick the array for each position. The chunk predicate re-casts each value. Pure
 casts and array element access, so it is `IMMUTABLE`.
 
+### `dml_utils_lib.migration_key_pair_values(i_start_key, i_end_key, i_key_kinds)`
+
+```sql
+i_start_key dml_utils_data.migration_key
+i_end_key   dml_utils_data.migration_key
+i_key_kinds text[]
+RETURNS record (o_start_values text[], o_end_values text[])
+```
+
+`IMMUTABLE`, `SECURITY INVOKER`. Flattens a chunk's two boundaries (its start
+and end `migration_key`) in one pass, returning one text value per primary-key
+column for each, in key order. It is the two-key form of
+`migration_key_values`, so the coordinator extracts both bounds with a single
+call per chunk instead of two. Rejects malformed kinds or an unsupported kind
+with `22023`.
+
 ###
 
 `dml_utils_lib.build_function_chunk_template(i_table_schema_name, i_table_name, i_function_schema_name, i_function_name [, i_filter])`
@@ -559,6 +575,7 @@ is the one-shot pair of `prepare_chunk_sql_render` and
 calls those two directly and prepares once.
 
 ###
+
 `dml_utils_lib.prepare_chunk_sql_render(i_sql_text, i_schema_name, i_table_name, i_table_alias, i_primary_key_columns, i_key_kinds)`
 
 ```sql
@@ -586,6 +603,7 @@ containing a reserved substitution character (`22023`). Prepare once per run and
 pass the result to `render_prepared_chunk_sql` for every chunk.
 
 ###
+
 `dml_utils_lib.render_prepared_chunk_sql(i_template, i_column_names, i_key_kinds, i_key_collations, i_start_values, i_end_values, i_is_final)`
 
 ```sql

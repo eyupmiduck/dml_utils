@@ -9,20 +9,20 @@ results are grouped by the chunking strategy recorded in each row.
 
 ## Configuration
 
-| parameter | value |
-| --- | --- |
-| image | `dml-utils-postgres:17-alpine` |
-| source table | `benchmark.bench_source` |
-| target table | `benchmark.bench_target` |
-| rows | 10000000 |
-| chunk_by (current config) | `blocks` |
-| chunk size | 11 (rows for primary_key, blocks for blocks) |
-| threads | 1 .. 20 |
-| measured runs per thread | 10 |
-| warm-up runs per thread | 1 |
-| truncate target each run | 1 |
-| max_worker_processes | 30 |
-| shared_buffers | 512MB |
+| parameter                 | value                                        |
+|---------------------------|----------------------------------------------|
+| image                     | `dml-utils-postgres:17-alpine`               |
+| source table              | `benchmark.bench_source`                     |
+| target table              | `benchmark.bench_target`                     |
+| rows                      | 10000000                                     |
+| chunk_by (current config) | `blocks`                                     |
+| chunk size                | 11 (rows for primary_key, blocks for blocks) |
+| threads                   | 1 .. 20                                      |
+| measured runs per thread  | 10                                           |
+| warm-up runs per thread   | 1                                            |
+| truncate target each run  | 1                                            |
+| max_worker_processes      | 30                                           |
+| shared_buffers            | 512MB                                        |
 
 Dataset (live):
 
@@ -132,16 +132,16 @@ docker client 29.8.1 / server 29.8.1
 ### strategy `blocks`, key k1+k2+k3, chunk_size 11 blocks
 
 | threads | runs | chunks | rows/chunk | blocks/chunk | mean range calc (s) | mean chunk run (s) | mean total (s) | speedup vs first |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 1 | 10331 | 968 | 11 | 0.287 | 174.213 | 174.500 | 1.00x |
+|--------:|-----:|-------:|-----------:|-------------:|--------------------:|-------------------:|---------------:|-----------------:|
+|       1 |    1 |  10331 |        968 |           11 |               0.287 |            174.213 |        174.500 |            1.00x |
 
 ![run_migration_chunks (blocks, key k1+k2+k3, chunk_size 11): mean total time vs threads](report-blocks-11-k1+k2+k3.svg)
 
 ### strategy `primary_key`, key k1+k2+k3, chunk_size 1000 rows
 
 | threads | runs | chunks | rows/chunk | blocks/chunk | mean range calc (s) | mean chunk run (s) | mean total (s) | speedup vs first |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 1 | 10000 | 1000 | 11 | 1.975 | 179.999 | 181.974 | 1.00x |
+|--------:|-----:|-------:|-----------:|-------------:|--------------------:|-------------------:|---------------:|-----------------:|
+|       1 |    1 |  10000 |       1000 |           11 |               1.975 |            179.999 |        181.974 |            1.00x |
 
 ![run_migration_chunks (primary_key, key k1+k2+k3, chunk_size 1000): mean total time vs threads](report-primary_key-1000-k1+k2+k3.svg)
 
@@ -149,7 +149,7 @@ docker client 29.8.1 / server 29.8.1
 
 - **range calc** = `boundaries_calculated_at - started_at`: the
   chunk-boundary calculation (a primary-key index scan for `primary_key`,
-  an O(1) block count for `blocks`).
+  an O (1) block count for `blocks`).
 - **chunk run** = `completed_at - boundaries_calculated_at`: the workload SQL
   run over every chunk, up to the thread count at a time.
 - **total** = `completed_at - started_at`.

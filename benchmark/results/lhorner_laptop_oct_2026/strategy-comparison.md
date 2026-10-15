@@ -16,12 +16,12 @@ behaviour of the two strategies within each dataset**.
 
 ## 1. Setup and boundary calculation
 
-| dataset | strategy | chunks | rows/chunk | blocks/chunk | range calc | share of total |
-|---|---|---:|---:|---:|---:|---:|
-| 1_col (1M) | primary_key | 1000 | 1000 | 9.3 | 0.181 s | 1.4% |
-| 1_col (1M) | blocks | 935 | 1070 | 10.0 | 0.033 s | 0.3% |
-| 3_col (10M) | primary_key | 10000 | 1000 | 11.4 | 1.964 s | 1.1% |
-| 3_col (10M) | blocks | 10331 | 968 | 11.0 | 0.283 s | 0.2% |
+| dataset     | strategy    | chunks | rows/chunk | blocks/chunk | range calc | share of total |
+|-------------|-------------|-------:|-----------:|-------------:|-----------:|---------------:|
+| 1_col (1M)  | primary_key |   1000 |       1000 |          9.3 |    0.181 s |           1.4% |
+| 1_col (1M)  | blocks      |    935 |       1070 |         10.0 |    0.033 s |           0.3% |
+| 3_col (10M) | primary_key |  10000 |       1000 |         11.4 |    1.964 s |           1.1% |
+| 3_col (10M) | blocks      |  10331 |        968 |         11.0 |    0.283 s |           0.2% |
 
 Both strategies are configured to produce about the same number of chunks, so
 the parallelism granularity is comparable. `blocks` builds its boundaries ~5.5-7x
@@ -34,10 +34,10 @@ would matter more with a very cheap chunk SQL or a much larger chunk count.
 
 At 1 thread (mean of 10 runs), normalised per row:
 
-| dataset | primary_key | blocks | blocks vs primary_key |
-|---|---:|---:|---:|
-| 1_col | 13.0 us/row | 11.9 us/row | ~9% cheaper |
-| 3_col | 18.1 us/row | 18.4 us/row | ~equal (1.5% dearer) |
+| dataset | primary_key |      blocks | blocks vs primary_key |
+|---------|------------:|------------:|----------------------:|
+| 1_col   | 13.0 us/row | 11.9 us/row |           ~9% cheaper |
+| 3_col   | 18.1 us/row | 18.4 us/row |  ~equal (1.5% dearer) |
 
 This is the core difference. `blocks` chunks are physically sequential ctid
 ranges, so the workload reads the heap front to back; `primary_key` walks the
@@ -50,10 +50,10 @@ the two converge.
 
 `blocks / primary_key` mean total time (<1 means `blocks` is faster):
 
-| dataset | t1 | t2 | t4 | t8 | t12 | t16 | t20 |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 1_col | 0.90 | 0.90 | 0.93 | 0.90 | 0.85 | 0.87 | 0.89 |
-| 3_col | 1.01 | 1.04 | 0.88 | 0.87 | 1.11 | 0.89 | 1.03 |
+| dataset |   t1 |   t2 |   t4 |   t8 |  t12 |  t16 |  t20 |
+|---------|-----:|-----:|-----:|-----:|-----:|-----:|-----:|
+| 1_col   | 0.90 | 0.90 | 0.93 | 0.90 | 0.85 | 0.87 | 0.89 |
+| 3_col   | 1.01 | 1.04 | 0.88 | 0.87 | 1.11 | 0.89 | 1.03 |
 
 `blocks` is consistently 7-15% faster on the 1-col set at every thread level. On
 the 3-col set it is a coin flip (wins at 4/8/16, loses at 1/2/12/20); that
@@ -63,22 +63,22 @@ variation is noise, not signal.
 
 Speedup against each strategy's own 1-thread time:
 
-| dataset | strategy | t4 | t8 | t12 | t16 | t20 |
-|---|---|---:|---:|---:|---:|---:|
-| 1_col | primary_key | 3.4x | 5.3x | 6.1x | 6.6x | 6.4x |
-| 1_col | blocks | 3.3x | 5.3x | 6.5x | 6.9x | 6.4x |
-| 3_col | primary_key | 2.8x | 3.4x | 3.9x | 3.3x | 3.2x |
-| 3_col | blocks | 3.2x | 3.9x | 3.6x | 3.7x | 3.2x |
+| dataset | strategy    |   t4 |   t8 |  t12 |  t16 |  t20 |
+|---------|-------------|-----:|-----:|-----:|-----:|-----:|
+| 1_col   | primary_key | 3.4x | 5.3x | 6.1x | 6.6x | 6.4x |
+| 1_col   | blocks      | 3.3x | 5.3x | 6.5x | 6.9x | 6.4x |
+| 3_col   | primary_key | 2.8x | 3.4x | 3.9x | 3.3x | 3.2x |
+| 3_col   | blocks      | 3.2x | 3.9x | 3.6x | 3.7x | 3.2x |
 
 Run-to-run stability (coefficient of variation of `total_seconds` across the 10
 runs):
 
-| dataset | strategy | t1 | t4 | t8 | t16 | t20 |
-|---|---|---:|---:|---:|---:|---:|
-| 1_col | primary_key | 1.9% | 2.3% | 3.2% | 0.8% | 0.8% |
-| 1_col | blocks | 2.6% | 4.4% | 5.5% | 0.7% | 2.6% |
-| 3_col | primary_key | 2.4% | 7.5% | 7.9% | 11.7% | 10.6% |
-| 3_col | blocks | 4.2% | 1.5% | 3.2% | 4.4% | 5.6% |
+| dataset | strategy    |   t1 |   t4 |   t8 |   t16 |   t20 |
+|---------|-------------|-----:|-----:|-----:|------:|------:|
+| 1_col   | primary_key | 1.9% | 2.3% | 3.2% |  0.8% |  0.8% |
+| 1_col   | blocks      | 2.6% | 4.4% | 5.5% |  0.7% |  2.6% |
+| 3_col   | primary_key | 2.4% | 7.5% | 7.9% | 11.7% | 10.6% |
+| 3_col   | blocks      | 4.2% | 1.5% | 3.2% |  4.4% |  5.6% |
 
 Two clear patterns on the large dataset:
 
@@ -90,8 +90,8 @@ Two clear patterns on the large dataset:
   `primary_key`'s 8-12%). Sequential block reads are far less sensitive to buffer
   residency and inter-worker interference, so runtimes are predictable.
 
-The 1-col set is CPU/cache-bound and both strategies behave almost identically
-(peak ~7x at 16 threads on 20 logical CPUs), with low variance throughout.
+The 1-col set is CPU/cache-bound and both strategies behave almost identically (peak ~7x at 16 threads on 20 logical
+CPUs), with low variance throughout.
 
 ## 5. Takeaway
 

@@ -128,7 +128,8 @@ Open `results/lhorner_laptop_oct_2026/3_col_pk/report.md`. It contains:
 
 The raw per-run data is `results/lhorner_laptop_oct_2026/3_col_pk/benchmark.csv` (one row per measured
 run, tagged with the strategy and chunk unit); `results/lhorner_laptop_oct_2026/3_col_pk/hardware.txt`,
-`results/lhorner_laptop_oct_2026/3_col_pk/postgres-settings.txt` and `results/lhorner_laptop_oct_2026/3_col_pk/dataset.txt` hold
+`results/lhorner_laptop_oct_2026/3_col_pk/postgres-settings.txt` and
+`results/lhorner_laptop_oct_2026/3_col_pk/dataset.txt` hold
 the captured environment and dataset.
 
 ## What is measured
