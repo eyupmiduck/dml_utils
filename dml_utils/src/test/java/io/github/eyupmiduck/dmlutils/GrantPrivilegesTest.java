@@ -1,47 +1,39 @@
 package io.github.eyupmiduck.dmlutils;
 
+import io.github.eyupmiduck.changelogvalidator.testing.GrantAssertions;
 import org.junit.jupiter.api.Test;
 
+import java.sql.Connection;
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 /**
  * Verifies the caller grants: {@code dml_utils_caller} can execute every
- * callable routine (ordinary and trigger-returning functions, plus procedures)
- * and use the migration key type, and that no routine or type is usable by
- * {@code PUBLIC}.
+ * callable routine (except trigger functions) and use the migration key type,
+ * and no routine or type is usable by {@code PUBLIC}. The ACL invariants
+ * delegate to the shared {@link GrantAssertions}.
  */
 class GrantPrivilegesTest extends PostgresTestBase {
+
+    private static final List<String> ROUTINE_SCHEMAS =
+            List.of("dml_utils", "dml_utils_lib", "dml_utils_data");
+    private static final List<String[]> APPLICATION_TYPES = List.of(
+            new String[]{"dml_utils_data", "migration_key"},
+            new String[]{"dml_utils_data", "non_null_text"},
+            new String[]{"dml_utils_data", "positive_integer"},
+            new String[]{"dml_utils_data", "chunking_strategy"});
+    private static final String CALLER = "dml_utils_caller";
 
     /**
      * No routine in the application schemas keeps PostgreSQL's default
      * {@code PUBLIC} execute privilege.
      */
     @Test
-    void noRoutineIsExecutableByPublic() {
-        Boolean anyExecutableByPublic = dsl.fetchOne(
-                        """
-                                SELECT EXISTS (
-                                    SELECT 1
-                                    FROM pg_proc p
-                                    JOIN pg_namespace n ON n.oid = p.pronamespace
-                                    WHERE n.nspname IN ('dml_utils', 'dml_utils_lib', 'dml_utils_data')
-                                      AND p.prokind IN ('f', 'p')
-                                      AND (
-                                          p.proacl IS NULL
-                                          OR EXISTS (
-                                              SELECT 1
-                                              FROM unnest(p.proacl) AS a
-                                              -- The grantee is empty ("=X/..."), and a
-                                              -- trailing "*" marks WITH GRANT OPTION.
-                                              WHERE a::text LIKE '=X%'
-                                          )
-                                      )
-                                )
-                                """)
-                .get(0, Boolean.class);
-
-        assertNotEquals(Boolean.TRUE, anyExecutableByPublic, "every routine should have an explicit ACL without PUBLIC execute");
+    void noRoutineIsExecutableByPublic() throws Exception {
+        try (Connection connection = openTestConnection()) {
+            GrantAssertions.assertNoRoutineExecutableByPublic(connection, ROUTINE_SCHEMAS);
+        }
     }
 
     /**
@@ -49,32 +41,12 @@ class GrantPrivilegesTest extends PostgresTestBase {
      * {@code PUBLIC} usage privilege.
      */
     @Test
-    void applicationTypesAreNotUsableByPublic() {
-        Integer usableByPublic = dsl.fetchOne(
-                        """
-                                SELECT count(*)::int
-                                FROM pg_type t
-                                JOIN pg_namespace n ON n.oid = t.typnamespace
-                                WHERE (n.nspname, t.typname) IN (
-                                    ('dml_utils_data', 'migration_key'),
-                                    ('dml_utils_data', 'non_null_text'),
-                                    ('dml_utils_data', 'positive_integer'),
-                                    ('dml_utils_data', 'chunking_strategy'))
-                                  AND (
-                                      t.typacl IS NULL
-                                      OR EXISTS (
-                                          SELECT 1
-                                          FROM unnest(t.typacl) AS a
-                                          -- "=U..." is the PUBLIC entry; a trailing "*"
-                                          -- marks WITH GRANT OPTION.
-                                          WHERE a::text LIKE '=U%'
-                                      )
-                                  )
-                                """)
-                .get(0, Integer.class);
-
-        assertEquals(0, usableByPublic,
-                "application types should have an explicit ACL without PUBLIC usage");
+    void applicationTypesAreNotUsableByPublic() throws Exception {
+        try (Connection connection = openTestConnection()) {
+            for (String[] type : APPLICATION_TYPES) {
+                GrantAssertions.assertTypeIsNotUsableByPublic(connection, type[0], type[1]);
+            }
+        }
     }
 
     /**
@@ -83,21 +55,10 @@ class GrantPrivilegesTest extends PostgresTestBase {
      * deliberately granted to no one).
      */
     @Test
-    void callerCanExecuteEveryCallableRoutine() {
-        Integer notExecutable = dsl.fetchOne(
-                        """
-                                SELECT count(*)::int
-                                FROM pg_proc p
-                                JOIN pg_namespace n ON n.oid = p.pronamespace
-                                WHERE n.nspname IN ('dml_utils', 'dml_utils_lib', 'dml_utils_data')
-                                  AND p.prokind IN ('f', 'p')
-                                  AND (p.prokind = 'p' OR p.prorettype <> 'trigger'::regtype)
-                                  AND NOT pg_catalog.has_function_privilege(
-                                      'dml_utils_caller', p.oid, 'EXECUTE')
-                                """)
-                .get(0, Integer.class);
-
-        assertEquals(0, notExecutable, "the caller should be able to execute every callable routine");
+    void callerCanExecuteEveryCallableRoutine() throws Exception {
+        try (Connection connection = openTestConnection()) {
+            GrantAssertions.assertRoleCanExecuteEveryCallableRoutine(connection, ROUTINE_SCHEMAS, CALLER);
+        }
     }
 
     /**
@@ -106,22 +67,10 @@ class GrantPrivilegesTest extends PostgresTestBase {
      * accept the default PUBLIC grant) and can select the migration tables.
      */
     @Test
-    void callerHasExplicitUsageOnTheMigrationKeyTypeAndCanSelectTables() {
-        Boolean explicitUsage = dsl.fetchOne(
-                        """
-                                SELECT EXISTS (
-                                    SELECT 1
-                                    FROM pg_type t
-                                    JOIN pg_namespace n ON n.oid = t.typnamespace
-                                    CROSS JOIN LATERAL unnest(
-                                        coalesce(t.typacl, '{}'::aclitem[])) AS a
-                                    WHERE n.nspname = 'dml_utils_data'
-                                      AND t.typname = 'migration_key'
-                                      AND a::text LIKE 'dml_utils_caller=U%'
-                                )
-                                """)
-                .get(0, Boolean.class);
-        assertEquals(Boolean.TRUE, explicitUsage, "the caller should have an explicit USAGE grant on dml_utils_data.migration_key");
+    void callerHasExplicitUsageOnTheMigrationKeyTypeAndCanSelectTables() throws Exception {
+        try (Connection connection = openTestConnection()) {
+            GrantAssertions.assertRoleHasExplicitUsageOnType(connection, "dml_utils_data", "migration_key", CALLER);
+        }
 
         assertEquals(Boolean.TRUE, dsl.fetchOne(
                         "SELECT pg_catalog.has_table_privilege('dml_utils_caller',"

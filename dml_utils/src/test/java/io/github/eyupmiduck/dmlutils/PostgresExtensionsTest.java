@@ -1,33 +1,35 @@
 package io.github.eyupmiduck.dmlutils;
 
+import io.github.eyupmiduck.changelogvalidator.testing.ExtensionAssertions;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.sql.Connection;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 /**
  * Verifies that the extensions compiled into the custom PostgreSQL image are
  * available and installed in every test database: {@code plpgsql_check} for
- * static analysis and {@code pg_background} for the chunking routines.
+ * static analysis and {@code pg_background} for the chunking routines. The
+ * availability and installation checks delegate to the shared
+ * {@link ExtensionAssertions}; the {@code pg_background} API probe is
+ * dml_utils-specific.
  */
 class PostgresExtensionsTest extends PostgresTestBase {
 
-    /**
-     * Both extensions are available to install.
-     */
-    @Test
-    void extensionsAreAvailable() {
-        assertTrue(extensionAvailable("plpgsql_check"), "plpgsql_check should be available");
-        assertTrue(extensionAvailable("pg_background"), "pg_background should be available");
-    }
+    private static final List<String> EXTENSIONS = List.of("plpgsql_check", "pg_background");
 
     /**
-     * Both extensions are installed in the test database cloned from the
-     * migrated template.
+     * Both extensions are available and installed.
      */
     @Test
-    void extensionsAreInstalled() {
-        assertTrue(extensionInstalled("plpgsql_check"), "plpgsql_check should be installed");
-        assertTrue(extensionInstalled("pg_background"), "pg_background should be installed");
+    void extensionsAreAvailableAndInstalled() throws Exception {
+        try (Connection connection = openTestConnection()) {
+            ExtensionAssertions.assertExtensionsAvailable(connection, EXTENSIONS);
+            ExtensionAssertions.assertExtensionsInstalled(connection, EXTENSIONS);
+        }
     }
 
     /**
@@ -42,15 +44,5 @@ class PostgresExtensionsTest extends PostgresTestBase {
 
         assertEquals(Boolean.TRUE, row.get("completed", Boolean.class),
                 "pg_background_run should complete");
-    }
-
-    private boolean extensionAvailable(String name) {
-        return Boolean.TRUE.equals(dsl.fetchValue(
-                "SELECT EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = ?)", name));
-    }
-
-    private boolean extensionInstalled(String name) {
-        return Boolean.TRUE.equals(dsl.fetchValue(
-                "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = ?)", name));
     }
 }
