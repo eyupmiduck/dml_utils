@@ -47,37 +47,16 @@
         </rollback>
     </changeSet>
 
-    <!-- The migration tables. No triggers yet: the tables do not depend on any
-         routine, and the routines below reference them, so the tables come
-         first. -->
+    <!-- The migration tables, including the partial index on
+         migration_boundary's pending rows. No triggers yet: the tables do not
+         depend on any routine, and the routines below reference them, so the
+         tables come first. The index is part of the table changeset, so it is a
+         plain CREATE INDEX: the table is new, so there is no completed prefix to
+         block and no need for CONCURRENTLY. -->
     <changeSet id="006-create-migration-tables" author="lee.horner" dbms="postgresql">
         <sqlFile path="sql_changes/006-create-migration-tables.sql" relativeToChangelogFile="true"/>
         <rollback>
             <sqlFile path="rollback/006-create-migration-tables-rollback.sql" relativeToChangelogFile="true"/>
-        </rollback>
-    </changeSet>
-
-    <!-- A partial index so the coordinator's next-chunk lookup (the first
-         boundary with completed_at IS NULL) seeks straight to the pending rows
-         instead of scanning the completed prefix on every launch. CREATE INDEX
-         CONCURRENTLY cannot run in a transaction, so it is its own
-         runInTransaction=false changeset with a single statement. -->
-    <changeSet id="007-create-migration-boundary-pending-index" author="lee.horner"
-               dbms="postgresql" runInTransaction="false">
-        <sqlFile path="sql_changes/007-create-migration-boundary-pending-index.sql"
-                 relativeToChangelogFile="true"/>
-        <rollback>
-            <sqlFile path="rollback/007-create-migration-boundary-pending-index-rollback.sql"
-                     relativeToChangelogFile="true"/>
-        </rollback>
-    </changeSet>
-
-    <changeSet id="008-comment-migration-boundary-pending-index" author="lee.horner" dbms="postgresql">
-        <sqlFile path="sql_changes/008-comment-migration-boundary-pending-index.sql"
-                 relativeToChangelogFile="true"/>
-        <rollback>
-            <sqlFile path="rollback/008-comment-migration-boundary-pending-index-rollback.sql"
-                     relativeToChangelogFile="true"/>
         </rollback>
     </changeSet>
 
