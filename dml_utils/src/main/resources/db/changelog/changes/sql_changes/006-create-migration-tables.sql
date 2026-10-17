@@ -189,6 +189,19 @@ COMMENT ON COLUMN dml_utils_data.migration_boundary.started_at IS
 COMMENT ON COLUMN dml_utils_data.migration_boundary.completed_at IS
     'Actual server time when the chunk for this boundary finished; NULL until then.';
 
+-- A partial index so the coordinator's next-chunk lookup (the first boundary
+-- with completed_at IS NULL) seeks straight to the pending rows instead of
+-- scanning the completed prefix on every launch. Created with the table, so it
+-- needs no CONCURRENTLY.
+CREATE INDEX migration_boundary_pending_idx
+    ON dml_utils_data.migration_boundary (run_id, boundary_no)
+    WHERE completed_at IS NULL;
+
+COMMENT ON INDEX dml_utils_data.migration_boundary_pending_idx IS
+    'Supports the coordinator''s next-chunk lookup (run_migration_chunks): the '
+        'partial predicate keeps only pending boundaries, so the first unclaimed '
+        'boundary is found without scanning the completed prefix on every launch.';
+
 CREATE TABLE dml_utils_data.migration_error
 (
     error_id    bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
