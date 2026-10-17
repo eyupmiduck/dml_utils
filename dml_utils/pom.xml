@@ -324,14 +324,16 @@
                 </executions>
             </plugin>
 
-            <!-- Pass the PostgreSQL image to tests so they use the same
-                 version as jOOQ codegen. -->
+            <!-- Pass the PostgreSQL image and the current version to tests so
+                 they use the same version as jOOQ codegen and can resolve the
+                 previous release below it. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
                     <systemPropertyVariables>
                         <postgres.image>${postgres.image}</postgres.image>
+                        <upgrade.current.version>${revision}</upgrade.current.version>
                     </systemPropertyVariables>
                 </configuration>
             </plugin>

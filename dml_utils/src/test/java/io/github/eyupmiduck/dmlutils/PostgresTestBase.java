@@ -37,7 +37,20 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
      * routines over), applied to the template database after the production
      * changelog.
      */
-    private static final String FIXTURES_RESOURCE = "db/changelog-fixtures/db.changelog-fixtures.xml";
+    static final String FIXTURES_RESOURCE = "db/changelog-fixtures/db.changelog-fixtures.xml";
+
+    /**
+     * The container configuration, shared by this base and
+     * {@link LiquibaseUpgradeTest} so the two cannot drift (the container's
+     * template database is prepared once per JVM from the first class that
+     * runs, so an inconsistent configuration would be order-dependent).
+     */
+    static final String POSTGRES_IMAGE = "dml-utils-postgres:17-alpine";
+    static final String DATABASE = "dml_utils";
+    static final String OWNER_USER = "dml_utils_owner";
+    static final String OWNER_PASSWORD = "dml_utils_owner";
+    static final String TEST_USER = "dml_utils_test";
+    static final String TEST_PASSWORD = "dml_utils_test";
 
     /**
      * Returns a jOOQ field reference by name, for fixture columns when no
@@ -52,34 +65,57 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
         return DSL.field(name, type);
     }
 
+    /**
+     * Installs the extensions the changelog's routines need into a database,
+     * and grants the roles they require. Shared with
+     * {@link LiquibaseUpgradeTest}, whose scratch database needs the same
+     * extensions before the changelog runs.
+     *
+     * @param admin a superuser connection to the target database
+     * @throws SQLException if the extensions cannot be installed
+     */
+    static void installProjectExtensions(Connection admin) throws SQLException {
+        try (java.sql.Statement statement = admin.createStatement()) {
+            // plpgsql_check for static analysis; pg_background for the chunking
+            // routines, which declare its types, so the extension must exist
+            // when Liquibase creates them.
+            statement.execute("CREATE EXTENSION IF NOT EXISTS plpgsql_check");
+            statement.execute("CREATE EXTENSION IF NOT EXISTS pg_background");
+            // pg_background grants no access to PUBLIC; grant its role to the
+            // owner and test roles (membership is cluster-wide).
+            statement.execute("GRANT pgbackground_role TO " + OWNER_USER);
+            statement.execute("GRANT pgbackground_role TO " + TEST_USER);
+        }
+    }
+
     @Override
     protected String defaultPostgresImage() {
-        return "dml-utils-postgres:17-alpine";
+        return POSTGRES_IMAGE;
     }
 
     @Override
     protected String databaseName() {
-        return "dml_utils";
+        return DATABASE;
     }
 
     @Override
     protected String ownerUser() {
-        return "dml_utils_owner";
+        return OWNER_USER;
     }
 
     @Override
     protected String ownerPassword() {
-        return "dml_utils_owner";
+        return OWNER_PASSWORD;
     }
 
     @Override
     protected String testUser() {
-        return "dml_utils_test";
+        return TEST_USER;
     }
 
     @Override
     protected String testPassword() {
-        return "dml_utils_test";
+        return TEST_PASSWORD;
     }
 
     @Override
@@ -224,17 +260,8 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
 
     @Override
     protected void installExtensions(String templateDatabase) throws SQLException {
-        try (Connection admin = openAdminConnection(templateDatabase);
-             java.sql.Statement statement = admin.createStatement()) {
-            // plpgsql_check for static analysis; pg_background for the chunking
-            // routines, which declare its types, so the extension must exist
-            // when Liquibase creates them.
-            statement.execute("CREATE EXTENSION IF NOT EXISTS plpgsql_check");
-            statement.execute("CREATE EXTENSION IF NOT EXISTS pg_background");
-            // pg_background grants no access to PUBLIC; grant its role to the
-            // owner and test roles (membership is cluster-wide).
-            statement.execute("GRANT pgbackground_role TO " + ownerUser());
-            statement.execute("GRANT pgbackground_role TO " + testUser());
+        try (Connection admin = openAdminConnection(templateDatabase)) {
+            installProjectExtensions(admin);
         }
     }
 }
