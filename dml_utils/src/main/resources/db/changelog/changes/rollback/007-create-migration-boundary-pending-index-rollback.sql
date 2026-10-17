@@ -1,1 +1,0 @@
-DROP INDEX CONCURRENTLY IF EXISTS dml_utils_data.migration_boundary_pending_idx;
