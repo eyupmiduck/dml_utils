@@ -96,9 +96,9 @@ class LiquibaseUpgradeTest extends UpgradeTestBase {
         assertFalse(report().previousRelease().isEmpty(),
                 "the published release should apply at least one changeset");
         assertEquals(3, upgradeDsl().fetchOne(
-                        "SELECT count(*) FROM pg_namespace "
-                                + "WHERE nspname IN ('dml_utils', 'dml_utils_lib', 'dml_utils_data')")
-                .get(0, Integer.class),
+                                "SELECT count(*) FROM pg_namespace "
+                                        + "WHERE nspname IN ('dml_utils', 'dml_utils_lib', 'dml_utils_data')")
+                        .get(0, Integer.class),
                 "the upgraded database should have the dml_utils schemas");
     }
 }

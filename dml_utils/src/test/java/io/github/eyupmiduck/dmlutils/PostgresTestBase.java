@@ -65,6 +65,29 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
         return DSL.field(name, type);
     }
 
+    /**
+     * Installs the extensions the changelog's routines need into a database,
+     * and grants the roles they require. Shared with
+     * {@link LiquibaseUpgradeTest}, whose scratch database needs the same
+     * extensions before the changelog runs.
+     *
+     * @param admin a superuser connection to the target database
+     * @throws SQLException if the extensions cannot be installed
+     */
+    static void installProjectExtensions(Connection admin) throws SQLException {
+        try (java.sql.Statement statement = admin.createStatement()) {
+            // plpgsql_check for static analysis; pg_background for the chunking
+            // routines, which declare its types, so the extension must exist
+            // when Liquibase creates them.
+            statement.execute("CREATE EXTENSION IF NOT EXISTS plpgsql_check");
+            statement.execute("CREATE EXTENSION IF NOT EXISTS pg_background");
+            // pg_background grants no access to PUBLIC; grant its role to the
+            // owner and test roles (membership is cluster-wide).
+            statement.execute("GRANT pgbackground_role TO " + OWNER_USER);
+            statement.execute("GRANT pgbackground_role TO " + TEST_USER);
+        }
+    }
+
     @Override
     protected String defaultPostgresImage() {
         return POSTGRES_IMAGE;
@@ -239,29 +262,6 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
     protected void installExtensions(String templateDatabase) throws SQLException {
         try (Connection admin = openAdminConnection(templateDatabase)) {
             installProjectExtensions(admin);
-        }
-    }
-
-    /**
-     * Installs the extensions the changelog's routines need into a database,
-     * and grants the roles they require. Shared with
-     * {@link LiquibaseUpgradeTest}, whose scratch database needs the same
-     * extensions before the changelog runs.
-     *
-     * @param admin a superuser connection to the target database
-     * @throws SQLException if the extensions cannot be installed
-     */
-    static void installProjectExtensions(Connection admin) throws SQLException {
-        try (java.sql.Statement statement = admin.createStatement()) {
-            // plpgsql_check for static analysis; pg_background for the chunking
-            // routines, which declare its types, so the extension must exist
-            // when Liquibase creates them.
-            statement.execute("CREATE EXTENSION IF NOT EXISTS plpgsql_check");
-            statement.execute("CREATE EXTENSION IF NOT EXISTS pg_background");
-            // pg_background grants no access to PUBLIC; grant its role to the
-            // owner and test roles (membership is cluster-wide).
-            statement.execute("GRANT pgbackground_role TO " + OWNER_USER);
-            statement.execute("GRANT pgbackground_role TO " + TEST_USER);
         }
     }
 }
