@@ -6,6 +6,8 @@ import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.Collection;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -28,6 +30,15 @@ class LiquibaseUpgradeTest extends UpgradeTestBase {
                 "https://maven.pkg.github.com/eyupmiduck/dml_utils",
                 "io.github.eyupmiduck", "dml_utils",
                 System.getProperty("upgrade.current.version", "0.0.0-SNAPSHOT"));
+    }
+
+    /**
+     * The schemas the changelog manages, compared between the upgraded database
+     * and a from-scratch build.
+     */
+    @Override
+    protected Collection<String> managedSchemas() {
+        return List.of("dml_utils", "dml_utils_lib", "dml_utils_data");
     }
 
     /**
