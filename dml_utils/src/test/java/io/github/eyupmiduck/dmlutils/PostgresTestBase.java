@@ -1,15 +1,14 @@
 package io.github.eyupmiduck.dmlutils;
 
-import org.jooq.Field;
-import org.jooq.JSON;
-import org.jooq.Record;
-import org.jooq.impl.DSL;
-
 import liquibase.Liquibase;
 import liquibase.database.Database;
 import liquibase.database.DatabaseFactory;
 import liquibase.database.jvm.JdbcConnection;
 import liquibase.resource.ClassLoaderResourceAccessor;
+import org.jooq.Field;
+import org.jooq.JSON;
+import org.jooq.Record;
+import org.jooq.impl.DSL;
 
 import java.sql.Connection;
 import java.sql.SQLException;

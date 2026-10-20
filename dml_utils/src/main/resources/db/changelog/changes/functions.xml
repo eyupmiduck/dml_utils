@@ -414,6 +414,16 @@
         </rollback>
     </changeSet>
 
+    <changeSet id="function-dml_utils.cancel_migration_run" author="lee.horner"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils/cancel_migration_run.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils/cancel_migration_run-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
     <!-- Overloads of one routine share a changeset: the no-argument delete and
          the by-label delete. -->
     <changeSet id="function-dml_utils.delete_archived_migration_runs" author="lee.horner"
@@ -432,8 +442,16 @@
 
     <changeSet id="function-dml_utils.migration_run_summary" author="lee.horner"
                dbms="postgresql" runOnChange="true">
+        <!-- The summary gained cancelled_at, so the old signature must be dropped
+             before the new return type can be created. DROP removes the ACL and
+             999-grant-privileges does not re-run when only this changeset's files
+             change, so the grants are re-asserted here. -->
+        <sqlFile path="functions/dml_utils/migration_run_summary-drop.sql"
+                 relativeToChangelogFile="true"/>
         <createProcedure path="functions/dml_utils/migration_run_summary.sql"
                          relativeToChangelogFile="true"/>
+        <sqlFile path="functions/dml_utils/migration_run_summary-grants.sql"
+                 relativeToChangelogFile="true"/>
         <rollback>
             <sqlFile path="functions-rollback/dml_utils/migration_run_summary-rollback.sql"
                      relativeToChangelogFile="true"/>

@@ -60,6 +60,16 @@
         </rollback>
     </changeSet>
 
+    <!-- Cancellation timestamps. Added with the ddl_utils lock-aware helper so a
+         live table is not locked unbounded; dml_utils assumes ddl_utils is
+         installed in the same database. -->
+    <changeSet id="007-add-cancellation" author="lee.horner" dbms="postgresql">
+        <sqlFile path="sql_changes/007-add-cancellation.sql" relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="rollback/007-add-cancellation-rollback.sql" relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
     <!-- Stored routines: one changeset each, one file per routine. They run
          after the tables so routines may reference them. -->
     <include file="functions.xml" relativeToChangelogFile="true"/>

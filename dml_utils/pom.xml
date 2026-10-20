@@ -101,7 +101,9 @@
                                     <directory>${project.basedir}/src/main/resources</directory>
                                 </resource>
                                 <resource>
-                                    <directory>${project.basedir}/../ddl_utils/ddl_utils/src/main/resources/db/changelog</directory>
+                                    <directory>
+                                        ${project.basedir}/../ddl_utils/ddl_utils/src/main/resources/db/changelog
+                                    </directory>
                                     <targetPath>db/changelog-install/ddl-utils</targetPath>
                                 </resource>
                             </resources>

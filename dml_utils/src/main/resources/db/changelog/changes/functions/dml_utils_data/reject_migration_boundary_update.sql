@@ -18,10 +18,20 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
 
+    -- cancelled_at is set once, by cancel_migration_run or the coordinator; a
+    -- second cancellation is a no-op, and the timestamp must not be rewritten.
+    IF OLD.cancelled_at IS NOT NULL
+        AND NEW.cancelled_at IS DISTINCT FROM OLD.cancelled_at
+    THEN
+        RAISE EXCEPTION 'migration_boundary.cancelled_at is immutable once set'
+            USING ERRCODE = '22023';
+    END IF;
+
     RETURN NEW;
 END;
 $$;
 
 COMMENT ON FUNCTION dml_utils_data.reject_migration_boundary_update IS
     'BEFORE UPDATE trigger that rejects any change to '
-        'migration_boundary.run_id, boundary_no or boundary_id.';
+        'migration_boundary.run_id, boundary_no or boundary_id, and rejects '
+        'rewriting a migration_boundary.cancelled_at that is already set.';
