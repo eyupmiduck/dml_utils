@@ -46,17 +46,7 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION dml_utils_lib.explain_chunk_plan(
-    dml_utils_data.non_null_text,
-    dml_utils_data.non_null_text,
-    dml_utils_data.non_null_text,
-    dml_utils_data.non_null_text,
-    name[],
-    text[],
-    text[],
-    text[],
-    boolean
-    ) IS
+COMMENT ON FUNCTION dml_utils_lib.explain_chunk_plan IS
     'Returns the EXPLAIN (FORMAT JSON) plan for one explicitly supplied '
         'primary-key chunk range, as a single chunk_non_final or chunk_final row. '
         'Unlike explain_chunk_plans it explains the exact predicate a real chunk '

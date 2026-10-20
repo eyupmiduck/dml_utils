@@ -3,7 +3,8 @@
 One function per `.sql` file, grouped by the schema that owns it:
 
 - `dml_utils/` — the caller-facing API (`run_migration_chunks`,
-  `set_migration_run_sql_text`, `archive_migration_run`).
+  `run_function_over_table`, the run controls, the explain helpers and the
+  inspection/cleanup helpers).
 - `dml_utils_lib/` — the engine: the generic catalog and template helpers, and
   the internal routines that populate boundaries, run one chunk and record
   errors.

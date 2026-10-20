@@ -52,15 +52,7 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION dml_utils.explain_migration_chunk(
-    dml_utils_data.non_null_text,
-    dml_utils_data.non_null_text,
-    dml_utils_data.non_null_text,
-    text[],
-    text[],
-    boolean,
-    dml_utils_data.non_null_text
-    ) IS
+COMMENT ON FUNCTION dml_utils.explain_migration_chunk IS
     'Returns the EXPLAIN (FORMAT JSON) plan for one explicitly supplied chunk of '
         'the template, as a single chunk_non_final or chunk_final row. The start '
         'and end values are one text value per primary-key column, in key order; '

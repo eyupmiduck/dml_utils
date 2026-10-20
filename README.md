@@ -29,9 +29,12 @@ anything above it:
 - **`dml_utils`** — the caller-facing API: `dml_utils.run_migration_chunks` and
   the `run_function_over_table` wrapper, plus the run controls (`set_migration_run_sql_text`,
   `set_migration_run_function`,
-  `set_migration_run_threads`, `archive_migration_run`) and the inspection and
-  cleanup helpers (`migration_run_summary`, `migration_errors`,
-  `delete_archived_migration_runs`). It depends on the two schemas below.
+  `set_migration_run_threads`, `archive_migration_run`), the read-only explain
+  helpers (`explain_migration_chunks`/`explain_migration_chunk` and
+  `explain_function_over_table`/`explain_function_over_table_chunk`) and the
+  inspection and cleanup helpers (`migration_run_summary`, `migration_boundaries`,
+  `migration_errors`, `delete_archived_migration_runs`). It depends on the two
+  schemas below.
 - **`dml_utils_lib`** — the engine: the generic catalog and template helpers and
   the internal routines that populate boundaries, run one chunk and record
   errors. It may use `dml_utils_data`, never `dml_utils`.
