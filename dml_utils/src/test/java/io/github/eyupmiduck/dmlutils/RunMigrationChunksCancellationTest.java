@@ -20,10 +20,7 @@ import java.util.concurrent.TimeUnit;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Verifies that a cancellation reaches a run whose coordinator is already
@@ -119,9 +116,9 @@ class RunMigrationChunksCancellationTest extends PostgresTestBase {
                     label);
             if (row != null
                     && Boolean.TRUE.equals(dsl.fetchOne(
-                            "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_locks"
-                                    + " WHERE locktype = 'advisory' AND classid = 1 AND objid = 4242"
-                                    + " AND pid <> pg_backend_pid())").get(0, Boolean.class))) {
+                    "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_locks"
+                            + " WHERE locktype = 'advisory' AND classid = 1 AND objid = 4242"
+                            + " AND pid <> pg_backend_pid())").get(0, Boolean.class))) {
                 return row.get(0, Long.class);
             }
             Thread.sleep(50);

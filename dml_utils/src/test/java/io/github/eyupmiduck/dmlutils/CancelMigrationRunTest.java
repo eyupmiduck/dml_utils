@@ -13,9 +13,7 @@ import java.util.List;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Verifies {@code dml_utils.cancel_migration_run}: it cancels the active
@@ -121,7 +119,7 @@ class CancelMigrationRunTest extends PostgresTestBase {
                 schema(TEST_BIGINT), name(TEST_BIGINT), label, 1, 1, "t",
                 ChunkingStrategy.primary_key, 1);
         Long runId = dsl.fetchOne(
-                "SELECT run_id FROM dml_utils_data.migration_run WHERE label = ?", label)
+                        "SELECT run_id FROM dml_utils_data.migration_run WHERE label = ?", label)
                 .get(0, Long.class);
         assertNotNull(run(runId).getCompletedAt(), "the run completed");
 
