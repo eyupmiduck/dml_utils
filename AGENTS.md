@@ -25,6 +25,14 @@ jOOQ codegen and tests. CI: GitHub Actions (`.github/workflows/maven.yml`) runs
   build/dev shims: the custom PostgreSQL image, the local-DB scripts, the
   release script). Run `git submodule update --init` after cloning. Keep the
   submodule commit and the reusable-workflow `uses:` SHA in step.
+- `ddl_utils/` is a git submodule of `eyupmiduck/ddl_utils`. dml_utils assumes
+  ddl_utils is installed in the same database: future `dml_utils_data` column and
+  constraint changes must use ddl_utils' lock-aware helpers (for example
+  `ddl_utils.add_column`) instead of a raw `ALTER TABLE`. The submodule supplies
+  ddl_utils' changelog to the test suite and jOOQ codegen (through
+  `db/changelog-install/`), the local development stack
+  (`scripts/postgres/migrate.sh`) and the benchmark (`benchmark/setup.sh`); it is
+  not part of the published jar.
 - Root `pom.xml`: parent POM (`dml-utils-parent`); all dependency and plugin
   versions are pinned here in `dependencyManagement` / `pluginManagement`.
 - `dml_utils/`: the main module; base package

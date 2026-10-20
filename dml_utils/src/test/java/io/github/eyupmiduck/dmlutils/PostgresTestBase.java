@@ -5,6 +5,12 @@ import org.jooq.JSON;
 import org.jooq.Record;
 import org.jooq.impl.DSL;
 
+import liquibase.Liquibase;
+import liquibase.database.Database;
+import liquibase.database.DatabaseFactory;
+import liquibase.database.jvm.JdbcConnection;
+import liquibase.resource.ClassLoaderResourceAccessor;
+
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.UUID;
@@ -85,6 +91,55 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
             // owner and test roles (membership is cluster-wide).
             statement.execute("GRANT pgbackground_role TO " + OWNER_USER);
             statement.execute("GRANT pgbackground_role TO " + TEST_USER);
+            // ddl_utils is installed alongside dml_utils; its grants target
+            // ddl_utils_caller, so create the role and let the dml_utils roles
+            // call the DDL helpers.
+            statement.execute("DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles "
+                    + "WHERE rolname = 'ddl_utils_caller') THEN CREATE ROLE ddl_utils_caller; END IF; END $$;");
+            statement.execute("GRANT ddl_utils_caller TO " + OWNER_USER);
+            statement.execute("GRANT ddl_utils_caller TO " + TEST_USER);
+        }
+    }
+
+    /**
+     * Installs the staged ddl_utils changelog into the given database as a
+     * superuser. The normal test template uses the install changelog, which
+     * already includes ddl_utils; the upgrade test applies the previous release
+     * first, so it installs ddl_utils separately so the current changelog can
+     * call its helpers.
+     *
+     * @param admin a superuser connection to the target database
+     * @throws SQLException if the changelog cannot be applied
+     */
+    static void installDdlUtils(Connection admin) throws SQLException {
+        try (java.sql.Statement statement = admin.createStatement()) {
+            // The image creates the liquibase schema for the dml_utils database;
+            // the upgrade test's scratch database needs it too, owned by the role
+            // that applies the previous release so Liquibase can create its
+            // tracking table there.
+            statement.execute("CREATE SCHEMA IF NOT EXISTS " + LIQUIBASE_SCHEMA
+                    + " AUTHORIZATION " + OWNER_USER);
+            statement.execute("ALTER SCHEMA " + LIQUIBASE_SCHEMA + " OWNER TO " + OWNER_USER);
+            statement.execute("GRANT CREATE, USAGE ON SCHEMA " + LIQUIBASE_SCHEMA
+                    + " TO " + OWNER_USER);
+        }
+        try {
+            Database database = DatabaseFactory.getInstance()
+                    .findCorrectDatabaseImplementation(new JdbcConnection(admin));
+            database.setDefaultSchemaName("public");
+            database.setLiquibaseSchemaName(LIQUIBASE_SCHEMA);
+            database.setDatabaseChangeLogTableName("ddl_utils_databasechangelog");
+            database.setDatabaseChangeLogLockTableName("ddl_utils_databasechangeloglock");
+            try {
+                new Liquibase(
+                        "db/changelog-install/ddl-utils/db.changelog-master.xml",
+                        new ClassLoaderResourceAccessor(),
+                        database).update();
+            } finally {
+                database.close();
+            }
+        } catch (Exception error) {
+            throw new SQLException("could not install ddl_utils", error);
         }
     }
 
@@ -121,6 +176,15 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
     @Override
     protected String fixturesResource() {
         return FIXTURES_RESOURCE;
+    }
+
+    /**
+     * The install changelog: ddl_utils first, then the dml_utils changes, so the
+     * test database has the DDL helpers that future migrations call.
+     */
+    @Override
+    protected String masterResource() {
+        return "db/changelog-install/db.changelog-install.xml";
     }
 
     @Override

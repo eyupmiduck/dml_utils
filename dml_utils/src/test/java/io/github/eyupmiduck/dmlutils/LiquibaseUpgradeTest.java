@@ -49,6 +49,7 @@ class LiquibaseUpgradeTest extends UpgradeTestBase {
     protected void installExtensions(String database) throws SQLException {
         try (Connection admin = openAdminConnection(database)) {
             PostgresTestBase.installProjectExtensions(admin);
+            PostgresTestBase.installDdlUtils(admin);
         }
     }
 

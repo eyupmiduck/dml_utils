@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <!-- Install changelog for the test suite and the jOOQ code generator only.
+         The production master (db.changelog-master.xml) assumes ddl_utils is
+         already installed in the same database; this changelog installs it first,
+         so a test/codegen database has the DDL helpers available to the
+         dml_utils_data migrations. It is never published: the build excludes
+         db/changelog-install/** from the jar. The ddl_utils changelog is staged
+         under src/main/resources/db/changelog-install/ddl-utils by the build. -->
+
+    <!-- The codegen container connects as the image superuser, which can create
+         the role ddl_utils' grants target. The test harness connects as
+         dml_utils_owner (not superuser) and creates the role as admin before
+         applying this changelog, so the guard makes this a no-op there. -->
+    <changeSet id="install-create-ddl-utils-caller" author="lee.horner" dbms="postgresql">
+        <sql splitStatements="false">
+            DO $$
+            BEGIN
+                IF (SELECT rolsuper
+                    FROM pg_catalog.pg_roles
+                    WHERE rolname = current_user)
+                    AND NOT EXISTS (SELECT
+                                    FROM pg_catalog.pg_roles
+                                    WHERE rolname = 'ddl_utils_caller')
+                THEN
+                    EXECUTE 'CREATE ROLE ddl_utils_caller';
+                END IF;
+            END
+            $$;
+        </sql>
+    </changeSet>
+
+    <include file="ddl-utils/db.changelog-master.xml" relativeToChangelogFile="true"/>
+    <include file="../changelog/changes/changes.xml" relativeToChangelogFile="true"/>
+</databaseChangeLog>

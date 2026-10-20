@@ -74,8 +74,9 @@ From the repository root:
 benchmark/setup.sh
 ```
 
-This starts a dedicated PostgreSQL container, applies the `dml_utils` changelog
-to it, and loads the deterministic 1,000,000-row source table. It is safe to
+This starts a dedicated PostgreSQL container, applies the `ddl_utils` changelog
+and then the `dml_utils` changelog to it, and loads the deterministic
+1,000,000-row source table. It is safe to
 re-run. If you later change a **server setting** (for example
 `BENCH_MAX_WORKER_PROCESSES`) or the **dataset**, recreate the container and
 data with:
