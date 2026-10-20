@@ -327,17 +327,15 @@ BEGIN
                 AND NOT l_outcome.has_error
                 AND l_cancelled_at IS NULL
                 AND l_effective_sleep_ms > 0
-                AND EXISTS (
-                    SELECT 1
-                    FROM dml_utils_data.migration_boundary AS b
-                             JOIN dml_utils_data.migration_boundary AS next
-                                  ON next.run_id = b.run_id
-                                      AND next.boundary_no = b.boundary_no + 1
-                    WHERE b.run_id = l_run_id
-                      AND b.completed_at IS NULL
-                      AND b.cancelled_at IS NULL
-                      AND b.boundary_no <> ALL (l_in_flight_boundaries)
-                )
+                AND EXISTS (SELECT 1
+                            FROM dml_utils_data.migration_boundary AS b
+                                     JOIN dml_utils_data.migration_boundary AS next
+                                          ON next.run_id = b.run_id
+                                              AND next.boundary_no = b.boundary_no + 1
+                            WHERE b.run_id = l_run_id
+                              AND b.completed_at IS NULL
+                              AND b.cancelled_at IS NULL
+                              AND b.boundary_no <> ALL (l_in_flight_boundaries))
             THEN
                 l_sleep_remaining_ms := l_effective_sleep_ms;
                 WHILE l_sleep_remaining_ms > 0

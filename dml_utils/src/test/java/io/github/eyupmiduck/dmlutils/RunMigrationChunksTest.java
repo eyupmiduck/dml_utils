@@ -1084,7 +1084,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     private long populate(Table<?> table, String label, String template, int chunkSize, int threads,
-            int sleepMs) {
+                          int sleepMs) {
         return io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
                 dsl.configuration(), schema(table), name(table), label, template, chunkSize, threads, ChunkingStrategy.primary_key, "t", sleepMs);
     }
@@ -1102,7 +1102,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     private void runWithSleep(String label, String template, int chunkSize, int threads, int sleepMs,
-            Table<?> table) {
+                              Table<?> table) {
         Routines.runMigrationChunks(
                 dsl.configuration(), template, schema(table), name(table), label, chunkSize, threads,
                 "t", ChunkingStrategy.primary_key, 1, sleepMs);

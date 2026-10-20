@@ -150,7 +150,7 @@ class ResolveMigrationRunTest extends PostgresTestBase {
     }
 
     private ResolveMigrationRun resolve(String label, String sqlText, String alias, int chunkSize,
-            int threads, int sleepMs) {
+                                        int threads, int sleepMs) {
         return Routines.resolveMigrationRun(dsl.configuration(), sqlText, schema(), name(),
                 label, chunkSize, threads, alias, ChunkingStrategy.primary_key, sleepMs);
     }

@@ -375,8 +375,8 @@ i_sleep_ms integer
 RETURNS void
 ```
 
-`SECURITY INVOKER`. Replaces the recorded per-chunk sleep of the unfinished
-(`completed_at IS NULL`) run for the label, so the next `run_migration_chunks`
+`SECURITY INVOKER`. Replaces the recorded per-chunk sleep of the unfinished (`completed_at IS NULL`) run for the label,
+so the next `run_migration_chunks`
 call waits that many milliseconds after each successful chunk before launching
 another. Raises `invalid_parameter_value` (`22023`) for a negative value and
 `no_data_found` (`P0002`) when there is no unfinished run for the label. A
@@ -630,8 +630,7 @@ the active run for the label or creates one (populating its boundaries in a
 `pg_background` worker so they commit autonomously), then returns the run id,
 whether it was already complete, the effective sql_text/schema/table/alias/
 threads, sleep and chunking strategy (the stored values for a resumed run,
-ignoring differing inputs with a notice), and the boundary key columns and kinds
-(the real
+ignoring differing inputs with a notice), and the boundary key columns and kinds (the real
 primary key for `primary_key`, or a single `bigint` block number for `blocks`). A
 resumed block run fails closed if the driving table's physical filepath changed.
 It validates the thread count against `max_worker_processes` before creating a
