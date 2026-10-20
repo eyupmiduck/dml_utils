@@ -324,11 +324,18 @@ GRANT ddl_utils_caller TO dml_utils_owner;
 ```
 
 dml_utils' own changelog does not create ddl_utils; a database without it fails
-at the first changeset that calls a helper. The `ddl_utils/` git submodule
-supplies the changelog to the test suite and the jOOQ code generator (through
-`db/changelog-install/`), the local development stack (`scripts/postgres/migrate.sh`) and the benchmark
-(`benchmark/setup.sh`). It is
-not part of the published jar.
+at the first changeset that calls a helper. The versioned
+`io.github.eyupmiduck:ddl_utils` Maven artifact (`ddl-utils.version`) supplies
+the changelog to the test suite and the jOOQ code generator (unpacked into
+`target/classes/db/changelog-install/ddl-utils`), the local development stack
+(`scripts/postgres/migrate.sh`) and the benchmark (`benchmark/setup.sh`). It is
+used only by that test/codegen/local tooling and is not part of the published
+jar.
+
+The build resolves the artifact from GitHub Packages, so a local Maven build
+needs a `github-ddl-utils` server (a token with `read:packages`) alongside the
+existing `github` server in `~/.m2/settings.xml`. CI supplies both through
+`.github/scripts/settings.xml`.
 
 ## Building and testing
 
@@ -498,8 +505,6 @@ dml_utils/src/test/java/io/github/eyupmiduck/dmlutils/   JUnit tests
 scripts/                                     workflow_library submodule: custom image
                                              (postgres/, compose.yaml), local DB,
                                              release helpers, shared .sqlfluff
-ddl_utils/                                   ddl_utils submodule (test/codegen:
-                                             ddl_utils changelog, installed first)
 .env                                         Dev-stack config (HOST_PORT)
 .sqlfluff                                    Symlink to scripts/.sqlfluff
 ```

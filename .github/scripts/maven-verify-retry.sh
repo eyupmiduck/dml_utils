@@ -22,7 +22,7 @@ log="$(mktemp)"
 trap 'rm -f "$log"' EXIT
 
 run_build() {
-    ./mvnw --batch-mode clean verify "$@"
+    ./mvnw --batch-mode -s .github/scripts/settings.xml clean verify "$@"
 }
 
 if run_build "$@" 2>&1 | tee "$log"; then

@@ -2,17 +2,17 @@
 -- assumes ddl_utils is installed in the same database, so the columns are added
 -- under a bounded lock rather than an unbounded ACCESS EXCLUSIVE lock.
 SELECT ddl_utils.add_column(
-        i_schema_name => 'dml_utils_data',
-        i_table_name => 'migration_run',
-        i_column_name => 'cancelled_at',
-        i_column_type => 'timestamptz',
-        i_nullable => TRUE);
+               i_schema_name => 'dml_utils_data',
+               i_table_name => 'migration_run',
+               i_column_name => 'cancelled_at',
+               i_column_type => 'timestamptz',
+               i_nullable => TRUE);
 SELECT ddl_utils.add_column(
-        i_schema_name => 'dml_utils_data',
-        i_table_name => 'migration_boundary',
-        i_column_name => 'cancelled_at',
-        i_column_type => 'timestamptz',
-        i_nullable => TRUE);
+               i_schema_name => 'dml_utils_data',
+               i_table_name => 'migration_boundary',
+               i_column_name => 'cancelled_at',
+               i_column_type => 'timestamptz',
+               i_nullable => TRUE);
 
 COMMENT ON COLUMN dml_utils_data.migration_run.cancelled_at IS
     'Actual server time when the run was cancelled; NULL unless cancelled. A '
@@ -25,12 +25,12 @@ COMMENT ON COLUMN dml_utils_data.migration_boundary.cancelled_at IS
 -- The lock-aware helper emits these as NOT VALID, so they are enforced for new
 -- and updated rows without a validating scan of the table.
 SELECT ddl_utils.add_check_constraint(
-        i_schema_name => 'dml_utils_data',
-        i_table_name => 'migration_run',
-        i_constraint_name => 'migration_run_cancelled_at_check',
-        i_check_expression => 'cancelled_at IS NULL OR (started_at IS NOT NULL AND cancelled_at >= started_at)');
+               i_schema_name => 'dml_utils_data',
+               i_table_name => 'migration_run',
+               i_constraint_name => 'migration_run_cancelled_at_check',
+               i_check_expression => 'cancelled_at IS NULL OR (started_at IS NOT NULL AND cancelled_at >= started_at)');
 SELECT ddl_utils.add_check_constraint(
-        i_schema_name => 'dml_utils_data',
-        i_table_name => 'migration_run',
-        i_constraint_name => 'migration_run_completed_or_cancelled_check',
-        i_check_expression => 'completed_at IS NULL OR cancelled_at IS NULL');
+               i_schema_name => 'dml_utils_data',
+               i_table_name => 'migration_run',
+               i_constraint_name => 'migration_run_completed_or_cancelled_check',
+               i_check_expression => 'completed_at IS NULL OR cancelled_at IS NULL');

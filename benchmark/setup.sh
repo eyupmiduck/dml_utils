@@ -97,11 +97,16 @@ done
 [ "$ready" = 1 ] || { echo "postgres did not become ready" >&2; exit 1; }
 
 # Install ddl_utils first: dml_utils assumes it is present in the same database,
-# and future dml_utils_data migrations call its DDL helpers. The marker is a
-# ddl_utils routine, so a re-run skips the driver download.
-ddl_utils_changelog_dir="$repo_root/ddl_utils/ddl_utils/src/main/resources/db/changelog"
-[ -d "$ddl_utils_changelog_dir" ] || {
-    echo "ddl_utils submodule is missing; run git submodule update --init" >&2
+# and dml_utils_data migrations call its DDL helpers. The versioned ddl_utils
+# Maven artifact is unpacked into the build output at initialize.
+module_dir="$repo_root/$(basename "$repo_root")"
+ddl_utils_changelog_dir="$module_dir/target/classes/db/changelog-install/ddl-utils/db/changelog"
+if [ ! -f "$ddl_utils_changelog_dir/db.changelog-master.xml" ]; then
+    echo "unpacking the ddl_utils changelog ..." >&2
+    (cd "$repo_root" && ./mvnw -q -pl "$(basename "$repo_root")" -am initialize)
+fi
+[ -f "$ddl_utils_changelog_dir/db.changelog-master.xml" ] || {
+    echo "ddl_utils changelog is missing; run ./mvnw -pl $(basename "$repo_root") -am initialize" >&2
     exit 1
 }
 if ! psql_run -At -c "SELECT 1 FROM pg_catalog.pg_proc p

@@ -38,6 +38,10 @@
         <build-helper.version>3.6.2</build-helper.version>
         <maven-jar-plugin.version>3.5.1</maven-jar-plugin.version>
         <maven-resources-plugin.version>3.5.0</maven-resources-plugin.version>
+        <maven-dependency-plugin.version>3.8.1</maven-dependency-plugin.version>
+        <!-- The published ddl_utils release whose changelog the test/codegen
+             install path unpacks. Production installs ddl_utils separately. -->
+        <ddl-utils.version>1.2.0</ddl-utils.version>
         <skip.sqlfluff>false</skip.sqlfluff>
         <sqlfluff.executable>sqlfluff</sqlfluff.executable>
         <skip.liquibase-linter>false</skip.liquibase-linter>
@@ -131,6 +135,15 @@
                 <enabled>true</enabled>
             </releases>
         </repository>
+        <!-- ddl_utils is published from its own repository, so it needs its own
+             Packages repository id and a matching `github-ddl-utils` server. -->
+        <repository>
+            <id>github-ddl-utils</id>
+            <url>https://maven.pkg.github.com/eyupmiduck/ddl_utils</url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+        </repository>
     </repositories>
 
     <!-- Releases are published to GitHub Packages by the Release workflow on a
@@ -180,6 +193,11 @@
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-jar-plugin</artifactId>
                     <version>${maven-jar-plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-dependency-plugin</artifactId>
+                    <version>${maven-dependency-plugin.version}</version>
                 </plugin>
                 <plugin>
                     <groupId>org.testcontainers</groupId>
