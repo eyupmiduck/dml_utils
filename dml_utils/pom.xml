@@ -130,7 +130,8 @@
                                     <artifactId>ddl_utils</artifactId>
                                     <version>${ddl-utils.version}</version>
                                     <includes>db/changelog/**</includes>
-                                    <outputDirectory>${project.build.outputDirectory}/db/changelog-install/ddl-utils</outputDirectory>
+                                    <outputDirectory>${project.build.outputDirectory}/db/changelog-install/ddl-utils
+                                    </outputDirectory>
                                 </artifactItem>
                             </artifactItems>
                         </configuration>

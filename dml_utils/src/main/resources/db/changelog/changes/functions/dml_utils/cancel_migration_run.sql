@@ -30,14 +30,12 @@ BEGIN
     -- the coordinator to mark after it cancels the worker. Boundaries not yet
     -- launched are marked here, so the cancellation is recorded even when no
     -- coordinator is alive to observe it.
-    WITH pending AS (
-        SELECT run_id, boundary_no
-        FROM dml_utils_data.migration_boundary
-        WHERE run_id = l_run_id
-          AND completed_at IS NULL
-          AND cancelled_at IS NULL
-            FOR UPDATE SKIP LOCKED
-    )
+    WITH pending AS (SELECT run_id, boundary_no
+                     FROM dml_utils_data.migration_boundary
+                     WHERE run_id = l_run_id
+                       AND completed_at IS NULL
+                       AND cancelled_at IS NULL
+                         FOR UPDATE SKIP LOCKED)
     UPDATE dml_utils_data.migration_boundary AS b
     SET cancelled_at = pg_catalog.clock_timestamp()
     FROM pending AS p
