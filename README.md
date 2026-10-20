@@ -283,12 +283,12 @@ primary-key column, in key order — and whether it is the final chunk:
 ```sql
 SELECT o_plan_kind, o_sql_text, o_plan
 FROM dml_utils.explain_migration_chunk(
-    i_sql_text => 'UPDATE <driving_table> SET ... WHERE <chunking_clause>',
-    i_driving_table_schema_name => 'public',
-    i_driving_table_name => 'events',
-    i_start_values => ARRAY['0'],
-    i_end_values => ARRAY['1000'],
-    i_is_final => false);
+        i_sql_text => 'UPDATE <driving_table> SET ... WHERE <chunking_clause>',
+        i_driving_table_schema_name => 'public',
+        i_driving_table_name => 'events',
+        i_start_values => ARRAY ['0'],
+        i_end_values => ARRAY ['1000'],
+        i_is_final => false);
 ```
 
 `dml_utils.explain_function_over_table_chunk` is the equivalent for a
@@ -343,8 +343,8 @@ dml_utils' own changelog does not create ddl_utils; a database without it fails
 at the first changeset that calls a helper. The versioned
 `io.github.eyupmiduck:ddl_utils` Maven artifact (`ddl-utils.version`) supplies
 the changelog to the test suite and the jOOQ code generator (unpacked into
-`target/classes/db/changelog-install/ddl-utils`), the local development stack
-(`scripts/postgres/migrate.sh`) and the benchmark (`benchmark/setup.sh`). It is
+`target/classes/db/changelog-install/ddl-utils`), the local development stack (`scripts/postgres/migrate.sh`) and the
+benchmark (`benchmark/setup.sh`). It is
 used only by that test/codegen/local tooling and is not part of the published
 jar.
 
