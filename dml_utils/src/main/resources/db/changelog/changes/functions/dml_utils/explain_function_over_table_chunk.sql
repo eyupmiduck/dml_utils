@@ -64,8 +64,11 @@ $$;
 COMMENT ON FUNCTION dml_utils.explain_function_over_table_chunk IS
     'Returns the EXPLAIN (FORMAT JSON) plan for one explicitly supplied chunk of '
         'a run_function_over_table call, as a single chunk_non_final or '
-        'chunk_final row. The function must return void with argument types '
-        'matching the driving table''s primary key, in key order. The start and '
-        'end values are one text value per primary-key column, in key order; a '
-        'non-NULL i_filter is ANDed onto the chunk predicate. It resolves no run, '
-        'reads no boundaries and writes nothing.';
+        'chunk_final row. For the primary_key strategy only: a blocks-strategy '
+        'chunk is a half-open ctid range and cannot be expressed here (see '
+        'dml_utils.explain_function_over_table for representative block-chunk '
+        'plans). The function must return void with argument types matching the '
+        'driving table''s primary key, in key order. The start and end values are '
+        'one text value per primary-key column, in key order; a non-NULL i_filter '
+        'is ANDed onto the chunk predicate. It resolves no run, reads no '
+        'boundaries and writes nothing.';

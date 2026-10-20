@@ -57,6 +57,10 @@ COMMENT ON FUNCTION dml_utils.explain_migration_chunk IS
         'the template, as a single chunk_non_final or chunk_final row. The start '
         'and end values are one text value per primary-key column, in key order; '
         'they are validated and cast by their column''s kind. Use it to explain a '
-        'real chunk (for example one read from dml_utils.migration_boundaries) '
-        'rather than only the synthetic representative ranges. It resolves no '
-        'run, reads no boundaries and writes nothing.';
+        'real chunk (for example one read from dml_utils.migration_boundaries for '
+        'a primary_key-strategy run) rather than only the synthetic representative '
+        'ranges. Only the primary_key strategy is explained: a blocks run''s '
+        'boundaries are block numbers that render a ctid range, so passing them '
+        'here would render a misleading primary-key range; use '
+        'explain_migration_chunks for representative block-chunk plans. It '
+        'resolves no run, reads no boundaries and writes nothing.';

@@ -201,9 +201,12 @@ it to explain a real chunk (for example a boundary pair read from
 `dml_utils.migration_boundaries`) instead of only the synthetic representative
 ranges, which is the only way to see the prefix-equality predicate shapes a
 multi-column key produces when the leading key columns do not differ between the
-boundaries. The values are validated and cast by their column's kind, and a
-reversed range, an empty non-final range, or an array whose length does not
-match the key is rejected with `invalid_parameter_value` (`22023`). It resolves
+boundaries. Only the `primary_key` strategy is explained; a `blocks` run's
+boundaries are block numbers that render a ctid range, so passing them here
+would render a misleading primary-key range. The values are validated and cast
+by their column's kind, and a reversed range, an empty non-final range, or an
+array whose length does not match the key is rejected with
+`invalid_parameter_value` (`22023`). It resolves
 no run, reads no boundaries and writes nothing.
 
 ### `dml_utils.set_migration_run_sql_text(i_label, i_sql_text)`
@@ -311,8 +314,10 @@ RETURNS TABLE
 `explain_function_over_table`: it validates the function against the driving
 table's primary key, builds the per-row template and explains exactly one chunk
 whose start and end boundaries the caller supplies as one text value per
-primary-key column, in key order. It returns one `chunk_non_final` or
-`chunk_final` row. A non-NULL `i_filter` is ANDed onto the chunk predicate. Use
+primary-key column, in key order. Only the `primary_key` strategy is explained:
+a `blocks`-strategy chunk is a half-open ctid range and cannot be expressed
+here. It returns one `chunk_non_final` or `chunk_final` row. A non-NULL
+`i_filter` is ANDed onto the chunk predicate. Use
 it to explain a real chunk of the per-row call, including the prefix-equality
 shapes the synthetic ranges never produce. It resolves no run, reads no
 boundaries and writes nothing.
