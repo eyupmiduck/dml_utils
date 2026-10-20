@@ -70,7 +70,7 @@ COMMENT ON FUNCTION dml_utils.explain_function_over_table_chunk(
     text[],
     boolean,
     text
-) IS
+    ) IS
     'Returns the EXPLAIN (FORMAT JSON) plan for one explicitly supplied chunk of '
         'a run_function_over_table call, as a single chunk_non_final or '
         'chunk_final row. The function must return void with argument types '

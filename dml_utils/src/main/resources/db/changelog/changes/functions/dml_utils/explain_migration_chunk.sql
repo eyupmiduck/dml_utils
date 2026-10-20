@@ -60,7 +60,7 @@ COMMENT ON FUNCTION dml_utils.explain_migration_chunk(
     text[],
     boolean,
     dml_utils_data.non_null_text
-) IS
+    ) IS
     'Returns the EXPLAIN (FORMAT JSON) plan for one explicitly supplied chunk of '
         'the template, as a single chunk_non_final or chunk_final row. The start '
         'and end values are one text value per primary-key column, in key order; '

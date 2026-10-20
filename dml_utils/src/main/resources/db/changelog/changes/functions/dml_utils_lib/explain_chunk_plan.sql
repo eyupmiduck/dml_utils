@@ -56,7 +56,7 @@ COMMENT ON FUNCTION dml_utils_lib.explain_chunk_plan(
     text[],
     text[],
     boolean
-) IS
+    ) IS
     'Returns the EXPLAIN (FORMAT JSON) plan for one explicitly supplied '
         'primary-key chunk range, as a single chunk_non_final or chunk_final row. '
         'Unlike explain_chunk_plans it explains the exact predicate a real chunk '
