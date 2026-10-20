@@ -29,9 +29,12 @@ anything above it:
 - **`dml_utils`** — the caller-facing API: `dml_utils.run_migration_chunks` and
   the `run_function_over_table` wrapper, plus the run controls (`set_migration_run_sql_text`,
   `set_migration_run_function`,
-  `set_migration_run_threads`, `archive_migration_run`) and the inspection and
-  cleanup helpers (`migration_run_summary`, `migration_errors`,
-  `delete_archived_migration_runs`). It depends on the two schemas below.
+  `set_migration_run_threads`, `archive_migration_run`), the read-only explain
+  helpers (`explain_migration_chunks`/`explain_migration_chunk` and
+  `explain_function_over_table`/`explain_function_over_table_chunk`) and the
+  inspection and cleanup helpers (`migration_run_summary`, `migration_boundaries`,
+  `migration_errors`, `delete_archived_migration_runs`). It depends on the two
+  schemas below.
 - **`dml_utils_lib`** — the engine: the generic catalog and template helpers and
   the internal routines that populate boundaries, run one chunk and record
   errors. It may use `dml_utils_data`, never `dml_utils`.
@@ -255,6 +258,25 @@ FROM dml_utils.migration_boundaries(i_run_id => 42);
 SELECT boundary_no, sqlstate, message, created_at
 FROM dml_utils.migration_errors(i_run_id => 42);
 ```
+
+To inspect the plan for one real chunk (rather than the synthetic representative
+ranges), supply its start and end boundary values — one text value per
+primary-key column, in key order — and whether it is the final chunk:
+
+```sql
+SELECT o_plan_kind, o_sql_text, o_plan
+FROM dml_utils.explain_migration_chunk(
+    i_sql_text => 'UPDATE <driving_table> SET ... WHERE <chunking_clause>',
+    i_driving_table_schema_name => 'public',
+    i_driving_table_name => 'events',
+    i_start_values => ARRAY['0'],
+    i_end_values => ARRAY['1000'],
+    i_is_final => false);
+```
+
+`dml_utils.explain_function_over_table_chunk` is the equivalent for a
+`run_function_over_table` call. Neither has a `blocks` form: a block chunk is a
+ctid range, so the synthetic explain already shows the same shape.
 
 To re-run a label from scratch (for example after changing the chunk size),
 archive the current run first; then the label is free again:

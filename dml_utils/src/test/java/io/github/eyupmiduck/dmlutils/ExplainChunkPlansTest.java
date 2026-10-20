@@ -2,13 +2,13 @@ package io.github.eyupmiduck.dmlutils;
 
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.enums.ChunkingStrategy;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.tables.records.ExplainChunkPlanRecord;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.tables.records.ExplainChunkPlansRecord;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Verifies {@code dml_utils_lib.explain_chunk_plans}: it returns the JSON plans
@@ -66,5 +66,35 @@ class ExplainChunkPlansTest extends PostgresTestBase {
         assertSqlState("22023", () -> Routines.explainChunkPlans(
                 dsl.configuration(), "UPDATE t SET x = 1", FIXTURE_SCHEMA, "test_bigint", "t",
                 new String[]{"id"}, new String[]{"bigint"}, 1000L, ChunkingStrategy.primary_key));
+    }
+
+    /**
+     * The explicit-boundary form explains exactly one rendered chunk and names it
+     * by its finality.
+     */
+    @Test
+    void explainsOneExplicitChunk() {
+        List<ExplainChunkPlanRecord> plans = Routines.explainChunkPlan(
+                dsl.configuration(), TEMPLATE, FIXTURE_SCHEMA, "test_composite_mixed", "t",
+                new String[]{"a", "b"}, new String[]{"bigint", "text"},
+                new String[]{"7", "a"}, new String[]{"7", "b"}, false);
+
+        assertEquals(1, plans.size(), "one row for the explicit chunk");
+        assertEquals("chunk_non_final", plans.get(0).getOPlanKind());
+        assertTrue(plans.get(0).getOSqlText()
+                        .contains("t.a = '7'::bigint AND t.b >= 'a'::text AND t.b < 'b'::text"),
+                "the shared leading column is a prefix equality");
+        assertNotNull(plans.get(0).getOPlan(), "the row carries the JSON plan");
+    }
+
+    /**
+     * A reversed explicit range is rejected with {@code 22023}.
+     */
+    @Test
+    void rejectsAReversedExplicitRange() {
+        assertSqlState("22023", () -> Routines.explainChunkPlan(
+                dsl.configuration(), TEMPLATE, FIXTURE_SCHEMA, "test_composite_mixed", "t",
+                new String[]{"a", "b"}, new String[]{"bigint", "text"},
+                new String[]{"9", "b"}, new String[]{"7", "a"}, false));
     }
 }

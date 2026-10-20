@@ -24,4 +24,6 @@ jobs:
       java-version: "25"
       postgres-versions: '["postgres:16-alpine","postgres:17-alpine","postgres:18-alpine"]'
       project: dml_utils
-      maven-command: ./mvnw --batch-mode clean verify
+      # Retries once on the known jOOQ-codegen/PostgreSQL startup race; see
+      # .github/scripts/maven-verify-retry.sh.
+      maven-command: ./.github/scripts/maven-verify-retry.sh
