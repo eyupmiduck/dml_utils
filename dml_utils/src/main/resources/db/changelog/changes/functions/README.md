@@ -90,7 +90,7 @@ heap rewrites safe; it does not replace a quiescent source.
 
 ###
 
-`dml_utils.run_migration_chunks(i_sql_text, i_driving_table_schema_name, i_driving_table_name, i_label, i_chunk_size [, i_threads, i_driving_table_alias, i_chunk_by, i_poll_timeout_ms])`
+`dml_utils.run_migration_chunks(i_sql_text, i_driving_table_schema_name, i_driving_table_name, i_label, i_chunk_size [, i_threads, i_driving_table_alias, i_chunk_by, i_poll_timeout_ms, i_sleep_ms])`
 
 ```sql
 i_sql_text                  dml_utils_data.non_null_text
@@ -102,6 +102,7 @@ i_threads                   dml_utils_data.positive_integer DEFAULT 1
 i_driving_table_alias       dml_utils_data.non_null_text DEFAULT 't'
 i_chunk_by                  dml_utils_data.chunking_strategy DEFAULT 'primary_key'
 i_poll_timeout_ms           dml_utils_data.positive_integer DEFAULT 1
+i_sleep_ms                  integer DEFAULT 0
 RETURNS void
 ```
 
@@ -117,17 +118,23 @@ commit their current chunk, and then re-raises the error, leaving the run
 incomplete so it can be resumed. `i_threads` must not exceed
 `max_worker_processes` (`22023` otherwise), and parallel execution is not
 always faster: the chunks never overlap, but they still contend for the same
-table's locks and pages. `i_sql_text` is a template with
+table's locks and pages. `i_sleep_ms` adds a delay after each successfully
+completed chunk (except the final one), which throttles WAL generation and
+therefore helps when replication lag is the constraint. It is stored on the run
+like `i_threads`; a resumed run uses the stored value, and
+`set_migration_run_sleep_ms` adjusts it between calls. With several threads, up
+to that many chunks can still be in flight, so use a small thread count and/or
+smaller chunks for strict pacing. `i_sql_text` is a template with
 `<driving_table>` and `<chunking_clause>` (see `render_chunk_sql`). Reuses the
 active run for the label, or creates it by running
 `dml_utils_lib.populate_migration_boundaries` in a worker so its boundaries
 commit before the chunks run (run resolution is delegated to
 `dml_utils_lib.resolve_migration_run`). A resumed run uses the recorded SQL
-text, chunk size, strategy, threads and driving table; a differing input is
-ignored with a notice, so
-the boundaries and the rendered chunk SQL always refer to the same table. Use
-`set_migration_run_sql_text` or `set_migration_run_threads` to change the
-recorded SQL text or thread count of an unfinished run. Each chunk
+text, chunk size, strategy, threads, sleep and driving table; a differing
+input is ignored with a notice, so the boundaries and the rendered chunk SQL
+always refer to the same table. Use `set_migration_run_sql_text`,
+`set_migration_run_threads` or `set_migration_run_sleep_ms` to change the
+recorded SQL text, thread count or per-chunk delay of an unfinished run. Each chunk
 worker claims its boundary and commits autonomously, so a re-run resumes at the
 first unclaimed boundary. The run records three actual-server-time (`clock_timestamp()`) milestones: `started_at` when
 the run begins (the boundary
@@ -230,7 +237,7 @@ call, which would ignore it.
 
 ###
 
-`dml_utils.run_function_over_table(i_driving_table_schema_name, i_driving_table_name, i_function_schema_name, i_function_name [, i_chunk_size, i_threads, i_label, i_filter, i_chunk_by, i_poll_timeout_ms])`
+`dml_utils.run_function_over_table(i_driving_table_schema_name, i_driving_table_name, i_function_schema_name, i_function_name [, i_chunk_size, i_threads, i_label, i_filter, i_chunk_by, i_poll_timeout_ms, i_sleep_ms])`
 
 ```sql
 i_driving_table_schema_name dml_utils_data.non_null_text
@@ -243,6 +250,7 @@ i_label                     text DEFAULT NULL
 i_filter                    text DEFAULT NULL
 i_chunk_by                  dml_utils_data.chunking_strategy DEFAULT 'primary_key'
 i_poll_timeout_ms           dml_utils_data.positive_integer DEFAULT 1
+i_sleep_ms                  integer DEFAULT 0
 RETURNS void
 ```
 
@@ -266,8 +274,9 @@ matches are passed to the function; a filter that contains `<driving_table>` or
 selects the strategy; `blocks` requires a quiescent, read-only driving table and
 is unsafe when the function updates the driving table in place. Because a resumed
 run uses the recorded SQL text and strategy, use `set_migration_run_function` to
-point an unfinished run at a different function or filter. `i_poll_timeout_ms` is
-passed through to `run_migration_chunks` (see there for its meaning).
+point an unfinished run at a different function or filter. `i_poll_timeout_ms` and
+`i_sleep_ms` are passed through to `run_migration_chunks` (see there for their
+meaning); `i_sleep_ms` seeds a new run and a resumed run uses the stored value.
 
 ###
 
@@ -358,6 +367,22 @@ is no unfinished run for the label. Use this to tune the parallelism of an
 existing run instead of passing a changed `i_threads` to a resumed call, which
 would ignore it.
 
+### `dml_utils.set_migration_run_sleep_ms(i_label, i_sleep_ms)`
+
+```sql
+i_label    dml_utils_data.non_null_text
+i_sleep_ms integer
+RETURNS void
+```
+
+`SECURITY INVOKER`. Replaces the recorded per-chunk sleep of the unfinished
+(`completed_at IS NULL`) run for the label, so the next `run_migration_chunks`
+call waits that many milliseconds after each successful chunk before launching
+another. Raises `invalid_parameter_value` (`22023`) for a negative value and
+`no_data_found` (`P0002`) when there is no unfinished run for the label. A
+coordinator already processing the run keeps the value it read at its start, so
+this changes the next call (a restart/resume), not a run in progress.
+
 ### `dml_utils.archive_migration_run(i_label)`
 
 ```sql
@@ -405,14 +430,15 @@ changeset (`function-dml_utils.delete_archived_migration_runs`).
 ```sql
 i_label dml_utils_data.non_null_text
 RETURNS TABLE
-( run_id, label, chunk_size, chunk_by, threads,
+( run_id, label, chunk_size, chunk_by, threads, sleep_ms,
     driving_table_schema_name, driving_table_name, driving_table_relation_filepath,
     created_at, started_at, boundaries_calculated_at, completed_at, cancelled_at, archived_at,
     boundary_count, completed_boundary_count, error_count)
 ```
 
 `STABLE`, `SECURITY INVOKER`. Returns one high-level row per run for the label,
-including the chunking strategy (`chunk_by`), the block run's physical filepath (`driving_table_relation_filepath`), the
+including the chunking strategy (`chunk_by`), the thread count, the per-chunk
+sleep, the block run's physical filepath (`driving_table_relation_filepath`), the
 number of boundaries (chunk starts plus
 the terminal boundary), how many are completed, and the number of recorded
 errors. Use `migration_errors` to list the errors themselves.
@@ -579,7 +605,7 @@ fixed alias `t`.
 
 ###
 
-`dml_utils_lib.resolve_migration_run(i_sql_text, i_driving_table_schema_name, i_driving_table_name, i_label, i_chunk_size, i_threads, i_driving_table_alias [, i_chunk_by])`
+`dml_utils_lib.resolve_migration_run(i_sql_text, i_driving_table_schema_name, i_driving_table_name, i_label, i_chunk_size, i_threads, i_driving_table_alias [, i_chunk_by, i_sleep_ms])`
 
 ```sql
 i_sql_text                  dml_utils_data.non_null_text
@@ -590,10 +616,11 @@ i_chunk_size                dml_utils_data.positive_integer
 i_threads                   dml_utils_data.positive_integer
 i_driving_table_alias       dml_utils_data.non_null_text
 i_chunk_by                  dml_utils_data.chunking_strategy DEFAULT 'primary_key'
+i_sleep_ms                  integer DEFAULT 0
 RETURNS record (o_run_id bigint, o_already_completed boolean,
                 o_effective_sql_text text, o_effective_schema_name text,
                 o_effective_table_name text, o_effective_alias text,
-                o_effective_threads integer,
+                o_effective_threads integer, o_effective_sleep_ms integer,
                 o_chunk_by dml_utils_data.chunking_strategy,
                 o_primary_key_columns name[], o_key_kinds text[])
 ```
@@ -602,8 +629,9 @@ RETURNS record (o_run_id bigint, o_already_completed boolean,
 the active run for the label or creates one (populating its boundaries in a
 `pg_background` worker so they commit autonomously), then returns the run id,
 whether it was already complete, the effective sql_text/schema/table/alias/
-threads and chunking strategy (the stored values for a resumed run, ignoring
-differing inputs with a notice), and the boundary key columns and kinds (the real
+threads, sleep and chunking strategy (the stored values for a resumed run,
+ignoring differing inputs with a notice), and the boundary key columns and kinds
+(the real
 primary key for `primary_key`, or a single `bigint` block number for `blocks`). A
 resumed block run fails closed if the driving table's physical filepath changed.
 It validates the thread count against `max_worker_processes` before creating a
@@ -727,7 +755,7 @@ migration run already exists for the label.
 
 ###
 
-`dml_utils_lib.populate_migration_boundaries(i_schema_name, i_table_name, i_label, i_sql_text, i_chunk_size [, i_threads, i_chunk_by])`
+`dml_utils_lib.populate_migration_boundaries(i_schema_name, i_table_name, i_label, i_sql_text, i_chunk_size [, i_threads, i_chunk_by, i_driving_table_alias, i_sleep_ms])`
 
 ```sql
 i_schema_name dml_utils_data.non_null_text
@@ -738,13 +766,14 @@ i_chunk_size  dml_utils_data.positive_integer
 i_threads     dml_utils_data.positive_integer DEFAULT 1
 i_chunk_by    dml_utils_data.chunking_strategy DEFAULT 'primary_key'
 i_driving_table_alias dml_utils_data.non_null_text DEFAULT 't'
+i_sleep_ms    integer DEFAULT 0
 RETURNS bigint
 ```
 
 `SECURITY INVOKER`. Creates a `dml_utils_data.migration_run` row for the label,
-with the recorded SQL text, chunk size, strategy, threads, driving table and
-driving table alias (storing the alias at creation so a resume renders with the
-same alias), records the run's `started_at` (the run start, when the calculation begins), then
+with the recorded SQL text, chunk size, strategy, threads, per-chunk sleep,
+driving table and driving table alias (storing the alias and sleep at creation
+so a resume uses the same values), records the run's `started_at` (the run start, when the calculation begins), then
 populates the boundaries for the strategy and records `boundaries_calculated_at`
 (when the range calculation finishes) and `total_chunks` (the boundary count minus
 the terminal high-water boundary, clamped to 0 for an empty source); returns the

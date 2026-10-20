@@ -29,7 +29,8 @@ anything above it:
 - **`dml_utils`** — the caller-facing API: `dml_utils.run_migration_chunks` and
   the `run_function_over_table` wrapper, plus the run controls (`set_migration_run_sql_text`,
   `set_migration_run_function`,
-  `set_migration_run_threads`, `archive_migration_run`, `cancel_migration_run`), the read-only explain
+  `set_migration_run_threads`, `set_migration_run_sleep_ms`, `archive_migration_run`,
+  `cancel_migration_run`), the read-only explain
   helpers (`explain_migration_chunks`/`explain_migration_chunk` and
   `explain_function_over_table`/`explain_function_over_table_chunk`) and the
   inspection and cleanup helpers (`migration_run_summary`, `migration_boundaries`,
@@ -151,6 +152,21 @@ faster. The thread count is recorded on the run like the SQL text: a resumed
 run uses the recorded value (a differing `i_threads` is ignored, with a notice),
 and you can change it on an unfinished run with
 `dml_utils.set_migration_run_threads(i_label, i_threads)`.
+
+To slow a run instead of speeding it up, set `i_sleep_ms` (default `0`). It is
+the number of milliseconds the coordinator waits after each successfully
+completed chunk before launching another, which reduces the chunk completion
+rate and therefore WAL generation. The final chunk does not sleep, and the
+wait is interrupted promptly by cancellation. The value is recorded on the run
+like the thread count: a resumed run uses the stored value and a differing
+`i_sleep_ms` is ignored with a notice. Change it on an unfinished run with
+`dml_utils.set_migration_run_sleep_ms(i_label, i_sleep_ms)`; that affects the
+next call, not a coordinator already processing the run.
+
+The sleep is per completed chunk, not a global rate limit: with `i_threads`
+workers, up to that many chunks can still be in flight, and a large chunk still
+generates its WAL in one burst. For strict pacing, use a small thread count
+and/or smaller chunks in addition to the sleep. A sleep of `0` is a no-op.
 
 The worker SQL for the first chunk is:
 

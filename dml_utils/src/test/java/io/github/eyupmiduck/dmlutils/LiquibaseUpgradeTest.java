@@ -112,5 +112,15 @@ class LiquibaseUpgradeTest extends UpgradeTestBase {
                                         + "WHERE nspname IN ('dml_utils', 'dml_utils_lib', 'dml_utils_data')")
                         .get(0, Integer.class),
                 "the upgraded database should have the dml_utils schemas");
+
+        assertEquals(4, upgradeDsl().fetchOne(
+                                "SELECT count(*) FROM pg_catalog.pg_proc AS p"
+                                        + " JOIN pg_catalog.pg_namespace AS n ON n.oid = p.pronamespace"
+                                        + " WHERE (n.nspname = 'dml_utils'"
+                                        + "   AND p.proname IN ('run_migration_chunks', 'run_function_over_table'))"
+                                        + " OR (n.nspname = 'dml_utils_lib'"
+                                        + "   AND p.proname IN ('resolve_migration_run', 'populate_migration_boundaries'))")
+                        .get(0, Integer.class),
+                "the changed routines should have one signature each after upgrade");
     }
 }

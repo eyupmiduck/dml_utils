@@ -36,6 +36,7 @@ class MigrationTablesTest extends PostgresTestBase {
                 "boundaries_calculated_at should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "completed_at"), "completed_at should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "cancelled_at"), "cancelled_at should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_run", "sleep_ms"), "sleep_ms should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "driving_table_schema_name"),
                 "driving_table_schema_name should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "driving_table_name"),
@@ -66,6 +67,25 @@ class MigrationTablesTest extends PostgresTestBase {
         assertTrue(hasColumn("dml_utils_data", "migration_error", "message"), "message should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_error", "created_at"), "created_at should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_error", "updated_at"), "updated_at should exist");
+    }
+
+    /**
+     * The per-chunk sleep defaults to zero and rejects a negative value.
+     */
+    @Test
+    void sleepMsDefaultsToZeroAndRejectsNegativeValues() {
+        Long runId = insertRun();
+
+        Integer sleepMs = dsl.select(MIGRATION_RUN.SLEEP_MS)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_RUN.SLEEP_MS);
+        assertEquals(0, sleepMs, "a run without an explicit value has no delay");
+
+        assertDomainViolation(() -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.SLEEP_MS, -1)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute());
     }
 
     /**

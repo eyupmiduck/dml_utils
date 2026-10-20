@@ -126,6 +126,8 @@
 
     <changeSet id="function-dml_utils_lib.resolve_migration_run" author="lee.horner"
                dbms="postgresql" runOnChange="true">
+        <sqlFile path="functions/dml_utils_lib/resolve_migration_run-drop.sql"
+                 relativeToChangelogFile="true"/>
         <createProcedure path="functions/dml_utils_lib/resolve_migration_run.sql"
                          relativeToChangelogFile="true"/>
         <rollback>
@@ -266,6 +268,8 @@
 
     <changeSet id="function-dml_utils_lib.populate_migration_boundaries" author="lee.horner"
                dbms="postgresql" runOnChange="true">
+        <sqlFile path="functions/dml_utils_lib/populate_migration_boundaries-drop.sql"
+                 relativeToChangelogFile="true"/>
         <createProcedure path="functions/dml_utils_lib/populate_migration_boundaries.sql"
                          relativeToChangelogFile="true"/>
         <rollback>
@@ -296,6 +300,8 @@
 
     <changeSet id="function-dml_utils.run_migration_chunks" author="lee.horner"
                dbms="postgresql" runOnChange="true">
+        <sqlFile path="functions/dml_utils/run_migration_chunks-drop.sql"
+                 relativeToChangelogFile="true"/>
         <createProcedure path="functions/dml_utils/run_migration_chunks.sql"
                          relativeToChangelogFile="true"/>
         <rollback>
@@ -346,6 +352,8 @@
 
     <changeSet id="function-dml_utils.run_function_over_table" author="lee.horner"
                dbms="postgresql" runOnChange="true">
+        <sqlFile path="functions/dml_utils/run_function_over_table-drop.sql"
+                 relativeToChangelogFile="true"/>
         <createProcedure path="functions/dml_utils/run_function_over_table.sql"
                          relativeToChangelogFile="true"/>
         <rollback>
@@ -400,6 +408,16 @@
                          relativeToChangelogFile="true"/>
         <rollback>
             <sqlFile path="functions-rollback/dml_utils/set_migration_run_threads-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="function-dml_utils.set_migration_run_sleep_ms" author="lee.horner"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils/set_migration_run_sleep_ms.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils/set_migration_run_sleep_ms-rollback.sql"
                      relativeToChangelogFile="true"/>
         </rollback>
     </changeSet>

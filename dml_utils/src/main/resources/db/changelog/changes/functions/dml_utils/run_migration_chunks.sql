@@ -13,7 +13,11 @@ CREATE OR REPLACE FUNCTION dml_utils.run_migration_chunks(
     -- CPU, at the cost of up to ~50ms added detection latency. positive_integer,
     -- so 0 is rejected: pg_background_wait_any treats a non-positive timeout as
     -- "block forever", which would stop this coordinator re-checking its state.
-    i_poll_timeout_ms dml_utils_data.positive_integer DEFAULT 1
+    i_poll_timeout_ms dml_utils_data.positive_integer DEFAULT 1,
+    -- Milliseconds to wait after each successfully completed chunk before
+    -- launching another. This seeds a new run; a resumed run uses its stored
+    -- value. 0 disables the delay.
+    i_sleep_ms integer DEFAULT 0
 )
     RETURNS void
     LANGUAGE plpgsql
@@ -28,6 +32,7 @@ DECLARE
     l_already_completed     boolean;
     l_effective_sql_text    text;
     l_effective_threads     integer;
+    l_effective_sleep_ms    integer;
     l_effective_schema_name text;
     l_effective_table_name  text;
     l_effective_alias       text;
@@ -51,6 +56,10 @@ DECLARE
     l_error_sqlstate        text;
     l_error_message         text;
     l_error_boundary_no     bigint;
+    -- Per-chunk throttle state. The sleep is sliced so cancellation is noticed
+    -- promptly; sleep_ms itself is not re-read (restart-only adjustment).
+    l_sleep_remaining_ms    integer;
+    l_sleep_slice_ms        integer;
     -- pg_background is installed in the public schema. Qualify its types and
     -- functions explicitly so this routine resolves them regardless of the
     -- caller's (or Liquibase's) search_path.
@@ -71,12 +80,13 @@ BEGIN
            r.o_effective_table_name,
            r.o_effective_alias,
            r.o_effective_threads,
+           r.o_effective_sleep_ms,
            r.o_chunk_by,
            r.o_primary_key_columns,
            r.o_key_kinds
     INTO l_run_id, l_already_completed, l_effective_sql_text,
         l_effective_schema_name, l_effective_table_name, l_effective_alias,
-        l_effective_threads, l_chunk_by, l_primary_key_columns, l_key_kinds
+        l_effective_threads, l_effective_sleep_ms, l_chunk_by, l_primary_key_columns, l_key_kinds
     FROM dml_utils_lib.resolve_migration_run(
                  i_sql_text => i_sql_text,
                  i_driving_table_schema_name => i_driving_table_schema_name,
@@ -85,7 +95,8 @@ BEGIN
                  i_chunk_size => i_chunk_size,
                  i_threads => i_threads,
                  i_driving_table_alias => i_driving_table_alias,
-                 i_chunk_by => i_chunk_by) AS r;
+                 i_chunk_by => i_chunk_by,
+                 i_sleep_ms => i_sleep_ms) AS r;
 
     IF l_already_completed THEN
         RETURN;
@@ -307,6 +318,44 @@ BEGIN
                 END IF;
                 l_aborting := true;
             END IF;
+
+            -- Throttle: after a successful chunk, wait before refilling the slot.
+            -- Skip the terminal-boundary case (no following chunk) and the drain
+            -- path after a failure. The sleep is sliced so cancellation is noticed
+            -- promptly; sleep_ms itself is read once per run, not re-read here.
+            IF NOT l_aborting
+                AND NOT l_outcome.has_error
+                AND l_cancelled_at IS NULL
+                AND l_effective_sleep_ms > 0
+                AND EXISTS (
+                    SELECT 1
+                    FROM dml_utils_data.migration_boundary AS b
+                             JOIN dml_utils_data.migration_boundary AS next
+                                  ON next.run_id = b.run_id
+                                      AND next.boundary_no = b.boundary_no + 1
+                    WHERE b.run_id = l_run_id
+                      AND b.completed_at IS NULL
+                      AND b.cancelled_at IS NULL
+                      AND b.boundary_no <> ALL (l_in_flight_boundaries)
+                )
+            THEN
+                l_sleep_remaining_ms := l_effective_sleep_ms;
+                WHILE l_sleep_remaining_ms > 0
+                    LOOP
+                        l_sleep_slice_ms := least(l_sleep_remaining_ms, 100);
+                        PERFORM pg_catalog.pg_sleep(l_sleep_slice_ms::double precision / 1000.0);
+                        l_sleep_remaining_ms := l_sleep_remaining_ms - l_sleep_slice_ms;
+
+                        -- Cancellation is still noticed during a long throttle.
+                        SELECT r.cancelled_at
+                        INTO l_cancelled_at
+                        FROM dml_utils_data.migration_run AS r
+                        WHERE r.run_id = l_run_id;
+                        l_last_cancel_check := pg_catalog.clock_timestamp();
+                        EXIT WHEN l_cancelled_at IS NOT NULL;
+                    END LOOP;
+                EXIT WHEN l_cancelled_at IS NOT NULL;
+            END IF;
         END LOOP;
 
         -- Cancellation: stop the in-flight workers and record the cancellation.
@@ -418,11 +467,14 @@ COMMENT ON FUNCTION dml_utils.run_migration_chunks IS
         'rows in primary-key order; blocks: half-open physical ctid ranges), up to '
         'i_threads pg_background workers at a time, resuming an active run for '
         'the label and recording its completion. A resumed run uses the stored '
-        'sql_text, chunk size, strategy, threads, driving table and alias. On a '
-        'failed chunk it stops launching, lets the in-flight chunks commit, drains '
-        'and detaches them, and re-raises the error; the failure is recorded (best '
-        'effort) in dml_utils_data.migration_error first. A boundary already '
-        'claimed by another coordinator (P0002) is treated as benign. A run '
-        'cancelled with dml_utils.cancel_migration_run stops launching, cancels '
-        'the in-flight workers, marks the run and its remaining boundaries '
-        'cancelled and returns; a cancelled run is terminal.';
+        'sql_text, chunk size, strategy, threads, sleep_ms, driving table and alias. '
+        'After each successfully completed chunk it waits the run''s sleep_ms before '
+        'launching another (except after the final chunk); the sleep is '
+        'cancellation-aware. On a failed chunk it stops launching, lets the '
+        'in-flight chunks commit, drains and detaches them, and re-raises the '
+        'error; the failure is recorded (best effort) in '
+        'dml_utils_data.migration_error first. A boundary already claimed by '
+        'another coordinator (P0002) is treated as benign. A run cancelled with '
+        'dml_utils.cancel_migration_run stops launching, cancels the in-flight '
+        'workers, marks the run and its remaining boundaries cancelled and '
+        'returns; a cancelled run is terminal.';

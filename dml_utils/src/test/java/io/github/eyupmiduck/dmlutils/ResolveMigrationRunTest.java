@@ -58,6 +58,7 @@ class ResolveMigrationRunTest extends PostgresTestBase {
         assertEquals(name(), resolved.getOEffectiveTableName());
         assertEquals("t", resolved.getOEffectiveAlias());
         assertEquals(1, resolved.getOEffectiveThreads());
+        assertEquals(0, resolved.getOEffectiveSleepMs());
         assertEquals(ChunkingStrategy.primary_key, resolved.getOChunkBy());
         assertArrayEquals(new String[]{"id"}, resolved.getOPrimaryKeyColumns());
         assertArrayEquals(new String[]{"bigint"}, resolved.getOKeyKinds());
@@ -82,6 +83,36 @@ class ResolveMigrationRunTest extends PostgresTestBase {
         assertEquals(TEMPLATE, second.getOEffectiveSqlText(), "the stored sql_text wins");
         assertEquals("t", second.getOEffectiveAlias(), "the stored alias wins");
         assertEquals(1, second.getOEffectiveThreads(), "the stored threads win");
+        assertEquals(0, second.getOEffectiveSleepMs(), "the stored sleep wins");
+    }
+
+    /**
+     * A new run stores the requested sleep, and a resumed run returns the stored
+     * value even when the input differs.
+     */
+    @Test
+    void storesSleepAndResumesWithTheStoredValue() {
+        seedBigint(1, 2, 3);
+        String label = uniqueLabel("resolve-sleep");
+
+        ResolveMigrationRun first = resolve(label, TEMPLATE, "t", 2, 1, 25);
+        assertEquals(25, first.getOEffectiveSleepMs(), "the new run uses the input sleep");
+
+        ResolveMigrationRun second = resolve(label, TEMPLATE, "t", 2, 2, 99);
+        assertEquals(25, second.getOEffectiveSleepMs(), "the stored sleep wins on resume");
+        assertEquals(25, dsl.select(MIGRATION_RUN.SLEEP_MS)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(first.getORunId()))
+                .fetchOne(MIGRATION_RUN.SLEEP_MS), "the stored sleep is persisted");
+    }
+
+    /**
+     * A negative sleep is rejected before it can be stored.
+     */
+    @Test
+    void rejectsANegativeSleep() {
+        assertSqlState("22023", () -> resolve(uniqueLabel("resolve-sleep-negative"),
+                TEMPLATE, "t", 2, 1, -1));
     }
 
     /**
@@ -115,7 +146,12 @@ class ResolveMigrationRunTest extends PostgresTestBase {
     }
 
     private ResolveMigrationRun resolve(String label, String sqlText, String alias, int chunkSize, int threads) {
+        return resolve(label, sqlText, alias, chunkSize, threads, 0);
+    }
+
+    private ResolveMigrationRun resolve(String label, String sqlText, String alias, int chunkSize,
+            int threads, int sleepMs) {
         return Routines.resolveMigrationRun(dsl.configuration(), sqlText, schema(), name(),
-                label, chunkSize, threads, alias, ChunkingStrategy.primary_key);
+                label, chunkSize, threads, alias, ChunkingStrategy.primary_key, sleepMs);
     }
 }
