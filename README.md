@@ -298,6 +298,27 @@ SELECT dml_utils.delete_archived_migration_runs(i_label => 'events-region-backfi
 - Java 25 and the Maven Wrapper (`./mvnw`) for the build and tests.
 - Docker for the jOOQ codegen and the integration tests (Testcontainers).
 
+## ddl_utils dependency
+
+dml_utils assumes **ddl_utils is installed in the same database**. Future
+changes to the `dml_utils_data` tables use ddl_utils' lock-aware DDL helpers
+(for example `ddl_utils.add_column`) instead of a raw `ALTER TABLE`, so a
+migration does not hold an unbounded `ACCESS EXCLUSIVE` lock.
+
+Install ddl_utils' changelog **before** dml_utils' changelog, and grant its
+caller role to the role that runs the dml_utils migration:
+
+```sql
+GRANT ddl_utils_caller TO dml_utils_owner;
+```
+
+dml_utils' own changelog does not create ddl_utils; a database without it fails
+at the first changeset that calls a helper. The `ddl_utils/` git submodule
+supplies the changelog to the test suite and the jOOQ code generator (through
+`db/changelog-install/`), the local development stack
+(`scripts/postgres/migrate.sh`) and the benchmark (`benchmark/setup.sh`). It is
+not part of the published jar.
+
 ## Building and testing
 
 ```sh
@@ -466,6 +487,8 @@ dml_utils/src/test/java/io/github/eyupmiduck/dmlutils/   JUnit tests
 scripts/                                     workflow_library submodule: custom image
                                              (postgres/, compose.yaml), local DB,
                                              release helpers, shared .sqlfluff
+ddl_utils/                                   ddl_utils submodule (test/codegen:
+                                             ddl_utils changelog, installed first)
 .env                                         Dev-stack config (HOST_PORT)
 .sqlfluff                                    Symlink to scripts/.sqlfluff
 ```

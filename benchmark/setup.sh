@@ -96,8 +96,38 @@ for _ in $(seq 1 90); do
 done
 [ "$ready" = 1 ] || { echo "postgres did not become ready" >&2; exit 1; }
 
-# Apply the changelog once (the routines are what we benchmark). The marker is
-# the routine under test, so a re-run skips the driver download.
+# Install ddl_utils first: dml_utils assumes it is present in the same database,
+# and future dml_utils_data migrations call its DDL helpers. The marker is a
+# ddl_utils routine, so a re-run skips the driver download.
+ddl_utils_changelog_dir="$repo_root/ddl_utils/ddl_utils/src/main/resources/db/changelog"
+[ -d "$ddl_utils_changelog_dir" ] || {
+    echo "ddl_utils submodule is missing; run git submodule update --init" >&2
+    exit 1
+}
+if ! psql_run -At -c "SELECT 1 FROM pg_catalog.pg_proc p
+        JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'ddl_utils' AND p.proname = 'add_column'" \
+        | grep -q 1; then
+    echo "installing ddl_utils ..." >&2
+    psql_run -q -v ON_ERROR_STOP=1 -c \
+        "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'ddl_utils_caller') THEN CREATE ROLE ddl_utils_caller; END IF; END \$\$;"
+    psql_run -q -v ON_ERROR_STOP=1 -c "GRANT ddl_utils_caller TO $BENCH_OWNER_USER"
+    docker run --rm --network "$BENCH_NETWORK" \
+        -v "$ddl_utils_changelog_dir:/liquibase/ddl-utils-changelog" \
+        "$BENCH_LIQUIBASE_IMAGE" sh -c \
+        "lpm add postgresql --global && liquibase \
+            --url=jdbc:postgresql://${BENCH_CONTAINER}:5432/${BENCH_DB} \
+            --username=${BENCH_OWNER_USER} \
+            --password=${BENCH_OWNER_PASSWORD} \
+            --changelog-file=ddl-utils-changelog/db.changelog-master.xml \
+            --liquibase-schema-name=liquibase \
+            --database-changelog-table-name=ddl_utils_databasechangelog \
+            --database-changelog-lock-table-name=ddl_utils_databasechangeloglock \
+            update"
+fi
+
+# Apply the dml_utils changelog once (the routines are what we benchmark). The
+# marker is the routine under test, so a re-run skips the driver download.
 if ! psql_run -At -c "SELECT 1 FROM pg_catalog.pg_proc p
         JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
         WHERE n.nspname = 'dml_utils' AND p.proname = 'run_migration_chunks'" \
