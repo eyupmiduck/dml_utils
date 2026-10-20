@@ -1,9 +1,11 @@
 package io.github.eyupmiduck.dmlutils;
 
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.ExplainMigrationChunkRecord;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.ExplainMigrationChunksRecord;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.enums.ChunkingStrategy;
 import org.jooq.Table;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -12,10 +14,12 @@ import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.Migration
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeMixed.TEST_COMPOSITE_MIXED;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeThree.TEST_COMPOSITE_THREE;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestNumeric.TEST_NUMERIC;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestText.TEST_TEXT;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestUuid.TEST_UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -42,6 +46,16 @@ class ExplainMigrationChunksTest extends PostgresTestBase {
 
     private static String name(Table<?> table) {
         return table.getName();
+    }
+
+    /**
+     * Clears the seeded fixture row and the migration metadata so each test
+     * starts clean.
+     */
+    @BeforeEach
+    void resetFixtures() {
+        dsl.deleteFrom(MIGRATION_RUN).execute();
+        dsl.truncate(TEST_BIGINT).execute();
     }
 
     /**
@@ -217,5 +231,159 @@ class ExplainMigrationChunksTest extends PostgresTestBase {
     void rejectsAPartitionedTableForBlocks() {
         assertSqlState("42809", () -> Routines.explainMigrationChunks(dsl.configuration(),
                 TEMPLATE, "dml_utils_fixtures", "test_partitioned", 10, "t", ChunkingStrategy.blocks));
+    }
+
+    /**
+     * The explicit-boundary form explains one chunk whose first key column
+     * differs, so the predicate is the full three-box decomposition.
+     */
+    @Test
+    void explainsAChunkWhoseFirstKeyColumnDiffers() {
+        List<ExplainMigrationChunkRecord> plans = Routines.explainMigrationChunk(
+                dsl.configuration(), TEMPLATE, schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
+                new String[]{"7", "a"}, new String[]{"9", "b"}, false, "t");
+
+        assertEquals(1, plans.size(), "one row for the explained chunk");
+        assertEquals("chunk_non_final", plans.get(0).getOPlanKind());
+        String sql = plans.get(0).getOSqlText();
+        assertTrue(sql.contains("t.a = '7'::bigint AND t.b >= 'a'::text"),
+                "the lower tail fixes the shared prefix and opens the suffix");
+        assertTrue(sql.contains("t.a > '7'::bigint AND t.a < '9'::bigint"),
+                "the middle box ranges over the first differing column");
+        assertTrue(sql.contains("t.a = '9'::bigint AND t.b < 'b'::text"),
+                "the upper tail fixes the end column and closes the suffix");
+        assertEquals("ModifyTable", planNodeType(plans.get(0).getOPlan()));
+    }
+
+    /**
+     * A chunk whose leading key column is equal in both boundaries (only the
+     * second column differs) renders the single-box prefix-equality shape that
+     * the synthetic explain never produces.
+     */
+    @Test
+    void explainsAChunkWhoseLeadingKeyColumnIsEqual() {
+        List<ExplainMigrationChunkRecord> plans = Routines.explainMigrationChunk(
+                dsl.configuration(), TEMPLATE, schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
+                new String[]{"7", "a"}, new String[]{"7", "b"}, false, "t");
+
+        assertEquals(1, plans.size());
+        assertEquals("chunk_non_final", plans.get(0).getOPlanKind());
+        String sql = plans.get(0).getOSqlText();
+        assertTrue(sql.contains("t.a = '7'::bigint AND t.b >= 'a'::text AND t.b < 'b'::text"),
+                "the whole range is one equality-plus-scalar-range box");
+        assertFalse(sql.contains(" OR "), "a single differing last column is one box");
+        assertEquals("ModifyTable", planNodeType(plans.get(0).getOPlan()));
+    }
+
+    /**
+     * The explicit final chunk uses an inclusive upper bound on its last key
+     * column.
+     */
+    @Test
+    void explainsAnExplicitFinalChunkInclusively() {
+        List<ExplainMigrationChunkRecord> plans = Routines.explainMigrationChunk(
+                dsl.configuration(), TEMPLATE, schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
+                new String[]{"7", "a"}, new String[]{"7", "b"}, true, "t");
+
+        assertEquals("chunk_final", plans.get(0).getOPlanKind());
+        assertTrue(plans.get(0).getOSqlText().contains("t.b <= 'b'::text"),
+                "the final chunk captures the upper boundary");
+    }
+
+    /**
+     * A three-column key whose second column differs renders the three-box
+     * decomposition: a lower tail, the middle and an upper tail.
+     */
+    @Test
+    void explainsAThreeColumnChunkWhoseMiddleKeyColumnDiffers() {
+        List<ExplainMigrationChunkRecord> plans = Routines.explainMigrationChunk(
+                dsl.configuration(), TEMPLATE, schema(TEST_COMPOSITE_THREE), name(TEST_COMPOSITE_THREE),
+                new String[]{"1", "a", "00000000-0000-0000-0000-000000000000"},
+                new String[]{"1", "b", "00000000-0000-0000-0000-000000000001"}, false, "t");
+
+        assertEquals(1, plans.size());
+        String sql = plans.get(0).getOSqlText();
+        assertTrue(sql.contains("t.b = '1'::bigint AND t.a = 'a'::text"
+                        + " AND t.c >= '00000000-0000-0000-0000-000000000000'::uuid"),
+                "the lower tail fixes the shared prefix");
+        assertTrue(sql.contains("t.b = '1'::bigint AND t.a > 'a'::text AND t.a < 'b'::text"),
+                "the middle box ranges over the differing column");
+        assertTrue(sql.contains("t.b = '1'::bigint AND t.a = 'b'::text"
+                        + " AND t.c < '00000000-0000-0000-0000-000000000001'::uuid"),
+                "the upper tail fixes the end column");
+    }
+
+    /**
+     * A three-column key where only the last column differs renders one scalar
+     * range box.
+     */
+    @Test
+    void explainsAThreeColumnChunkWhoseLastKeyColumnDiffers() {
+        List<ExplainMigrationChunkRecord> plans = Routines.explainMigrationChunk(
+                dsl.configuration(), TEMPLATE, schema(TEST_COMPOSITE_THREE), name(TEST_COMPOSITE_THREE),
+                new String[]{"1", "a", "00000000-0000-0000-0000-000000000000"},
+                new String[]{"1", "a", "00000000-0000-0000-0000-000000000001"}, false, "t");
+
+        String sql = plans.get(0).getOSqlText();
+        assertTrue(sql.contains("t.b = '1'::bigint AND t.a = 'a'::text"));
+        assertTrue(sql.contains("t.c >= '00000000-0000-0000-0000-000000000000'::uuid"));
+        assertTrue(sql.contains("t.c < '00000000-0000-0000-0000-000000000001'::uuid"));
+        assertFalse(sql.contains(" OR "), "only the last column differs, so one box");
+    }
+
+    /**
+     * A reversed explicit range is rejected with {@code 22023} rather than
+     * explaining a predicate that matches no rows.
+     */
+    @Test
+    void rejectsAReversedExplicitRange() {
+        assertSqlState("22023", () -> Routines.explainMigrationChunk(
+                dsl.configuration(), TEMPLATE, schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
+                new String[]{"9", "b"}, new String[]{"7", "a"}, false, "t"));
+    }
+
+    /**
+     * An explicit non-final range whose bounds are equal is empty and rejected
+     * with {@code 22023}.
+     */
+    @Test
+    void rejectsAnEmptyExplicitRange() {
+        assertSqlState("22023", () -> Routines.explainMigrationChunk(
+                dsl.configuration(), TEMPLATE, schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
+                new String[]{"7", "a"}, new String[]{"7", "a"}, false, "t"));
+    }
+
+    /**
+     * A boundary with the wrong number of values is rejected with {@code 22023}.
+     */
+    @Test
+    void rejectsAWrongNumberOfBoundaryValues() {
+        assertSqlState("22023", () -> Routines.explainMigrationChunk(
+                dsl.configuration(), TEMPLATE, schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
+                new String[]{"7"}, new String[]{"7", "b"}, false, "t"));
+    }
+
+    /**
+     * The explicit-boundary call is read-only: it writes no run or boundary and
+     * does not run the template.
+     */
+    @Test
+    void explicitBoundariesWriteNothing() {
+        dsl.insertInto(TEST_BIGINT, TEST_BIGINT.ID, TEST_BIGINT.PAYLOAD)
+                .values(1L, "original")
+                .execute();
+
+        Routines.explainMigrationChunk(dsl.configuration(), TEMPLATE,
+                schema(TEST_BIGINT), name(TEST_BIGINT),
+                new String[]{"0"}, new String[]{"10"}, false, "t");
+
+        assertEquals(0, dsl.fetchCount(MIGRATION_RUN), "no run is created");
+        assertEquals(0, dsl.fetchCount(MIGRATION_BOUNDARY), "no boundary is written");
+        assertEquals("original",
+                dsl.select(TEST_BIGINT.PAYLOAD)
+                        .from(TEST_BIGINT)
+                        .where(TEST_BIGINT.ID.eq(1L))
+                        .fetchOne(TEST_BIGINT.PAYLOAD),
+                "the template must not run");
     }
 }

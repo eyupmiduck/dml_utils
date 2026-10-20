@@ -256,6 +256,25 @@ SELECT boundary_no, sqlstate, message, created_at
 FROM dml_utils.migration_errors(i_run_id => 42);
 ```
 
+To inspect the plan for one real chunk (rather than the synthetic representative
+ranges), supply its start and end boundary values — one text value per
+primary-key column, in key order — and whether it is the final chunk:
+
+```sql
+SELECT o_plan_kind, o_sql_text, o_plan
+FROM dml_utils.explain_migration_chunk(
+    i_sql_text => 'UPDATE <driving_table> SET ... WHERE <chunking_clause>',
+    i_driving_table_schema_name => 'public',
+    i_driving_table_name => 'events',
+    i_start_values => ARRAY['0'],
+    i_end_values => ARRAY['1000'],
+    i_is_final => false);
+```
+
+`dml_utils.explain_function_over_table_chunk` is the equivalent for a
+`run_function_over_table` call. Neither has a `blocks` form: a block chunk is a
+ctid range, so the synthetic explain already shows the same shape.
+
 To re-run a label from scratch (for example after changing the chunk size),
 archive the current run first; then the label is free again:
 

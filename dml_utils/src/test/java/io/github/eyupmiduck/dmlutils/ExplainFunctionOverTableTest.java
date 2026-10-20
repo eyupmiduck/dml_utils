@@ -1,6 +1,7 @@
 package io.github.eyupmiduck.dmlutils;
 
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.ExplainFunctionOverTableChunkRecord;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.ExplainFunctionOverTableRecord;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.enums.ChunkingStrategy;
 import org.jooq.Table;
@@ -175,6 +176,42 @@ class ExplainFunctionOverTableTest extends PostgresTestBase {
         assertSqlState("22023", () -> Routines.explainFunctionOverTable(dsl.configuration(),
                 schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED), FN_SCHEMA,
                 "no_such_function", 10, null, ChunkingStrategy.primary_key));
+    }
+
+    /**
+     * The explicit-boundary form explains one chunk of the per-row function call,
+     * including the prefix-equality shape the synthetic explain never produces.
+     */
+    @Test
+    void explainsOneExplicitChunk() {
+        createFunction("mark_mixed", "done");
+
+        List<ExplainFunctionOverTableChunkRecord> plans = Routines.explainFunctionOverTableChunk(
+                dsl.configuration(), schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
+                FN_SCHEMA, "mark_mixed", new String[]{"7", "a"}, new String[]{"7", "b"}, false, null);
+
+        assertEquals(1, plans.size(), "one row for the explicit chunk");
+        assertEquals("chunk_non_final", plans.get(0).getOPlanKind());
+        String sql = plans.get(0).getOSqlText();
+        assertTrue(sql.contains("SELECT public.mark_mixed(t.a, t.b)"),
+                "the plan explains the per-row function call");
+        assertTrue(sql.contains("t.a = '7'::bigint AND t.b >= 'a'::text AND t.b < 'b'::text"),
+                "the shared leading column is a prefix equality");
+    }
+
+    /**
+     * A non-NULL filter is ANDed onto the explicit chunk predicate.
+     */
+    @Test
+    void appliesTheFilterToAnExplicitChunk() {
+        createFunction("mark_mixed", "done");
+
+        List<ExplainFunctionOverTableChunkRecord> plans = Routines.explainFunctionOverTableChunk(
+                dsl.configuration(), schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
+                FN_SCHEMA, "mark_mixed", new String[]{"7", "a"}, new String[]{"7", "b"}, false, "t.b = 'x'");
+
+        assertTrue(plans.get(0).getOSqlText().contains("AND (t.b = 'x')"),
+                "the chunk predicate ANDs the filter");
     }
 
     /**

@@ -175,6 +175,36 @@ way the ranges are synthetic, so their row estimates may differ from a real
 chunk. It is `VOLATILE` because PostgreSQL forbids `EXPLAIN` in a non-volatile
 function. Use it to inspect the plans before running `run_migration_chunks`.
 
+###
+
+`dml_utils.explain_migration_chunk(i_sql_text, i_driving_table_schema_name, i_driving_table_name, i_start_values, i_end_values, i_is_final [, i_driving_table_alias])`
+
+```sql
+i_sql_text                  dml_utils_data.non_null_text
+i_driving_table_schema_name dml_utils_data.non_null_text
+i_driving_table_name        dml_utils_data.non_null_text
+i_start_values              text[]
+i_end_values                text[]
+i_is_final                  boolean
+i_driving_table_alias       dml_utils_data.non_null_text DEFAULT 't'
+RETURNS TABLE
+    (o_plan_kind text, o_sql_text text, o_plan json)
+```
+
+`VOLATILE`, `SECURITY INVOKER`. The explicit-boundary companion to
+`explain_migration_chunks`: it explains exactly one chunk, whose start and end
+boundaries the caller supplies as one text value per primary-key column, in key
+order. `o_plan_kind` is `chunk_non_final` for a half-open range or `chunk_final`
+for the final, inclusive chunk; `o_sql_text` is the SQL that was explained. Use
+it to explain a real chunk (for example a boundary pair read from
+`dml_utils.migration_boundaries`) instead of only the synthetic representative
+ranges, which is the only way to see the prefix-equality predicate shapes a
+multi-column key produces when the leading key columns do not differ between the
+boundaries. The values are validated and cast by their column's kind, and a
+reversed range, an empty non-final range, or an array whose length does not
+match the key is rejected with `invalid_parameter_value` (`22023`). It resolves
+no run, reads no boundaries and writes nothing.
+
 ### `dml_utils.set_migration_run_sql_text(i_label, i_sql_text)`
 
 ```sql
@@ -258,6 +288,33 @@ return or mismatched argument types raise `invalid_parameter_value` (`22023`)
 before any plan is produced. A non-NULL `i_filter` is ANDed onto the chunk plans'
 range predicate; the boundary-population plan (which does not use the template)
 is unaffected. For `blocks`, the driving table must be a plain heap.
+
+###
+
+`dml_utils.explain_function_over_table_chunk(i_driving_table_schema_name, i_driving_table_name, i_function_schema_name, i_function_name, i_start_values, i_end_values, i_is_final [, i_filter])`
+
+```sql
+i_driving_table_schema_name dml_utils_data.non_null_text
+i_driving_table_name        dml_utils_data.non_null_text
+i_function_schema_name      dml_utils_data.non_null_text
+i_function_name             dml_utils_data.non_null_text
+i_start_values              text[]
+i_end_values                text[]
+i_is_final                  boolean
+i_filter                    text DEFAULT NULL
+RETURNS TABLE
+    (o_plan_kind text, o_sql_text text, o_plan json)
+```
+
+`VOLATILE`, `SECURITY INVOKER`. The explicit-boundary companion to
+`explain_function_over_table`: it validates the function against the driving
+table's primary key, builds the per-row template and explains exactly one chunk
+whose start and end boundaries the caller supplies as one text value per
+primary-key column, in key order. It returns one `chunk_non_final` or
+`chunk_final` row. A non-NULL `i_filter` is ANDed onto the chunk predicate. Use
+it to explain a real chunk of the per-row call, including the prefix-equality
+shapes the synthetic ranges never produce. It resolves no run, reads no
+boundaries and writes nothing.
 
 ### `dml_utils.set_migration_run_function(i_label, i_function_schema_name, i_function_name [, i_filter])`
 
@@ -767,6 +824,32 @@ insert and the chunk plans are a `<` non-final and a `<=` final range; for
 `blocks` the boundary plan is the block boundary insert and both chunk plans are
 half-open ctid ranges. Shared by `explain_migration_chunks` and
 `explain_function_over_table`.
+
+###
+
+`dml_utils_lib.explain_chunk_plan(i_sql_text, i_schema_name, i_table_name, i_table_alias, i_primary_key_columns, i_key_kinds, i_start_values, i_end_values, i_is_final)`
+
+```sql
+i_sql_text            dml_utils_data.non_null_text
+i_schema_name         dml_utils_data.non_null_text
+i_table_name          dml_utils_data.non_null_text
+i_table_alias         dml_utils_data.non_null_text
+i_primary_key_columns name[]
+i_key_kinds           text[]
+i_start_values        text[]
+i_end_values          text[]
+i_is_final            boolean
+RETURNS TABLE
+    (o_plan_kind text, o_sql_text text, o_plan json)
+```
+
+`VOLATILE`, `SECURITY INVOKER`. The explicit-boundary companion to
+`explain_chunk_plans`: it renders one primary-key chunk from the supplied
+boundaries and returns its `EXPLAIN (FORMAT JSON)` plan as a single
+`chunk_non_final` or `chunk_final` row. The range is validated and cast by
+`render_chunk_sql`, so a reversed or empty range is rejected with `22023`. It is
+the shared implementation of `dml_utils.explain_migration_chunk` and
+`dml_utils.explain_function_over_table_chunk`.
 
 ### `dml_utils_lib.build_block_boundary_population_sql(i_schema_name, i_table_name, i_run_id, i_chunk_size)`
 
