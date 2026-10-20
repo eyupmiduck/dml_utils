@@ -33,12 +33,14 @@ import static org.junit.jupiter.api.Assertions.fail;
 class RunMigrationChunksCancellationTest extends PostgresTestBase {
 
     /**
-     * One row sleeps for a second, so the chunks are still in flight when the test
-     * cancels; this makes the cancellation deterministic without relying on a
-     * particular chunk duration.
+     * The chunk takes a transaction-level advisory lock before it sleeps. The test
+     * polls {@code pg_locks} for that lock, so it knows a worker has actually
+     * claimed a boundary before cancelling; a fixed sleep could cancel the run
+     * before any worker launched on a slow CI agent.
      */
     private static final String SLOW_TEMPLATE =
-            "SELECT pg_sleep(1) FROM <driving_table> WHERE <chunking_clause>";
+            "SELECT pg_advisory_xact_lock(1, 4242), pg_sleep(1)"
+                    + " FROM <driving_table> WHERE <chunking_clause>";
 
     private static String schema(Table<?> table) {
         return table.getSchema().getName();
@@ -78,8 +80,7 @@ class RunMigrationChunksCancellationTest extends PostgresTestBase {
             }
         });
 
-        long runId = awaitRunWithBoundaries(label);
-        Thread.sleep(200);
+        long runId = awaitChunkInFlight(label);
         Long cancelled = Routines.cancelMigrationRun(dsl.configuration(), label);
         assertEquals(runId, cancelled, "the active run is cancelled");
 
@@ -101,13 +102,14 @@ class RunMigrationChunksCancellationTest extends PostgresTestBase {
     }
 
     /**
-     * Waits until the background call has created the run and its boundaries.
+     * Waits until the background call has created the run and a worker is running
+     * a chunk, proved by the advisory lock the slow template takes.
      *
      * @param label the run label
      * @return the run id
      * @throws InterruptedException if the wait is interrupted
      */
-    private long awaitRunWithBoundaries(String label) throws InterruptedException {
+    private long awaitChunkInFlight(String label) throws InterruptedException {
         for (int attempt = 0; attempt < 200; attempt++) {
             Record row = dsl.fetchOne(
                     "SELECT r.run_id FROM dml_utils_data.migration_run AS r"
@@ -115,12 +117,16 @@ class RunMigrationChunksCancellationTest extends PostgresTestBase {
                             + " AND EXISTS (SELECT 1 FROM dml_utils_data.migration_boundary AS b"
                             + " WHERE b.run_id = r.run_id)",
                     label);
-            if (row != null) {
+            if (row != null
+                    && Boolean.TRUE.equals(dsl.fetchOne(
+                            "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_locks"
+                                    + " WHERE locktype = 'advisory' AND classid = 1 AND objid = 4242"
+                                    + " AND pid <> pg_backend_pid())").get(0, Boolean.class))) {
                 return row.get(0, Long.class);
             }
             Thread.sleep(50);
         }
-        fail("the run did not create boundaries");
+        fail("no chunk worker took the advisory lock");
         return -1;
     }
 }

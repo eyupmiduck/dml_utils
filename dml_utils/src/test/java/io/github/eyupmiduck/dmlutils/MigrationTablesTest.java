@@ -115,6 +115,23 @@ class MigrationTablesTest extends PostgresTestBase {
                 .set(MIGRATION_RUN.CANCELLED_AT, OffsetDateTime.parse("2020-01-04T00:00:00Z"))
                 .where(MIGRATION_RUN.RUN_ID.eq(runId))
                 .execute());
+
+        // Writing the identical timestamp is a trigger-safe no-op: the
+        // coordinator's COALESCE(cancelled_at, clock_timestamp()) relies on it.
+        OffsetDateTime cancelledAt = dsl.select(MIGRATION_RUN.CANCELLED_AT)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_RUN.CANCELLED_AT);
+        dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.CANCELLED_AT, cancelledAt)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute();
+
+        // Clearing a set cancellation back to NULL is also rejected.
+        assertSqlState("22023", () -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.CANCELLED_AT, (OffsetDateTime) null)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute());
     }
 
     /**
@@ -150,6 +167,12 @@ class MigrationTablesTest extends PostgresTestBase {
 
         assertSqlState("22023", () -> dsl.update(MIGRATION_BOUNDARY)
                 .set(MIGRATION_BOUNDARY.CANCELLED_AT, OffsetDateTime.parse("2030-01-02T00:00:00Z"))
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .execute());
+
+        // Clearing a set cancellation back to NULL is also rejected.
+        assertSqlState("22023", () -> dsl.update(MIGRATION_BOUNDARY)
+                .set(MIGRATION_BOUNDARY.CANCELLED_AT, (OffsetDateTime) null)
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
                 .execute());
     }
