@@ -139,7 +139,9 @@ transaction so a failed attempt rolls it back. Raises `unique_violation` (`23505
 when another active run already exists for the label, and re-raises a chunk
 worker's failure
 with its original SQLSTATE. `RAISE NOTICE` and returns when the run is already
-complete. Run under `READ COMMITTED`; do not hold locks on the driving table
+complete. A run cancelled with `cancel_migration_run` stops launching, cancels
+the in-flight workers, marks the run and its remaining boundaries cancelled and
+returns; a cancelled run is terminal. Run under `READ COMMITTED`; do not hold locks on the driving table
 across the call. `i_poll_timeout_ms` is how long the coordinator waits for a
 worker before re-checking (`pg_background_wait_any`): the default `1` keeps
 per-chunk detection latency low, and a larger value polls less often, cutting
@@ -369,6 +371,21 @@ NULL when the label had no active run. Pair it with
 `dml_utils_lib.populate_migration_boundaries` to rerun a label: populate,
 archive, populate again.
 
+### `dml_utils.cancel_migration_run(i_label)`
+
+```sql
+i_label dml_utils_data.non_null_text
+RETURNS bigint
+```
+
+`SECURITY INVOKER`. Cancels the active (not archived, unfinished) migration run
+for the label, if any: sets its `cancelled_at`, marks the unclaimed pending
+boundaries `cancelled_at`, and returns the `run_id`, or NULL when there was no
+active unfinished run. Boundaries held by an in-flight worker are left for
+`run_migration_chunks` to mark after it cancels that worker. A cancelled run is
+terminal: archive it with `archive_migration_run` and create a new run to
+resume.
+
 ### `dml_utils.delete_archived_migration_runs()` and `dml_utils.delete_archived_migration_runs(i_label)`
 
 ```sql
@@ -390,7 +407,7 @@ i_label dml_utils_data.non_null_text
 RETURNS TABLE
 ( run_id, label, chunk_size, chunk_by, threads,
     driving_table_schema_name, driving_table_name, driving_table_relation_filepath,
-    created_at, started_at, boundaries_calculated_at, completed_at, archived_at,
+    created_at, started_at, boundaries_calculated_at, completed_at, cancelled_at, archived_at,
     boundary_count, completed_boundary_count, error_count)
 ```
 
@@ -936,8 +953,8 @@ the fully-formed chunk SQL, then sets its `completed_at` and advances the run's
 `total_chunks_completed` in that same transaction, so the counter cannot drift
 from the completed boundaries. Both timestamps are the
 actual server time of the event (`clock_timestamp()`), not the transaction start.
-Raises `no_data_found` (`P0002`) when the boundary does not exist or is already
-completed. If the chunk SQL fails, the transaction aborts and the claim rolls
+Raises `no_data_found` (`P0002`) when the boundary does not exist, is already
+completed or was cancelled. If the chunk SQL fails, the transaction aborts and the claim rolls
 back — including `started_at` — so the chunk is retried on the next run. A
 boundary therefore reports `started_at` only for a chunk that actually
 completed; this is intended. Intended to run inside a `pg_background` worker,

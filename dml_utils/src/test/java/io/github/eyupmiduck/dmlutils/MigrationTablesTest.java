@@ -35,6 +35,7 @@ class MigrationTablesTest extends PostgresTestBase {
         assertTrue(hasColumn("dml_utils_data", "migration_run", "boundaries_calculated_at"),
                 "boundaries_calculated_at should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "completed_at"), "completed_at should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_run", "cancelled_at"), "cancelled_at should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "driving_table_schema_name"),
                 "driving_table_schema_name should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "driving_table_name"),
@@ -55,6 +56,7 @@ class MigrationTablesTest extends PostgresTestBase {
         assertTrue(hasColumn("dml_utils_data", "migration_boundary", "updated_at"), "updated_at should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_boundary", "started_at"), "started_at should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_boundary", "completed_at"), "completed_at should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_boundary", "cancelled_at"), "cancelled_at should exist");
 
         assertTrue(tableExists("dml_utils_data", "migration_error"), "migration_error should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_error", "error_id"), "error_id should exist");
@@ -88,6 +90,68 @@ class MigrationTablesTest extends PostgresTestBase {
                 .where(MIGRATION_RUN.RUN_ID.eq(runId))
                 .fetchOne(0, Boolean.class);
         assertEquals(Boolean.TRUE, recent, "the trigger should overwrite updated_at with the transaction timestamp");
+    }
+
+    /**
+     * A cancellation must not precede the run start, and a cancellation that is
+     * already set cannot be rewritten.
+     */
+    @Test
+    void enforcesTheRunCancellationTimeline() {
+        Long runId = insertRun();
+
+        assertDomainViolation(() -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.CANCELLED_AT, OffsetDateTime.parse("2020-01-01T00:00:00Z"))
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute());
+
+        dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.STARTED_AT, OffsetDateTime.parse("2020-01-02T00:00:00Z"))
+                .set(MIGRATION_RUN.CANCELLED_AT, OffsetDateTime.parse("2020-01-03T00:00:00Z"))
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute();
+
+        assertSqlState("22023", () -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.CANCELLED_AT, OffsetDateTime.parse("2020-01-04T00:00:00Z"))
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute());
+    }
+
+    /**
+     * A run cannot be both completed and cancelled.
+     */
+    @Test
+    void rejectsACompletedAndCancelledRun() {
+        Long runId = insertRun();
+
+        dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.STARTED_AT, OffsetDateTime.parse("2020-01-01T00:00:00Z"))
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute();
+
+        assertDomainViolation(() -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.COMPLETED_AT, OffsetDateTime.parse("2020-01-02T00:00:00Z"))
+                .set(MIGRATION_RUN.CANCELLED_AT, OffsetDateTime.parse("2020-01-03T00:00:00Z"))
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute());
+    }
+
+    /**
+     * A boundary's cancellation cannot be rewritten once set.
+     */
+    @Test
+    void rejectsRewritingABoundaryCancellation() {
+        long runId = insertRunWithBoundary();
+
+        dsl.update(MIGRATION_BOUNDARY)
+                .set(MIGRATION_BOUNDARY.CANCELLED_AT, OffsetDateTime.parse("2030-01-01T00:00:00Z"))
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .execute();
+
+        assertSqlState("22023", () -> dsl.update(MIGRATION_BOUNDARY)
+                .set(MIGRATION_BOUNDARY.CANCELLED_AT, OffsetDateTime.parse("2030-01-02T00:00:00Z"))
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .execute());
     }
 
     /**

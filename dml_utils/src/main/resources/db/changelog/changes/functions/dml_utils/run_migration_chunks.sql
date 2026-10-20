@@ -45,6 +45,9 @@ DECLARE
     l_in_flight_boundaries  bigint[]                      := ARRAY []::bigint[];
     l_worker_index          integer;
     l_aborting              boolean                       := false;
+    -- Cancellation state: the run's cancelled_at, polled at most every 100ms.
+    l_cancelled_at          timestamptz;
+    l_last_cancel_check     timestamptz;
     l_error_sqlstate        text;
     l_error_message         text;
     l_error_boundary_no     bigint;
@@ -88,6 +91,18 @@ BEGIN
         RETURN;
     END IF;
 
+    -- A cancelled run is terminal: a re-run must not silently resume it. The
+    -- caller archives it (archive_migration_run) and starts a new run.
+    SELECT r.cancelled_at
+    INTO l_cancelled_at
+    FROM dml_utils_data.migration_run AS r
+    WHERE r.run_id = l_run_id;
+
+    IF l_cancelled_at IS NOT NULL THEN
+        RAISE NOTICE 'run for label % is cancelled; archive it or use a new label', i_label;
+        RETURN;
+    END IF;
+
     -- started_at (the run start) and boundaries_calculated_at (the range
     -- calculation completion) were recorded by populate_migration_boundaries
     -- when the run was created, in its worker's transaction, so they persist
@@ -125,6 +140,24 @@ BEGIN
 
     BEGIN
         LOOP
+            -- Poll the run's cancellation flag at most every 100ms; the inner wait
+            -- loop polls too, so a cancellation is noticed while a long chunk is
+            -- still running.
+            IF l_cancelled_at IS NULL
+                AND (l_last_cancel_check IS NULL
+                    OR pg_catalog.clock_timestamp() - l_last_cancel_check >= interval '100 milliseconds')
+            THEN
+                SELECT r.cancelled_at
+                INTO l_cancelled_at
+                FROM dml_utils_data.migration_run AS r
+                WHERE r.run_id = l_run_id;
+                l_last_cancel_check := pg_catalog.clock_timestamp();
+            END IF;
+
+            -- A cancelled run stops launching and leaves the loop for the
+            -- cancellation handler below.
+            EXIT WHEN l_cancelled_at IS NOT NULL;
+
             -- Keep launching until i_threads are in flight (or there is nothing left
             -- to launch), unless a worker has already failed.
             IF NOT l_aborting THEN
@@ -154,6 +187,7 @@ BEGIN
                                 i_key_kinds => l_key_kinds) AS pair
                         WHERE b.run_id = l_run_id
                           AND b.completed_at IS NULL
+                          AND b.cancelled_at IS NULL
                           AND b.boundary_no <> ALL (l_in_flight_boundaries)
                         ORDER BY b.boundary_no
                         LIMIT 1;
@@ -210,7 +244,22 @@ BEGIN
             LOOP
                 l_handle := public.pg_background_wait_any(l_in_flight, i_poll_timeout_ms);
                 EXIT WHEN l_handle IS NOT NULL;
+
+                IF l_cancelled_at IS NULL
+                    AND (l_last_cancel_check IS NULL
+                        OR pg_catalog.clock_timestamp() - l_last_cancel_check >= interval '100 milliseconds')
+                THEN
+                    SELECT r.cancelled_at
+                    INTO l_cancelled_at
+                    FROM dml_utils_data.migration_run AS r
+                    WHERE r.run_id = l_run_id;
+                    l_last_cancel_check := pg_catalog.clock_timestamp();
+                END IF;
+                EXIT WHEN l_cancelled_at IS NOT NULL;
             END LOOP;
+
+            -- Leave the main loop for the cancellation handler.
+            EXIT WHEN l_cancelled_at IS NOT NULL;
 
             -- Recover the boundary the finished worker was launched for, then drop it
             -- from the in-flight set.
@@ -260,6 +309,69 @@ BEGIN
             END IF;
         END LOOP;
 
+        -- Cancellation: stop the in-flight workers and record the cancellation.
+        IF l_cancelled_at IS NOT NULL THEN
+            -- Cancel the workers still in flight. A worker that already finished
+            -- is a no-op for cancel; the wait/detach below reaps it.
+            FOR l_cancel_index IN 1..pg_catalog.cardinality(l_in_flight)
+                LOOP
+                    BEGIN
+                        PERFORM public.pg_background_cancel(
+                                l_in_flight[l_cancel_index].pid,
+                                l_in_flight[l_cancel_index].cookie,
+                                1000);
+                    EXCEPTION
+                        WHEN OTHERS THEN
+                            NULL;
+                    END;
+                END LOOP;
+
+            -- Wait for each worker to stop and release its handle. A cancelled
+            -- chunk rolls back, leaving its boundary unclaimed.
+            FOR l_cancel_index IN 1..pg_catalog.cardinality(l_in_flight)
+                LOOP
+                    BEGIN
+                        PERFORM public.pg_background_wait(
+                                l_in_flight[l_cancel_index].pid,
+                                l_in_flight[l_cancel_index].cookie,
+                                5000);
+                        PERFORM public.pg_background_detach(
+                                l_in_flight[l_cancel_index].pid,
+                                l_in_flight[l_cancel_index].cookie);
+                    EXCEPTION
+                        WHEN OTHERS THEN
+                            NULL;
+                    END;
+                END LOOP;
+
+            -- Record the cancellation on the run (if the caller's cancel
+            -- transaction is not the one that already did) and on every boundary
+            -- that did not complete, in an autonomous worker so the marks survive
+            -- a caller rollback. completed_at wins for a chunk that finished
+            -- before the cancel reached it.
+            BEGIN
+                PERFORM public.pg_background_run(pg_catalog.format(
+                        'WITH cancelled_run AS (' ||
+                        ' UPDATE dml_utils_data.migration_run' ||
+                        ' SET cancelled_at = COALESCE(cancelled_at, pg_catalog.clock_timestamp())' ||
+                        ' WHERE run_id = %s' ||
+                        ' AND completed_at IS NULL' ||
+                        ' RETURNING run_id)' ||
+                        ' UPDATE dml_utils_data.migration_boundary' ||
+                        ' SET cancelled_at = COALESCE(cancelled_at, pg_catalog.clock_timestamp())' ||
+                        ' WHERE run_id = %s' ||
+                        ' AND completed_at IS NULL' ||
+                        ' AND cancelled_at IS NULL',
+                        l_run_id, l_run_id));
+            EXCEPTION
+                WHEN OTHERS THEN
+                    NULL;
+            END;
+
+            RAISE NOTICE 'migration run % for label % cancelled', l_run_id, i_label;
+            RETURN;
+        END IF;
+
         -- l_aborting is the failure latch (not l_error_sqlstate, which a worker could
         -- in principle report as NULL).
         IF l_aborting THEN
@@ -296,7 +408,8 @@ BEGIN
     UPDATE dml_utils_data.migration_run
     SET completed_at = pg_catalog.clock_timestamp()
     WHERE run_id = l_run_id
-      AND completed_at IS NULL;
+      AND completed_at IS NULL
+      AND cancelled_at IS NULL;
 END;
 $$;
 
@@ -309,4 +422,7 @@ COMMENT ON FUNCTION dml_utils.run_migration_chunks IS
         'failed chunk it stops launching, lets the in-flight chunks commit, drains '
         'and detaches them, and re-raises the error; the failure is recorded (best '
         'effort) in dml_utils_data.migration_error first. A boundary already '
-        'claimed by another coordinator (P0002) is treated as benign.';
+        'claimed by another coordinator (P0002) is treated as benign. A run '
+        'cancelled with dml_utils.cancel_migration_run stops launching, cancels '
+        'the in-flight workers, marks the run and its remaining boundaries '
+        'cancelled and returns; a cancelled run is terminal.';

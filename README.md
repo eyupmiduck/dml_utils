@@ -29,7 +29,7 @@ anything above it:
 - **`dml_utils`** — the caller-facing API: `dml_utils.run_migration_chunks` and
   the `run_function_over_table` wrapper, plus the run controls (`set_migration_run_sql_text`,
   `set_migration_run_function`,
-  `set_migration_run_threads`, `archive_migration_run`), the read-only explain
+  `set_migration_run_threads`, `archive_migration_run`, `cancel_migration_run`), the read-only explain
   helpers (`explain_migration_chunks`/`explain_migration_chunk` and
   `explain_function_over_table`/`explain_function_over_table_chunk`) and the
   inspection and cleanup helpers (`migration_run_summary`, `migration_boundaries`,
@@ -242,7 +242,8 @@ errors by run id:
 
 ```sql
 -- One row per run for the label, with boundary and error counts, and whether it
--- is done (completed_at) or archived (archived_at). Take the run_id from here.
+-- is done (completed_at), cancelled (cancelled_at) or archived (archived_at).
+-- Take the run_id from here.
 SELECT *
 FROM dml_utils.migration_run_summary(i_label => 'events-region-backfill');
 
@@ -277,6 +278,16 @@ FROM dml_utils.explain_migration_chunk(
 `dml_utils.explain_function_over_table_chunk` is the equivalent for a
 `run_function_over_table` call. Neither has a `blocks` form: a block chunk is a
 ctid range, so the synthetic explain already shows the same shape.
+
+To stop an in-flight run, cancel it from another session:
+
+```sql
+SELECT dml_utils.cancel_migration_run(i_label => 'events-region-backfill');
+```
+
+The coordinator stops launching, cancels the chunks already running, and marks
+the run and its remaining boundaries cancelled. A cancelled run is terminal:
+archive it before starting a new run with the same label.
 
 To re-run a label from scratch (for example after changing the chunk size),
 archive the current run first; then the label is free again:

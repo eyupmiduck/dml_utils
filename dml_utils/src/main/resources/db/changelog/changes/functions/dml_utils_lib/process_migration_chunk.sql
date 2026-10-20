@@ -25,11 +25,13 @@ BEGIN
     WHERE run_id = i_run_id
       AND boundary_no = i_boundary_no
       AND completed_at IS NULL
+      AND cancelled_at IS NULL
         FOR UPDATE;
 
-    -- No row claimed means the boundary is missing or already completed.
+    -- No row claimed means the boundary is missing, already completed or
+    -- cancelled.
     IF l_boundary_no IS NULL THEN
-        RAISE EXCEPTION 'migration boundary % for run % was not found or is already completed',
+        RAISE EXCEPTION 'migration boundary % for run % was not found, is already completed or was cancelled',
             i_boundary_no, i_run_id
             USING ERRCODE = 'P0002';
     END IF;
@@ -75,8 +77,8 @@ COMMENT ON FUNCTION dml_utils_lib.process_migration_chunk IS
         'and runs its chunk SQL in the caller''s transaction, then records '
         'started_at and completed_at in a single UPDATE and advances the run''s '
         'total_chunks_completed in that same transaction; raises P0002 when the '
-        'boundary is missing or already completed. Both timestamps are the actual '
-        'server time of the event, not the transaction start. Intended to run '
-        'inside a pg_background worker. SECURITY INVOKER by design: it runs with '
-        'the caller''s privileges and is not an authorization boundary, so it can '
-        'do nothing the caller could not do directly.';
+        'boundary is missing, already completed or cancelled. Both timestamps are '
+        'the actual server time of the event, not the transaction start. Intended '
+        'to run inside a pg_background worker. SECURITY INVOKER by design: it runs '
+        'with the caller''s privileges and is not an authorization boundary, so it '
+        'can do nothing the caller could not do directly.';
