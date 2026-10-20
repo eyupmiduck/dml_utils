@@ -9,8 +9,9 @@
          already installed in the same database; this changelog installs it first,
          so a test/codegen database has the DDL helpers available to the
          dml_utils_data migrations. It is never published: the build excludes
-         db/changelog-install/** from the jar. The ddl_utils changelog is staged
-         under src/main/resources/db/changelog-install/ddl-utils by the build. -->
+         db/changelog-install/** from the jar. The ddl_utils changelog is
+         unpacked from the versioned ddl_utils Maven artifact into
+         target/classes/db/changelog-install/ddl-utils by the build. -->
 
     <!-- The codegen container connects as the image superuser, which can create
          the role ddl_utils' grants target. The test harness connects as
@@ -35,6 +36,6 @@
         </sql>
     </changeSet>
 
-    <include file="ddl-utils/db.changelog-master.xml" relativeToChangelogFile="true"/>
+    <include file="ddl-utils/db/changelog/db.changelog-master.xml" relativeToChangelogFile="true"/>
     <include file="../changelog/changes/changes.xml" relativeToChangelogFile="true"/>
 </databaseChangeLog>

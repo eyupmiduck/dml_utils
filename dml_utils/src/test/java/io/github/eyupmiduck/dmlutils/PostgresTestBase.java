@@ -131,7 +131,7 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
             database.setDatabaseChangeLogLockTableName("ddl_utils_databasechangeloglock");
             try {
                 new Liquibase(
-                        "db/changelog-install/ddl-utils/db.changelog-master.xml",
+                        "db/changelog-install/ddl-utils/db/changelog/db.changelog-master.xml",
                         new ClassLoaderResourceAccessor(),
                         database).update();
             } finally {

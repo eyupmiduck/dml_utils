@@ -57,6 +57,10 @@
             <artifactId>slf4j-jdk14</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- ddl_utils is resolved by the maven-dependency-plugin unpack (version
+             property `ddl-utils.version`) rather than declared as a test
+             dependency: the jar also contains db/changelog/**, which would
+             collide with this project's changelog on the test classpath. -->
         <dependency>
             <groupId>io.github.eyupmiduck</groupId>
             <artifactId>liquibase-validation</artifactId>
@@ -78,12 +82,11 @@
 
     <build>
         <plugins>
-            <!-- Stage the install-only changelog and the ddl_utils submodule's
-                 changelog into target/classes before jOOQ codegen runs. The
-                 codegen and the upgrade test read changelogs through a
-                 ClassLoaderResourceAccessor, so both trees must be on the build
-                 classpath. process-resources copies src/main/resources again
-                 later; the ddl_utils copy is not part of the published jar. -->
+            <!-- Stage the install-only changelog into target/classes before jOOQ
+                 codegen runs. The codegen and the upgrade test read changelogs
+                 through a ClassLoaderResourceAccessor, so the tree must be on
+                 the build classpath. process-resources copies
+                 src/main/resources again later. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-resources-plugin</artifactId>
@@ -100,19 +103,42 @@
                                 <resource>
                                     <directory>${project.basedir}/src/main/resources</directory>
                                 </resource>
-                                <resource>
-                                    <directory>
-                                        ${project.basedir}/../ddl_utils/ddl_utils/src/main/resources/db/changelog
-                                    </directory>
-                                    <targetPath>db/changelog-install/ddl-utils</targetPath>
-                                </resource>
                             </resources>
                         </configuration>
                     </execution>
                 </executions>
             </plugin>
 
-            <!-- The install changelog and the staged ddl_utils changelog are
+            <!-- Unpack the changelog from the versioned ddl_utils artifact
+                 instead of reading a git submodule. It lands at
+                 db/changelog-install/ddl-utils/db/changelog/, matching the
+                 install changelog's include path. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>unpack-ddl-utils-changelog</id>
+                        <phase>initialize</phase>
+                        <goals>
+                            <goal>unpack</goal>
+                        </goals>
+                        <configuration>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>io.github.eyupmiduck</groupId>
+                                    <artifactId>ddl_utils</artifactId>
+                                    <version>${ddl-utils.version}</version>
+                                    <includes>db/changelog/**</includes>
+                                    <outputDirectory>${project.build.outputDirectory}/db/changelog-install/ddl-utils</outputDirectory>
+                                </artifactItem>
+                            </artifactItems>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- The install changelog and the unpacked ddl_utils changelog are
                  test/codegen-only; the published jar must not bundle ddl_utils. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
