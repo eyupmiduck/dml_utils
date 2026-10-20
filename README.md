@@ -327,8 +327,8 @@ dml_utils' own changelog does not create ddl_utils; a database without it fails
 at the first changeset that calls a helper. The versioned
 `io.github.eyupmiduck:ddl_utils` Maven artifact (`ddl-utils.version`) supplies
 the changelog to the test suite and the jOOQ code generator (unpacked into
-`target/classes/db/changelog-install/ddl-utils`), the local development stack
-(`scripts/postgres/migrate.sh`) and the benchmark (`benchmark/setup.sh`). It is
+`target/classes/db/changelog-install/ddl-utils`), the local development stack (`scripts/postgres/migrate.sh`) and the
+benchmark (`benchmark/setup.sh`). It is
 used only by that test/codegen/local tooling and is not part of the published
 jar.
 
