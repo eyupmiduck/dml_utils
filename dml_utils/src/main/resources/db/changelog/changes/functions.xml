@@ -130,6 +130,8 @@
                  relativeToChangelogFile="true"/>
         <createProcedure path="functions/dml_utils_lib/resolve_migration_run.sql"
                          relativeToChangelogFile="true"/>
+        <sqlFile path="functions/dml_utils_lib/resolve_migration_run-grants.sql"
+                 relativeToChangelogFile="true"/>
         <rollback>
             <sqlFile path="functions-rollback/dml_utils_lib/resolve_migration_run-rollback.sql"
                      relativeToChangelogFile="true"/>
@@ -272,6 +274,8 @@
                  relativeToChangelogFile="true"/>
         <createProcedure path="functions/dml_utils_lib/populate_migration_boundaries.sql"
                          relativeToChangelogFile="true"/>
+        <sqlFile path="functions/dml_utils_lib/populate_migration_boundaries-grants.sql"
+                 relativeToChangelogFile="true"/>
         <rollback>
             <sqlFile path="functions-rollback/dml_utils_lib/populate_migration_boundaries-rollback.sql"
                      relativeToChangelogFile="true"/>
@@ -304,6 +308,8 @@
                  relativeToChangelogFile="true"/>
         <createProcedure path="functions/dml_utils/run_migration_chunks.sql"
                          relativeToChangelogFile="true"/>
+        <sqlFile path="functions/dml_utils/run_migration_chunks-grants.sql"
+                 relativeToChangelogFile="true"/>
         <rollback>
             <sqlFile path="functions-rollback/dml_utils/run_migration_chunks-rollback.sql"
                      relativeToChangelogFile="true"/>
@@ -356,6 +362,8 @@
                  relativeToChangelogFile="true"/>
         <createProcedure path="functions/dml_utils/run_function_over_table.sql"
                          relativeToChangelogFile="true"/>
+        <sqlFile path="functions/dml_utils/run_function_over_table-grants.sql"
+                 relativeToChangelogFile="true"/>
         <rollback>
             <sqlFile path="functions-rollback/dml_utils/run_function_over_table-rollback.sql"
                      relativeToChangelogFile="true"/>

@@ -27,7 +27,7 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
 
-    IF i_sleep_ms < 0 THEN
+    IF i_sleep_ms IS NULL OR i_sleep_ms < 0 THEN
         RAISE EXCEPTION 'i_sleep_ms must be zero or greater'
             USING ERRCODE = '22023';
     END IF;

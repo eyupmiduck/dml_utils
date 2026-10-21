@@ -824,15 +824,20 @@ class RunMigrationChunksTest extends PostgresTestBase {
     void resumeUsesTheStoredSleep() {
         createSource(1, 2, 3);
         String label = label("sleep-resume");
-        long runId = populate(TEST_BIGINT, label, TEMPLATE, 2, 1, 20);
+        long runId = populate(TEST_BIGINT, label, TEMPLATE, 1, 1, 50);
 
-        runWithSleep(label, TEMPLATE, 2, 1, 0, TEST_BIGINT);
+        long started = System.nanoTime();
+        runWithSleep(label, TEMPLATE, 1, 1, 0, TEST_BIGINT);
+        long elapsedMs = (System.nanoTime() - started) / 1_000_000;
 
         int stored = dsl.select(MIGRATION_RUN.SLEEP_MS)
                 .from(MIGRATION_RUN)
                 .where(MIGRATION_RUN.RUN_ID.eq(runId))
                 .fetchOne(MIGRATION_RUN.SLEEP_MS);
-        assertEquals(20, stored, "the stored sleep should be used, not the input 0");
+        assertEquals(50, stored, "the stored sleep should be preserved");
+        assertTrue(elapsedMs >= 70,
+                "the stored 50ms sleep should be applied even though the input was 0; took "
+                        + elapsedMs);
         assertTrue(runCompleted(runId), "the run should complete");
     }
 
@@ -844,17 +849,22 @@ class RunMigrationChunksTest extends PostgresTestBase {
     void setMigrationRunSleepChangesTheStoredValue() {
         createSource(1, 2, 3);
         String label = label("set-sleep");
-        long runId = populate(TEST_BIGINT, label, TEMPLATE, 2);
+        long runId = populate(TEST_BIGINT, label, TEMPLATE, 1);
 
-        Routines.setMigrationRunSleepMs(dsl.configuration(), label, 30);
+        Routines.setMigrationRunSleepMs(dsl.configuration(), label, 50);
 
         int stored = dsl.select(MIGRATION_RUN.SLEEP_MS)
                 .from(MIGRATION_RUN)
                 .where(MIGRATION_RUN.RUN_ID.eq(runId))
                 .fetchOne(MIGRATION_RUN.SLEEP_MS);
-        assertEquals(30, stored, "the adjusted sleep should be stored");
+        assertEquals(50, stored, "the adjusted sleep should be stored");
 
-        run(label, 2, TEST_BIGINT);
+        long started = System.nanoTime();
+        runWithSleep(label, TEMPLATE, 1, 1, 0, TEST_BIGINT);
+        long elapsedMs = (System.nanoTime() - started) / 1_000_000;
+
+        assertTrue(elapsedMs >= 70,
+                "the adjusted 50ms sleep should be applied; took " + elapsedMs);
         assertTrue(runCompleted(runId), "the run should process every row");
     }
 
@@ -878,6 +888,26 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     /**
+     * A NULL sleep is rejected by the setter rather than leaking to the column's
+     * not-null constraint.
+     */
+    @Test
+    void setMigrationRunSleepRejectsNull() {
+        assertSqlState("22023", () -> Routines.setMigrationRunSleepMs(
+                dsl.configuration(), "any-label", null));
+    }
+
+    /**
+     * A NULL initial sleep is rejected before a run is created.
+     */
+    @Test
+    void runMigrationChunksRejectsNullSleep() {
+        assertSqlState("22023", () -> Routines.runMigrationChunks(
+                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT),
+                "l", 2, 1, "t", ChunkingStrategy.primary_key, 1, null));
+    }
+
+    /**
      * A non-zero sleep delays the run between successful chunks.
      */
     @Test
@@ -886,12 +916,31 @@ class RunMigrationChunksTest extends PostgresTestBase {
         String label = label("sleep-delay");
 
         long started = System.nanoTime();
-        runWithSleep(label, TEMPLATE, 1, 1, 40, TEST_BIGINT);
+        runWithSleep(label, TEMPLATE, 1, 1, 100, TEST_BIGINT);
         long elapsedMs = (System.nanoTime() - started) / 1_000_000;
 
-        assertTrue(elapsedMs >= 50,
-                "three chunks with a 40ms delay should take at least 50ms, took " + elapsedMs);
+        assertTrue(elapsedMs >= 180,
+                "two inter-chunk sleeps of 100ms should take at least 180ms, took "
+                        + elapsedMs);
         assertTrue(runCompleted(runId(label)), "the throttled run should complete");
+    }
+
+    /**
+     * The throttle does not delay the run after its final chunk.
+     */
+    @Test
+    void skipsSleepAfterTheFinalChunk() {
+        createSource(1);
+        String label = label("sleep-final");
+
+        long started = System.nanoTime();
+        runWithSleep(label, TEMPLATE, 1, 1, 2_000, TEST_BIGINT);
+        long elapsedMs = (System.nanoTime() - started) / 1_000_000;
+
+        assertTrue(elapsedMs < 1_500,
+                "a single-chunk run should not wait for the 2s final sleep; took "
+                        + elapsedMs);
+        assertTrue(runCompleted(runId(label)), "the run should complete");
     }
 
     /**

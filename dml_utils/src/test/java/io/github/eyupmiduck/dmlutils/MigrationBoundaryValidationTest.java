@@ -119,6 +119,16 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     }
 
     /**
+     * A NULL sleep is rejected with 22023 before any run is created.
+     */
+    @Test
+    void rejectsANullSleep() {
+        assertSqlState("22023", () -> Routines.populateMigrationBoundaries(
+                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(),
+                uniqueLabel(), SQL_TEXT, 2, 1, ChunkingStrategy.primary_key, "t", null));
+    }
+
+    /**
      * A zero chunk size is rejected by the positive-integer domain.
      */
     @Test

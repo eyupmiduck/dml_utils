@@ -120,7 +120,10 @@ incomplete so it can be resumed. `i_threads` must not exceed
 always faster: the chunks never overlap, but they still contend for the same
 table's locks and pages. `i_sleep_ms` adds a delay after each successfully
 completed chunk (except the final one), which throttles WAL generation and
-therefore helps when replication lag is the constraint. It is stored on the run
+therefore helps when replication lag is the constraint. A NULL or negative
+value is rejected with `invalid_parameter_value` (`22023`); there is no
+arbitrary upper bound, so an operator can intentionally choose a very long
+delay (cancellation remains responsive). It is stored on the run
 like `i_threads`; a resumed run uses the stored value, and
 `set_migration_run_sleep_ms` adjusts it between calls. With several threads, up
 to that many chunks can still be in flight, so use a small thread count and/or

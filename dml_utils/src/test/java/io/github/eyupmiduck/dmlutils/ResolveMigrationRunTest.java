@@ -116,6 +116,17 @@ class ResolveMigrationRunTest extends PostgresTestBase {
     }
 
     /**
+     * A NULL sleep is rejected before a run is created.
+     */
+    @Test
+    void rejectsANullSleep() {
+        assertSqlState("22023", () -> Routines.resolveMigrationRun(
+                dsl.configuration(), TEMPLATE, schema(), name(),
+                uniqueLabel("resolve-sleep-null"), 2, 1, "t",
+                ChunkingStrategy.primary_key, null));
+    }
+
+    /**
      * A completed run is reported as already complete.
      */
     @Test

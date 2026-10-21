@@ -125,7 +125,7 @@ class RunMigrationChunksCancellationTest extends PostgresTestBase {
         Long cancelled = Routines.cancelMigrationRun(dsl.configuration(), label);
         assertEquals(runId, cancelled, "the active run is cancelled");
 
-        run.get(5, TimeUnit.SECONDS);
+        run.get(2, TimeUnit.SECONDS);
 
         MigrationRunRecord record = dsl.selectFrom(MIGRATION_RUN)
                 .where(MIGRATION_RUN.RUN_ID.eq(runId))

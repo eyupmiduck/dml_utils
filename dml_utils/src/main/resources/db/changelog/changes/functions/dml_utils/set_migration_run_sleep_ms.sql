@@ -8,7 +8,7 @@ CREATE OR REPLACE FUNCTION dml_utils.set_migration_run_sleep_ms(
 AS
 $$
 BEGIN
-    IF i_sleep_ms < 0 THEN
+    IF i_sleep_ms IS NULL OR i_sleep_ms < 0 THEN
         RAISE EXCEPTION 'sleep_ms must be zero or greater'
             USING ERRCODE = '22023';
     END IF;
