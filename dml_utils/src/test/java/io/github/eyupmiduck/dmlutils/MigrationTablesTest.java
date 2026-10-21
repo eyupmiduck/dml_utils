@@ -138,6 +138,9 @@ class MigrationTablesTest extends PostgresTestBase {
         assertRollbackDropsFunction(
                 "db/changelog/changes/functions-rollback/dml_utils_lib/populate_migration_boundaries-rollback.sql",
                 "dml_utils_lib", "populate_migration_boundaries");
+        assertRollbackDropsFunction(
+                "db/changelog/changes/functions-rollback/dml_utils/set_migration_run_sleep_ms-rollback.sql",
+                "dml_utils", "set_migration_run_sleep_ms");
     }
 
     /**

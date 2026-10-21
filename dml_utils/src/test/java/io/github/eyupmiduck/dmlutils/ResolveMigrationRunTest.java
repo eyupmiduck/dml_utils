@@ -111,7 +111,7 @@ class ResolveMigrationRunTest extends PostgresTestBase {
      */
     @Test
     void rejectsANegativeSleep() {
-        assertSqlState("22023", () -> resolve(uniqueLabel("resolve-sleep-negative"),
+        assertDomainViolation(() -> resolve(uniqueLabel("resolve-sleep-negative"),
                 TEMPLATE, "t", 2, 1, -1));
     }
 
@@ -120,7 +120,7 @@ class ResolveMigrationRunTest extends PostgresTestBase {
      */
     @Test
     void rejectsANullSleep() {
-        assertSqlState("22023", () -> Routines.resolveMigrationRun(
+        assertDomainViolation(() -> Routines.resolveMigrationRun(
                 dsl.configuration(), TEMPLATE, schema(), name(),
                 uniqueLabel("resolve-sleep-null"), 2, 1, "t",
                 ChunkingStrategy.primary_key, null));

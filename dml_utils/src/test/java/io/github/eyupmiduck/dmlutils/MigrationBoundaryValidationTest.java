@@ -123,7 +123,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
      */
     @Test
     void rejectsANullSleep() {
-        assertSqlState("22023", () -> Routines.populateMigrationBoundaries(
+        assertDomainViolation(() -> Routines.populateMigrationBoundaries(
                 dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(),
                 uniqueLabel(), SQL_TEXT, 2, 1, ChunkingStrategy.primary_key, "t", null));
     }

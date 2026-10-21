@@ -102,7 +102,7 @@ i_threads                   dml_utils_data.positive_integer DEFAULT 1
 i_driving_table_alias       dml_utils_data.non_null_text DEFAULT 't'
 i_chunk_by                  dml_utils_data.chunking_strategy DEFAULT 'primary_key'
 i_poll_timeout_ms           dml_utils_data.positive_integer DEFAULT 1
-i_sleep_ms                  integer DEFAULT 0
+i_sleep_ms                  dml_utils_data.non_negative_integer DEFAULT 0
 RETURNS void
 ```
 
@@ -121,8 +121,8 @@ always faster: the chunks never overlap, but they still contend for the same
 table's locks and pages. `i_sleep_ms` adds a delay after each successfully
 completed chunk (except the final one), which throttles WAL generation and
 therefore helps when replication lag is the constraint. A NULL or negative
-value is rejected with `invalid_parameter_value` (`22023`); there is no
-arbitrary upper bound, so an operator can intentionally choose a very long
+value is rejected by the `non_negative_integer` domain with a domain
+violation (`23514`); there is no arbitrary upper bound, so an operator can intentionally choose a very long
 delay (cancellation remains responsive). It is stored on the run
 like `i_threads`; a resumed run uses the stored value, and
 `set_migration_run_sleep_ms` adjusts it between calls. With several threads, up
@@ -253,7 +253,7 @@ i_label                     text DEFAULT NULL
 i_filter                    text DEFAULT NULL
 i_chunk_by                  dml_utils_data.chunking_strategy DEFAULT 'primary_key'
 i_poll_timeout_ms           dml_utils_data.positive_integer DEFAULT 1
-i_sleep_ms                  integer DEFAULT 0
+i_sleep_ms                  dml_utils_data.non_negative_integer DEFAULT 0
 RETURNS void
 ```
 
@@ -374,14 +374,14 @@ would ignore it.
 
 ```sql
 i_label    dml_utils_data.non_null_text
-i_sleep_ms integer
+i_sleep_ms dml_utils_data.non_negative_integer
 RETURNS void
 ```
 
 `SECURITY INVOKER`. Replaces the recorded per-chunk sleep of the unfinished (`completed_at IS NULL`) run for the label,
 so the next `run_migration_chunks`
 call waits that many milliseconds after each successful chunk before launching
-another. Raises `invalid_parameter_value` (`22023`) for a negative value and
+another. Raises a domain violation (`23514`) for a NULL or negative value and
 `no_data_found` (`P0002`) when there is no unfinished run for the label. A
 coordinator already processing the run keeps the value it read at its start, so
 this changes the next call (a restart/resume), not a run in progress.
@@ -619,7 +619,7 @@ i_chunk_size                dml_utils_data.positive_integer
 i_threads                   dml_utils_data.positive_integer
 i_driving_table_alias       dml_utils_data.non_null_text
 i_chunk_by                  dml_utils_data.chunking_strategy DEFAULT 'primary_key'
-i_sleep_ms                  integer DEFAULT 0
+i_sleep_ms                  dml_utils_data.non_negative_integer DEFAULT 0
 RETURNS record (o_run_id bigint, o_already_completed boolean,
                 o_effective_sql_text text, o_effective_schema_name text,
                 o_effective_table_name text, o_effective_alias text,
@@ -768,7 +768,7 @@ i_chunk_size  dml_utils_data.positive_integer
 i_threads     dml_utils_data.positive_integer DEFAULT 1
 i_chunk_by    dml_utils_data.chunking_strategy DEFAULT 'primary_key'
 i_driving_table_alias dml_utils_data.non_null_text DEFAULT 't'
-i_sleep_ms    integer DEFAULT 0
+i_sleep_ms    dml_utils_data.non_negative_integer DEFAULT 0
 RETURNS bigint
 ```
 

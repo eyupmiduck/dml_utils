@@ -9,5 +9,5 @@ DROP FUNCTION IF EXISTS dml_utils.run_function_over_table(
     text,
     dml_utils_data.chunking_strategy,
     dml_utils_data.positive_integer,
-    integer
+    dml_utils_data.non_negative_integer
 );

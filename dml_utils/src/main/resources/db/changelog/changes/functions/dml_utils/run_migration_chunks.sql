@@ -17,7 +17,7 @@ CREATE OR REPLACE FUNCTION dml_utils.run_migration_chunks(
     -- Milliseconds to wait after each successfully completed chunk before
     -- launching another. This seeds a new run; a resumed run uses its stored
     -- value. 0 disables the delay.
-    i_sleep_ms integer DEFAULT 0
+    i_sleep_ms dml_utils_data.non_negative_integer DEFAULT 0
 )
     RETURNS void
     LANGUAGE plpgsql
