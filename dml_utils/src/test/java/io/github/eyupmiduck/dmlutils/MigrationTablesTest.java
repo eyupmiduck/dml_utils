@@ -28,6 +28,31 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class MigrationTablesTest extends PostgresTestBase {
 
+    private static int routineCount(DSLContext context, String schema, String name) {
+        return context.fetchOne(
+                        "SELECT count(*)::int FROM pg_catalog.pg_proc AS p"
+                                + " JOIN pg_catalog.pg_namespace AS n ON n.oid = p.pronamespace"
+                                + " WHERE n.nspname = ? AND p.proname = ?",
+                        schema, name)
+                .get(0, Integer.class);
+    }
+
+    private static String readScript(String resource) throws IOException {
+        try (InputStream in = MigrationTablesTest.class.getClassLoader()
+                .getResourceAsStream(resource)) {
+            assertNotNull(in, "missing test resource " + resource);
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+
+    private static void executeStatements(DSLContext context, String sql) {
+        for (String statement : sql.split(";")) {
+            if (!statement.isBlank()) {
+                context.execute(statement);
+            }
+        }
+    }
+
     /**
      * The migration tables exist in the {@code dml_utils} schema with the
      * expected columns.
@@ -171,35 +196,6 @@ class MigrationTablesTest extends PostgresTestBase {
         }
         assertEquals(1, routineCount(dsl, schema, name),
                 "the transactional rollback should restore " + schema + "." + name);
-    }
-
-    private static int routineCount(DSLContext context, String schema, String name) {
-        return context.fetchOne(
-                        "SELECT count(*)::int FROM pg_catalog.pg_proc AS p"
-                                + " JOIN pg_catalog.pg_namespace AS n ON n.oid = p.pronamespace"
-                                + " WHERE n.nspname = ? AND p.proname = ?",
-                        schema, name)
-                .get(0, Integer.class);
-    }
-
-    private static String readScript(String resource) throws IOException {
-        try (InputStream in = MigrationTablesTest.class.getClassLoader()
-                .getResourceAsStream(resource)) {
-            assertNotNull(in, "missing test resource " + resource);
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-        }
-    }
-
-    private static void executeStatements(DSLContext context, String sql) {
-        for (String statement : sql.split(";")) {
-            if (!statement.isBlank()) {
-                context.execute(statement);
-            }
-        }
-    }
-
-    private static final class RollbackTransaction extends RuntimeException {
-        private static final long serialVersionUID = 1L;
     }
 
     /**
@@ -758,5 +754,9 @@ class MigrationTablesTest extends PostgresTestBase {
         assertEquals(Boolean.TRUE, dsl.select(MIGRATION_ERROR.UPDATED_AT.gt(recent))
                 .from(MIGRATION_ERROR).where(MIGRATION_ERROR.RUN_ID.eq(runId))
                 .fetchOne(0, Boolean.class), "the error trigger should overwrite updated_at");
+    }
+
+    private static final class RollbackTransaction extends RuntimeException {
+        private static final long serialVersionUID = 1L;
     }
 }
