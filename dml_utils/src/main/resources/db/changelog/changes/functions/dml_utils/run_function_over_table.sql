@@ -21,7 +21,7 @@ CREATE OR REPLACE FUNCTION dml_utils.run_function_over_table(
     i_poll_timeout_ms dml_utils_data.positive_integer DEFAULT 1,
     -- Initial delay after each completed chunk for a new run; a resumed run uses
     -- its stored sleep_ms.
-    i_sleep_ms integer DEFAULT 0
+    i_sleep_ms dml_utils_data.non_negative_integer DEFAULT 0
 )
     RETURNS void
     LANGUAGE plpgsql

@@ -1,6 +1,6 @@
 CREATE OR REPLACE FUNCTION dml_utils.set_migration_run_sleep_ms(
     i_label dml_utils_data.non_null_text,
-    i_sleep_ms integer
+    i_sleep_ms dml_utils_data.non_negative_integer
 )
     RETURNS void
     LANGUAGE plpgsql
@@ -8,11 +8,6 @@ CREATE OR REPLACE FUNCTION dml_utils.set_migration_run_sleep_ms(
 AS
 $$
 BEGIN
-    IF i_sleep_ms IS NULL OR i_sleep_ms < 0 THEN
-        RAISE EXCEPTION 'sleep_ms must be zero or greater'
-            USING ERRCODE = '22023';
-    END IF;
-
     -- Only an unfinished run can have its throttle adjusted. Like
     -- set_migration_run_threads, a coordinator that is already processing reads
     -- the value at its start; this update affects the next run_migration_chunks

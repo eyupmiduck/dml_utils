@@ -8,7 +8,7 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.resolve_migration_run(
     i_driving_table_alias dml_utils_data.non_null_text,
     i_chunk_by dml_utils_data.chunking_strategy DEFAULT 'primary_key',
     -- Initial delay for a new run; a resumed run uses its stored value.
-    i_sleep_ms integer DEFAULT 0,
+    i_sleep_ms dml_utils_data.non_negative_integer DEFAULT 0,
     OUT o_run_id bigint,
     OUT o_already_completed boolean,
     OUT o_effective_sql_text text,
@@ -42,11 +42,6 @@ DECLARE
 BEGIN
     IF i_chunk_by IS NULL THEN
         RAISE EXCEPTION 'i_chunk_by must not be NULL'
-            USING ERRCODE = '22023';
-    END IF;
-
-    IF i_sleep_ms IS NULL OR i_sleep_ms < 0 THEN
-        RAISE EXCEPTION 'i_sleep_ms must be zero or greater'
             USING ERRCODE = '22023';
     END IF;
 

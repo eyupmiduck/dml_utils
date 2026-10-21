@@ -9,7 +9,7 @@ REVOKE EXECUTE ON FUNCTION dml_utils.run_function_over_table(
     text,
     dml_utils_data.chunking_strategy,
     dml_utils_data.positive_integer,
-    integer
+    dml_utils_data.non_negative_integer
     ) FROM public;
 GRANT EXECUTE ON FUNCTION dml_utils.run_function_over_table(
     dml_utils_data.non_null_text,
@@ -22,5 +22,5 @@ GRANT EXECUTE ON FUNCTION dml_utils.run_function_over_table(
     text,
     dml_utils_data.chunking_strategy,
     dml_utils_data.positive_integer,
-    integer
+    dml_utils_data.non_negative_integer
     ) TO dml_utils_caller;

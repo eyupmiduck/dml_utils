@@ -883,7 +883,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
      */
     @Test
     void setMigrationRunSleepRejectsNegativeValues() {
-        assertSqlState("22023", () -> Routines.setMigrationRunSleepMs(
+        assertDomainViolation(() -> Routines.setMigrationRunSleepMs(
                 dsl.configuration(), "any-label", -1));
     }
 
@@ -893,7 +893,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
      */
     @Test
     void setMigrationRunSleepRejectsNull() {
-        assertSqlState("22023", () -> Routines.setMigrationRunSleepMs(
+        assertDomainViolation(() -> Routines.setMigrationRunSleepMs(
                 dsl.configuration(), "any-label", null));
     }
 
@@ -902,7 +902,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
      */
     @Test
     void runMigrationChunksRejectsNullSleep() {
-        assertSqlState("22023", () -> Routines.runMigrationChunks(
+        assertDomainViolation(() -> Routines.runMigrationChunks(
                 dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT),
                 "l", 2, 1, "t", ChunkingStrategy.primary_key, 1, null));
     }

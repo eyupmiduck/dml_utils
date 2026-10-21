@@ -9,7 +9,7 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.populate_migration_boundaries(
     i_driving_table_alias dml_utils_data.non_null_text DEFAULT 't',
     -- Delay in milliseconds after each completed chunk. 0 disables it.
     -- Negative values are rejected before any run is created.
-    i_sleep_ms integer DEFAULT 0
+    i_sleep_ms dml_utils_data.non_negative_integer DEFAULT 0
 )
     RETURNS bigint
     LANGUAGE plpgsql
@@ -24,11 +24,6 @@ DECLARE
 BEGIN
     IF i_chunk_by IS NULL THEN
         RAISE EXCEPTION 'i_chunk_by must not be NULL'
-            USING ERRCODE = '22023';
-    END IF;
-
-    IF i_sleep_ms IS NULL OR i_sleep_ms < 0 THEN
-        RAISE EXCEPTION 'i_sleep_ms must be zero or greater'
             USING ERRCODE = '22023';
     END IF;
 

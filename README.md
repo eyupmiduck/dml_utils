@@ -154,9 +154,10 @@ and you can change it on an unfinished run with
 `dml_utils.set_migration_run_threads(i_label, i_threads)`.
 
 To slow a run instead of speeding it up, set `i_sleep_ms` (default `0`). It is
-the number of milliseconds the coordinator waits after each successfully
-completed chunk before launching another, which reduces the chunk completion
-rate and therefore WAL generation. The final chunk does not sleep, and the
+typed by the `dml_utils_data.non_negative_integer` domain, so `0` is a valid
+no-op but NULL and negative values are rejected. It is the number of milliseconds
+the coordinator waits after each successfully completed chunk before launching
+another, which reduces the chunk completion rate and therefore WAL generation. The final chunk does not sleep, and the
 wait is interrupted promptly by cancellation. The value is recorded on the run
 like the thread count: a resumed run uses the stored value and a differing
 `i_sleep_ms` is ignored with a notice. Change it on an unfinished run with

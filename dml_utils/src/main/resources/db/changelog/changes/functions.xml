@@ -422,8 +422,12 @@
 
     <changeSet id="function-dml_utils.set_migration_run_sleep_ms" author="lee.horner"
                dbms="postgresql" runOnChange="true">
+        <sqlFile path="functions/dml_utils/set_migration_run_sleep_ms-drop.sql"
+                 relativeToChangelogFile="true"/>
         <createProcedure path="functions/dml_utils/set_migration_run_sleep_ms.sql"
                          relativeToChangelogFile="true"/>
+        <sqlFile path="functions/dml_utils/set_migration_run_sleep_ms-grants.sql"
+                 relativeToChangelogFile="true"/>
         <rollback>
             <sqlFile path="functions-rollback/dml_utils/set_migration_run_sleep_ms-rollback.sql"
                      relativeToChangelogFile="true"/>

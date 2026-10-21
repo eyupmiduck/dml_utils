@@ -78,6 +78,17 @@
         </rollback>
     </changeSet>
 
+    <!-- 0 is the no-delay value, so the existing positive_integer domain cannot
+         type the sleep inputs; this domain accepts 0 but rejects NULL/negative. -->
+    <changeSet id="009-create-non-negative-integer-domain" author="lee.horner" dbms="postgresql">
+        <sqlFile path="sql_changes/009-create-non-negative-integer-domain.sql"
+                 relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="rollback/009-create-non-negative-integer-domain-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
     <!-- Stored routines: one changeset each, one file per routine. They run
          after the tables so routines may reference them. -->
     <include file="functions.xml" relativeToChangelogFile="true"/>
