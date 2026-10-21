@@ -29,7 +29,8 @@ anything above it:
 - **`dml_utils`** — the caller-facing API: `dml_utils.run_migration_chunks` and
   the `run_function_over_table` wrapper, plus the run controls (`set_migration_run_sql_text`,
   `set_migration_run_function`,
-  `set_migration_run_threads`, `archive_migration_run`, `cancel_migration_run`), the read-only explain
+  `set_migration_run_threads`, `set_migration_run_sleep_ms`, `archive_migration_run`,
+  `cancel_migration_run`), the read-only explain
   helpers (`explain_migration_chunks`/`explain_migration_chunk` and
   `explain_function_over_table`/`explain_function_over_table_chunk`) and the
   inspection and cleanup helpers (`migration_run_summary`, `migration_boundaries`,
@@ -152,6 +153,21 @@ run uses the recorded value (a differing `i_threads` is ignored, with a notice),
 and you can change it on an unfinished run with
 `dml_utils.set_migration_run_threads(i_label, i_threads)`.
 
+To slow a run instead of speeding it up, set `i_sleep_ms` (default `0`). It is
+the number of milliseconds the coordinator waits after each successfully
+completed chunk before launching another, which reduces the chunk completion
+rate and therefore WAL generation. The final chunk does not sleep, and the
+wait is interrupted promptly by cancellation. The value is recorded on the run
+like the thread count: a resumed run uses the stored value and a differing
+`i_sleep_ms` is ignored with a notice. Change it on an unfinished run with
+`dml_utils.set_migration_run_sleep_ms(i_label, i_sleep_ms)`; that affects the
+next call, not a coordinator already processing the run.
+
+The sleep is per completed chunk, not a global rate limit: with `i_threads`
+workers, up to that many chunks can still be in flight, and a large chunk still
+generates its WAL in one burst. For strict pacing, use a small thread count
+and/or smaller chunks in addition to the sleep. A sleep of `0` is a no-op.
+
 The worker SQL for the first chunk is:
 
 ```sql
@@ -267,12 +283,12 @@ primary-key column, in key order — and whether it is the final chunk:
 ```sql
 SELECT o_plan_kind, o_sql_text, o_plan
 FROM dml_utils.explain_migration_chunk(
-    i_sql_text => 'UPDATE <driving_table> SET ... WHERE <chunking_clause>',
-    i_driving_table_schema_name => 'public',
-    i_driving_table_name => 'events',
-    i_start_values => ARRAY['0'],
-    i_end_values => ARRAY['1000'],
-    i_is_final => false);
+        i_sql_text => 'UPDATE <driving_table> SET ... WHERE <chunking_clause>',
+        i_driving_table_schema_name => 'public',
+        i_driving_table_name => 'events',
+        i_start_values => ARRAY ['0'],
+        i_end_values => ARRAY ['1000'],
+        i_is_final => false);
 ```
 
 `dml_utils.explain_function_over_table_chunk` is the equivalent for a
@@ -327,8 +343,8 @@ dml_utils' own changelog does not create ddl_utils; a database without it fails
 at the first changeset that calls a helper. The versioned
 `io.github.eyupmiduck:ddl_utils` Maven artifact (`ddl-utils.version`) supplies
 the changelog to the test suite and the jOOQ code generator (unpacked into
-`target/classes/db/changelog-install/ddl-utils`), the local development stack
-(`scripts/postgres/migrate.sh`) and the benchmark (`benchmark/setup.sh`). It is
+`target/classes/db/changelog-install/ddl-utils`), the local development stack (`scripts/postgres/migrate.sh`) and the
+benchmark (`benchmark/setup.sh`). It is
 used only by that test/codegen/local tooling and is not part of the published
 jar.
 

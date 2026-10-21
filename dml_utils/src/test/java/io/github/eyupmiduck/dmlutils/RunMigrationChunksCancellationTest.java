@@ -39,6 +39,9 @@ class RunMigrationChunksCancellationTest extends PostgresTestBase {
             "SELECT pg_advisory_xact_lock(1, 4242), pg_sleep(1)"
                     + " FROM <driving_table> WHERE <chunking_clause>";
 
+    private static final String FAST_TEMPLATE =
+            "UPDATE <driving_table> SET payload = 'done' WHERE <chunking_clause>";
+
     private static String schema(Table<?> table) {
         return table.getSchema().getName();
     }
@@ -71,7 +74,7 @@ class RunMigrationChunksCancellationTest extends PostgresTestBase {
                 DSLContext ownerDsl = DSL.using(owner, SQLDialect.POSTGRES);
                 Routines.runMigrationChunks(ownerDsl.configuration(), SLOW_TEMPLATE,
                         schema(TEST_BIGINT), name(TEST_BIGINT), label, 5, 2, "t",
-                        ChunkingStrategy.primary_key, 1);
+                        ChunkingStrategy.primary_key, 1, 0);
             } catch (SQLException error) {
                 throw new CompletionException(error);
             }
@@ -96,6 +99,58 @@ class RunMigrationChunksCancellationTest extends PostgresTestBase {
                         MIGRATION_BOUNDARY.RUN_ID.eq(runId)
                                 .and(MIGRATION_BOUNDARY.CANCELLED_AT.isNull())),
                 "the remaining boundaries are marked cancelled");
+    }
+
+    /**
+     * A long per-chunk sleep is interrupted by cancellation instead of delaying
+     * the cancellation for the full sleep.
+     */
+    @Test
+    void cancellationInterruptsAThrottleSleep() throws Exception {
+        seedBigint(1, 2, 3, 4, 5, 6);
+        String label = uniqueLabel("cancel-sleep");
+
+        CompletableFuture<Void> run = CompletableFuture.runAsync(() -> {
+            try (Connection owner = openOwnerConnection()) {
+                DSLContext ownerDsl = DSL.using(owner, SQLDialect.POSTGRES);
+                Routines.runMigrationChunks(ownerDsl.configuration(), FAST_TEMPLATE,
+                        schema(TEST_BIGINT), name(TEST_BIGINT), label, 1, 1, "t",
+                        ChunkingStrategy.primary_key, 1, 5_000);
+            } catch (SQLException error) {
+                throw new CompletionException(error);
+            }
+        });
+
+        long runId = awaitCompletedChunk(label);
+        Long cancelled = Routines.cancelMigrationRun(dsl.configuration(), label);
+        assertEquals(runId, cancelled, "the active run is cancelled");
+
+        run.get(2, TimeUnit.SECONDS);
+
+        MigrationRunRecord record = dsl.selectFrom(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne();
+        assertNotNull(record.getCancelledAt(), "the sleeping run is cancelled");
+        assertNull(record.getCompletedAt(), "the cancelled run did not complete");
+    }
+
+    /**
+     * Waits until the run has completed at least one chunk and is therefore in
+     * the throttle sleep before launching the next one.
+     */
+    private long awaitCompletedChunk(String label) throws InterruptedException {
+        for (int attempt = 0; attempt < 200; attempt++) {
+            Record row = dsl.fetchOne(
+                    "SELECT run_id FROM dml_utils_data.migration_run"
+                            + " WHERE label = ? AND total_chunks_completed > 0",
+                    label);
+            if (row != null) {
+                return row.get(0, Long.class);
+            }
+            Thread.sleep(50);
+        }
+        fail("the run did not complete its first chunk");
+        return -1;
     }
 
     /**

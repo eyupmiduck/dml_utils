@@ -7,6 +7,8 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.resolve_migration_run(
     i_threads dml_utils_data.positive_integer,
     i_driving_table_alias dml_utils_data.non_null_text,
     i_chunk_by dml_utils_data.chunking_strategy DEFAULT 'primary_key',
+    -- Initial delay for a new run; a resumed run uses its stored value.
+    i_sleep_ms integer DEFAULT 0,
     OUT o_run_id bigint,
     OUT o_already_completed boolean,
     OUT o_effective_sql_text text,
@@ -14,6 +16,7 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.resolve_migration_run(
     OUT o_effective_table_name text,
     OUT o_effective_alias text,
     OUT o_effective_threads integer,
+    OUT o_effective_sleep_ms integer,
     OUT o_chunk_by dml_utils_data.chunking_strategy,
     OUT o_primary_key_columns name[],
     OUT o_key_kinds text[]
@@ -29,6 +32,7 @@ DECLARE
     l_stored_chunk_size  integer;
     l_stored_chunk_by    dml_utils_data.chunking_strategy;
     l_stored_threads     integer;
+    l_stored_sleep_ms    integer;
     l_stored_schema_name text;
     l_stored_table_name  text;
     l_stored_alias       text;
@@ -41,6 +45,11 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
 
+    IF i_sleep_ms IS NULL OR i_sleep_ms < 0 THEN
+        RAISE EXCEPTION 'i_sleep_ms must be zero or greater'
+            USING ERRCODE = '22023';
+    END IF;
+
     -- Reuse the active run for the label when there is one; otherwise create it
     -- by running populate_migration_boundaries in a worker so it commits
     -- autonomously and the boundaries become visible to the processing workers.
@@ -50,13 +59,14 @@ BEGIN
            chunk_size,
            chunk_by,
            threads::integer,
+           sleep_ms,
            driving_table_schema_name::text,
            driving_table_name::text,
            driving_table_alias::text,
            driving_table_relation_filepath
     INTO o_run_id, l_completed_at, l_stored_sql_text, l_stored_chunk_size,
-        l_stored_chunk_by, l_stored_threads, l_stored_schema_name, l_stored_table_name,
-        l_stored_alias, l_stored_filepath
+        l_stored_chunk_by, l_stored_threads, l_stored_sleep_ms, l_stored_schema_name,
+        l_stored_table_name, l_stored_alias, l_stored_filepath
     FROM dml_utils_data.migration_run
     WHERE label = i_label
       AND archived_at IS NULL;
@@ -74,6 +84,7 @@ BEGIN
     -- fails partway leaves the launched chunks committed and the run resumable,
     -- which the caller retries.
     o_effective_threads := CASE WHEN FOUND THEN l_stored_threads ELSE i_threads::integer END;
+    o_effective_sleep_ms := CASE WHEN FOUND THEN l_stored_sleep_ms ELSE i_sleep_ms END;
     IF o_effective_threads > pg_catalog.current_setting('max_worker_processes')::integer THEN
         RAISE EXCEPTION 'threads (%) exceeds max_worker_processes (%)',
             o_effective_threads, pg_catalog.current_setting('max_worker_processes')
@@ -111,6 +122,10 @@ BEGIN
             RAISE NOTICE 'run for label % already exists; using the stored threads %',
                 i_label, l_stored_threads;
         END IF;
+        IF l_stored_sleep_ms IS DISTINCT FROM i_sleep_ms THEN
+            RAISE NOTICE 'run for label % already exists; using the stored sleep_ms %',
+                i_label, l_stored_sleep_ms;
+        END IF;
         IF l_stored_schema_name IS DISTINCT FROM i_driving_table_schema_name
             OR l_stored_table_name IS DISTINCT FROM i_driving_table_name
         THEN
@@ -134,7 +149,7 @@ BEGIN
         o_chunk_by := i_chunk_by;
 
         l_handle := public.pg_background_launch(pg_catalog.format(
-                'SELECT dml_utils_lib.populate_migration_boundaries(%L, %L, %L, %L, %s, %s, %L, %L) AS run_id',
+                'SELECT dml_utils_lib.populate_migration_boundaries(%L, %L, %L, %L, %s, %s, %L, %L, %s) AS run_id',
                 i_driving_table_schema_name,
                 i_driving_table_name,
                 i_label,
@@ -142,7 +157,8 @@ BEGIN
                 i_chunk_size,
                 i_threads,
                 i_chunk_by::text,
-                i_driving_table_alias));
+                i_driving_table_alias,
+                i_sleep_ms));
         PERFORM public.pg_background_wait(l_handle.pid, l_handle.cookie);
 
         -- result() is one-time consumption and auto-detaches; it re-raises the
@@ -173,9 +189,9 @@ $$;
 COMMENT ON FUNCTION dml_utils_lib.resolve_migration_run IS
     'Resolves or creates the active run for the label and returns the inputs the '
         'coordinator should use: the run id, whether it was already complete, the '
-        'effective sql_text/schema/table/alias/threads and chunking strategy '
-        '(stored values for a resumed run), and the boundary key columns and kinds '
-        '(the real primary key for primary_key, or a single bigint block number '
-        'for blocks). A new run is created by populating its boundaries in a '
+        'effective sql_text/schema/table/alias/threads/sleep_ms and chunking '
+        'strategy (stored values for a resumed run), and the boundary key columns '
+        'and kinds (the real primary key for primary_key, or a single bigint block '
+        'number for blocks). A new run is created by populating its boundaries in a '
         'pg_background worker; a resumed block run fails closed if the driving '
         'table''s physical filepath changed.';

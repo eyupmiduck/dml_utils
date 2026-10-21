@@ -419,7 +419,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
         assertSqlState("22012", () -> Routines.runMigrationChunks(
                 dsl.configuration(),
                 "UPDATE <driving_table> SET payload = (1 / 0)::text WHERE <chunking_clause>",
-                schema(TEST_BIGINT), name(TEST_BIGINT), label, 2, 1, "t", ChunkingStrategy.primary_key, 1));
+                schema(TEST_BIGINT), name(TEST_BIGINT), label, 2, 1, "t", ChunkingStrategy.primary_key, 1, 0));
 
         long runId = runId(label);
         assertFalse(runCompleted(runId), "a failed run must not be marked complete");
@@ -571,7 +571,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     @Test
     void rejectsNullSqlText() {
         assertDomainViolation(() -> Routines.runMigrationChunks(
-                dsl.configuration(), null, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 1, "t", ChunkingStrategy.primary_key, 1));
+                dsl.configuration(), null, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 1, "t", ChunkingStrategy.primary_key, 1, 0));
     }
 
     /**
@@ -580,7 +580,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     @Test
     void rejectsBlankLabel() {
         assertDomainViolation(() -> Routines.runMigrationChunks(
-                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "   ", 2, 1, "t", ChunkingStrategy.primary_key, 1));
+                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "   ", 2, 1, "t", ChunkingStrategy.primary_key, 1, 0));
     }
 
     /**
@@ -589,7 +589,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     @Test
     void rejectsNonPositiveChunkSize() {
         assertDomainViolation(() -> Routines.runMigrationChunks(
-                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 0, 1, "t", ChunkingStrategy.primary_key, 1));
+                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 0, 1, "t", ChunkingStrategy.primary_key, 1, 0));
     }
 
     /**
@@ -598,7 +598,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     @Test
     void rejectsNullAlias() {
         assertDomainViolation(() -> Routines.runMigrationChunks(
-                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 1, null, ChunkingStrategy.primary_key, 1));
+                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 1, null, ChunkingStrategy.primary_key, 1, 0));
     }
 
     /**
@@ -756,7 +756,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
 
         assertSqlState("22023", () -> Routines.runMigrationChunks(
                 dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2,
-                tooMany, "t", ChunkingStrategy.primary_key, 1));
+                tooMany, "t", ChunkingStrategy.primary_key, 1, 0));
     }
 
     /**
@@ -802,6 +802,148 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     /**
+     * A new run records the requested per-chunk sleep.
+     */
+    @Test
+    void storesTheRequestedSleepOnANewRun() {
+        createSource(1, 2, 3);
+        String label = label("sleep-store");
+        long runId = populate(TEST_BIGINT, label, TEMPLATE, 2, 1, 250);
+
+        int stored = dsl.select(MIGRATION_RUN.SLEEP_MS)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_RUN.SLEEP_MS);
+        assertEquals(250, stored, "the requested sleep should be stored on the run");
+    }
+
+    /**
+     * A resumed run uses the sleep recorded when it was created, not the input.
+     */
+    @Test
+    void resumeUsesTheStoredSleep() {
+        createSource(1, 2, 3);
+        String label = label("sleep-resume");
+        long runId = populate(TEST_BIGINT, label, TEMPLATE, 1, 1, 50);
+
+        long started = System.nanoTime();
+        runWithSleep(label, TEMPLATE, 1, 1, 0, TEST_BIGINT);
+        long elapsedMs = (System.nanoTime() - started) / 1_000_000;
+
+        int stored = dsl.select(MIGRATION_RUN.SLEEP_MS)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_RUN.SLEEP_MS);
+        assertEquals(50, stored, "the stored sleep should be preserved");
+        assertTrue(elapsedMs >= 70,
+                "the stored 50ms sleep should be applied even though the input was 0; took "
+                        + elapsedMs);
+        assertTrue(runCompleted(runId), "the run should complete");
+    }
+
+    /**
+     * {@code set_migration_run_sleep_ms} changes an unfinished run for its next
+     * call.
+     */
+    @Test
+    void setMigrationRunSleepChangesTheStoredValue() {
+        createSource(1, 2, 3);
+        String label = label("set-sleep");
+        long runId = populate(TEST_BIGINT, label, TEMPLATE, 1);
+
+        Routines.setMigrationRunSleepMs(dsl.configuration(), label, 50);
+
+        int stored = dsl.select(MIGRATION_RUN.SLEEP_MS)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_RUN.SLEEP_MS);
+        assertEquals(50, stored, "the adjusted sleep should be stored");
+
+        long started = System.nanoTime();
+        runWithSleep(label, TEMPLATE, 1, 1, 0, TEST_BIGINT);
+        long elapsedMs = (System.nanoTime() - started) / 1_000_000;
+
+        assertTrue(elapsedMs >= 70,
+                "the adjusted 50ms sleep should be applied; took " + elapsedMs);
+        assertTrue(runCompleted(runId), "the run should process every row");
+    }
+
+    /**
+     * {@code set_migration_run_sleep_ms} raises {@code P0002} when there is no
+     * unfinished run for the label.
+     */
+    @Test
+    void setMigrationRunSleepRaisesWhenNoUnfinishedRun() {
+        assertSqlState("P0002", () -> Routines.setMigrationRunSleepMs(
+                dsl.configuration(), "no-such-label", 10));
+    }
+
+    /**
+     * A negative sleep is rejected by the setter.
+     */
+    @Test
+    void setMigrationRunSleepRejectsNegativeValues() {
+        assertSqlState("22023", () -> Routines.setMigrationRunSleepMs(
+                dsl.configuration(), "any-label", -1));
+    }
+
+    /**
+     * A NULL sleep is rejected by the setter rather than leaking to the column's
+     * not-null constraint.
+     */
+    @Test
+    void setMigrationRunSleepRejectsNull() {
+        assertSqlState("22023", () -> Routines.setMigrationRunSleepMs(
+                dsl.configuration(), "any-label", null));
+    }
+
+    /**
+     * A NULL initial sleep is rejected before a run is created.
+     */
+    @Test
+    void runMigrationChunksRejectsNullSleep() {
+        assertSqlState("22023", () -> Routines.runMigrationChunks(
+                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT),
+                "l", 2, 1, "t", ChunkingStrategy.primary_key, 1, null));
+    }
+
+    /**
+     * A non-zero sleep delays the run between successful chunks.
+     */
+    @Test
+    void sleepsBetweenChunks() {
+        createSource(1, 2, 3);
+        String label = label("sleep-delay");
+
+        long started = System.nanoTime();
+        runWithSleep(label, TEMPLATE, 1, 1, 100, TEST_BIGINT);
+        long elapsedMs = (System.nanoTime() - started) / 1_000_000;
+
+        assertTrue(elapsedMs >= 180,
+                "two inter-chunk sleeps of 100ms should take at least 180ms, took "
+                        + elapsedMs);
+        assertTrue(runCompleted(runId(label)), "the throttled run should complete");
+    }
+
+    /**
+     * The throttle does not delay the run after its final chunk.
+     */
+    @Test
+    void skipsSleepAfterTheFinalChunk() {
+        createSource(1);
+        String label = label("sleep-final");
+
+        long started = System.nanoTime();
+        runWithSleep(label, TEMPLATE, 1, 1, 2_000, TEST_BIGINT);
+        long elapsedMs = (System.nanoTime() - started) / 1_000_000;
+
+        assertTrue(elapsedMs < 1_500,
+                "a single-chunk run should not wait for the 2s final sleep; took "
+                        + elapsedMs);
+        assertTrue(runCompleted(runId(label)), "the run should complete");
+    }
+
+    /**
      * {@code set_migration_run_threads} raises {@code P0002} when there is no
      * unfinished run for the label.
      */
@@ -818,7 +960,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     void rejectsNonPositiveThreads() {
         assertDomainViolation(() -> Routines.runMigrationChunks(
                 dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 0,
-                "t", ChunkingStrategy.primary_key, 1));
+                "t", ChunkingStrategy.primary_key, 1, 0));
     }
 
     /**
@@ -830,7 +972,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     void rejectsNonPositivePollTimeout() {
         assertDomainViolation(() -> Routines.runMigrationChunks(
                 dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 1,
-                "t", ChunkingStrategy.primary_key, 0));
+                "t", ChunkingStrategy.primary_key, 0, 0));
     }
 
     /**
@@ -844,7 +986,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
 
         Routines.runMigrationChunks(
                 dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), label, 2, 1,
-                "t", ChunkingStrategy.primary_key, 50);
+                "t", ChunkingStrategy.primary_key, 50, 0);
 
         assertEquals(4, doneCount(TEST_BIGINT), "every row should be processed");
         assertTrue(runCompleted(runId(label)), "the run should be marked complete");
@@ -987,8 +1129,13 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     private long populate(Table<?> table, String label, String template, int chunkSize, int threads) {
+        return populate(table, label, template, chunkSize, threads, 0);
+    }
+
+    private long populate(Table<?> table, String label, String template, int chunkSize, int threads,
+                          int sleepMs) {
         return io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
-                dsl.configuration(), schema(table), name(table), label, template, chunkSize, threads, ChunkingStrategy.primary_key, "t");
+                dsl.configuration(), schema(table), name(table), label, template, chunkSize, threads, ChunkingStrategy.primary_key, "t", sleepMs);
     }
 
     private String label(String suffix) {
@@ -1000,9 +1147,14 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     private void runWith(String label, String template, int chunkSize, int threads, Table<?> table) {
+        runWithSleep(label, template, chunkSize, threads, 0, table);
+    }
+
+    private void runWithSleep(String label, String template, int chunkSize, int threads, int sleepMs,
+                              Table<?> table) {
         Routines.runMigrationChunks(
                 dsl.configuration(), template, schema(table), name(table), label, chunkSize, threads,
-                "t", ChunkingStrategy.primary_key, 1);
+                "t", ChunkingStrategy.primary_key, 1, sleepMs);
     }
 
     private long runId(String label) {

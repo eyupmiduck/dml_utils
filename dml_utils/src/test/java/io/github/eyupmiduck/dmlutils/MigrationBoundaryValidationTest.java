@@ -88,7 +88,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     @Test
     void rejectsNullLabel() {
         assertDomainViolation(() -> Routines.populateMigrationBoundaries(
-                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), null, SQL_TEXT, 1, 1, ChunkingStrategy.primary_key, "t"));
+                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), null, SQL_TEXT, 1, 1, ChunkingStrategy.primary_key, "t", 0));
     }
 
     /**
@@ -97,7 +97,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     @Test
     void rejectsBlankLabel() {
         assertDomainViolation(() -> Routines.populateMigrationBoundaries(
-                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), "   ", SQL_TEXT, 1, 1, ChunkingStrategy.primary_key, "t"));
+                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), "   ", SQL_TEXT, 1, 1, ChunkingStrategy.primary_key, "t", 0));
     }
 
     /**
@@ -106,7 +106,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     @Test
     void rejectsNullSqlText() {
         assertDomainViolation(() -> Routines.populateMigrationBoundaries(
-                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), "null-sql-text", null, 1, 1, ChunkingStrategy.primary_key, "t"));
+                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), "null-sql-text", null, 1, 1, ChunkingStrategy.primary_key, "t", 0));
     }
 
     /**
@@ -115,7 +115,17 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     @Test
     void rejectsBlankSqlText() {
         assertDomainViolation(() -> Routines.populateMigrationBoundaries(
-                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), "blank-sql-text", "   ", 1, 1, ChunkingStrategy.primary_key, "t"));
+                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), "blank-sql-text", "   ", 1, 1, ChunkingStrategy.primary_key, "t", 0));
+    }
+
+    /**
+     * A NULL sleep is rejected with 22023 before any run is created.
+     */
+    @Test
+    void rejectsANullSleep() {
+        assertSqlState("22023", () -> Routines.populateMigrationBoundaries(
+                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(),
+                uniqueLabel(), SQL_TEXT, 2, 1, ChunkingStrategy.primary_key, "t", null));
     }
 
     /**
@@ -546,7 +556,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     private long populateByNames(String schema, String table, String label, Integer chunkSize,
                                  Integer threads) {
         return Routines.populateMigrationBoundaries(
-                dsl.configuration(), schema, table, label, SQL_TEXT, chunkSize, threads, ChunkingStrategy.primary_key, "t");
+                dsl.configuration(), schema, table, label, SQL_TEXT, chunkSize, threads, ChunkingStrategy.primary_key, "t", 0);
     }
 
     private String uniqueLabel() {

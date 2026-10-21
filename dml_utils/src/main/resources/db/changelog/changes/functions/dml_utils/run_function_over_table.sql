@@ -18,7 +18,10 @@ CREATE OR REPLACE FUNCTION dml_utils.run_function_over_table(
     -- How long the chunk coordinator waits for a worker before re-checking; see
     -- dml_utils.run_migration_chunks. 1ms keeps latency low; raise it for chunks
     -- that run in non-trivial time to cut coordinator CPU.
-    i_poll_timeout_ms dml_utils_data.positive_integer DEFAULT 1
+    i_poll_timeout_ms dml_utils_data.positive_integer DEFAULT 1,
+    -- Initial delay after each completed chunk for a new run; a resumed run uses
+    -- its stored sleep_ms.
+    i_sleep_ms integer DEFAULT 0
 )
     RETURNS void
     LANGUAGE plpgsql
@@ -69,7 +72,8 @@ BEGIN
             i_chunk_size => i_chunk_size,
             i_threads => i_threads,
             i_chunk_by => i_chunk_by,
-            i_poll_timeout_ms => i_poll_timeout_ms);
+            i_poll_timeout_ms => i_poll_timeout_ms,
+            i_sleep_ms => i_sleep_ms);
 END;
 $$;
 
@@ -81,4 +85,5 @@ COMMENT ON FUNCTION dml_utils.run_function_over_table IS
         'i_filter is ANDed onto every chunk''s range predicate, so only the rows '
         'it matches are passed to the function. i_chunk_by selects the chunking '
         'strategy; blocks requires a quiescent, read-only driving table and is '
-        'unsafe when the function updates the driving table in place.';
+        'unsafe when the function updates the driving table in place. i_sleep_ms '
+        'seeds a new run''s per-chunk delay; a resumed run uses its stored value.';

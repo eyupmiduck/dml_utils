@@ -104,6 +104,8 @@ class MigrationMaintenanceTest extends PostgresTestBase {
         assertEquals(runId, summary.getRunId().longValue());
         assertEquals(2, summary.getChunkSize().intValue());
         assertEquals(1, summary.getThreads().intValue());
+        assertEquals(0, summary.getSleepMs().intValue(),
+                "the default run has no per-chunk delay");
         assertEquals(TEST_BIGINT.getSchema().getName(), summary.getDrivingTableSchemaName());
         assertEquals(TEST_BIGINT.getName(), summary.getDrivingTableName());
         assertEquals(3L, summary.getBoundaryCount().longValue(), "chunk starts plus terminal");
@@ -238,7 +240,7 @@ class MigrationMaintenanceTest extends PostgresTestBase {
         }
         return io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
                 dsl.configuration(), TEST_BIGINT.getSchema().getName(), TEST_BIGINT.getName(),
-                label, "SELECT 1", chunkSize, 1, ChunkingStrategy.primary_key, "t");
+                label, "SELECT 1", chunkSize, 1, ChunkingStrategy.primary_key, "t", 0);
     }
 
     private void recordError(long runId, long boundaryNo, String sqlstate, String message) {

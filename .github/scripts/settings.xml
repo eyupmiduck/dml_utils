@@ -3,8 +3,8 @@
      server for liquibase-validation; ddl_utils lives in its own Packages
      repository, so it needs a second server entry. Both use the workflow's
      GITHUB_ACTOR/GITHUB_TOKEN. Pass this file with -s. -->
-<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
-          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+<settings xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xmlns="http://maven.apache.org/SETTINGS/1.0.0"
           xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
     <servers>
         <server>

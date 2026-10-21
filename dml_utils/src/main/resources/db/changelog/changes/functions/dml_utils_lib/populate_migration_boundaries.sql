@@ -6,7 +6,10 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.populate_migration_boundaries(
     i_chunk_size dml_utils_data.positive_integer,
     i_threads dml_utils_data.positive_integer DEFAULT 1,
     i_chunk_by dml_utils_data.chunking_strategy DEFAULT 'primary_key',
-    i_driving_table_alias dml_utils_data.non_null_text DEFAULT 't'
+    i_driving_table_alias dml_utils_data.non_null_text DEFAULT 't',
+    -- Delay in milliseconds after each completed chunk. 0 disables it.
+    -- Negative values are rejected before any run is created.
+    i_sleep_ms integer DEFAULT 0
 )
     RETURNS bigint
     LANGUAGE plpgsql
@@ -21,6 +24,11 @@ DECLARE
 BEGIN
     IF i_chunk_by IS NULL THEN
         RAISE EXCEPTION 'i_chunk_by must not be NULL'
+            USING ERRCODE = '22023';
+    END IF;
+
+    IF i_sleep_ms IS NULL OR i_sleep_ms < 0 THEN
+        RAISE EXCEPTION 'i_sleep_ms must be zero or greater'
             USING ERRCODE = '22023';
     END IF;
 
@@ -56,10 +64,12 @@ BEGIN
     -- The alias is a creation-time input, stored with the run so a resume
     -- renders with the same alias the first call used.
     INSERT INTO dml_utils_data.migration_run (label, sql_text, chunk_size, chunk_by, threads,
+                                              sleep_ms,
                                               driving_table_schema_name, driving_table_name,
                                               driving_table_alias,
                                               driving_table_relation_filepath, started_at)
-    VALUES (i_label, i_sql_text, i_chunk_size, i_chunk_by, i_threads, i_schema_name, i_table_name,
+    VALUES (i_label, i_sql_text, i_chunk_size, i_chunk_by, i_threads, i_sleep_ms,
+            i_schema_name, i_table_name,
             i_driving_table_alias,
             l_relation_filepath, pg_catalog.clock_timestamp())
     RETURNING run_id
@@ -107,8 +117,8 @@ $$;
 COMMENT ON FUNCTION dml_utils_lib.populate_migration_boundaries IS
     'Creates a migration run for the label and populates its chunk boundaries for '
         'the given table and chunking strategy (primary_key or blocks), returning '
-        'the new run_id. Stores the driving table alias with the run at creation. '
-        'Records the run''s started_at when the calculation begins '
+        'the new run_id. Stores the driving table alias and sleep_ms with the run at '
+        'creation. Records the run''s started_at when the calculation begins '
         'and boundaries_calculated_at and total_chunks when it finishes, all in the '
         'worker''s transaction so they commit with the run; a block run also records '
         'the driving table''s physical filepath. Boundaries are written as the '

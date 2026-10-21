@@ -2,9 +2,16 @@ package io.github.eyupmiduck.dmlutils;
 
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.enums.ChunkingStrategy;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.udt.records.MigrationKeyRecord;
+import org.jooq.DSLContext;
 import org.jooq.Record;
+import org.jooq.SQLDialect;
+import org.jooq.impl.DSL;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -21,6 +28,31 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class MigrationTablesTest extends PostgresTestBase {
 
+    private static int routineCount(DSLContext context, String schema, String name) {
+        return context.fetchOne(
+                        "SELECT count(*)::int FROM pg_catalog.pg_proc AS p"
+                                + " JOIN pg_catalog.pg_namespace AS n ON n.oid = p.pronamespace"
+                                + " WHERE n.nspname = ? AND p.proname = ?",
+                        schema, name)
+                .get(0, Integer.class);
+    }
+
+    private static String readScript(String resource) throws IOException {
+        try (InputStream in = MigrationTablesTest.class.getClassLoader()
+                .getResourceAsStream(resource)) {
+            assertNotNull(in, "missing test resource " + resource);
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+
+    private static void executeStatements(DSLContext context, String sql) {
+        for (String statement : sql.split(";")) {
+            if (!statement.isBlank()) {
+                context.execute(statement);
+            }
+        }
+    }
+
     /**
      * The migration tables exist in the {@code dml_utils} schema with the
      * expected columns.
@@ -36,6 +68,7 @@ class MigrationTablesTest extends PostgresTestBase {
                 "boundaries_calculated_at should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "completed_at"), "completed_at should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "cancelled_at"), "cancelled_at should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_run", "sleep_ms"), "sleep_ms should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "driving_table_schema_name"),
                 "driving_table_schema_name should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "driving_table_name"),
@@ -66,6 +99,103 @@ class MigrationTablesTest extends PostgresTestBase {
         assertTrue(hasColumn("dml_utils_data", "migration_error", "message"), "message should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_error", "created_at"), "created_at should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_error", "updated_at"), "updated_at should exist");
+    }
+
+    /**
+     * The per-chunk sleep defaults to zero and rejects a negative value.
+     */
+    @Test
+    void sleepMsDefaultsToZeroAndRejectsNegativeValues() {
+        Long runId = insertRun();
+
+        Integer sleepMs = dsl.select(MIGRATION_RUN.SLEEP_MS)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_RUN.SLEEP_MS);
+        assertEquals(0, sleepMs, "a run without an explicit value has no delay");
+
+        assertDomainViolation(() -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.SLEEP_MS, -1)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute());
+    }
+
+    /**
+     * The rollback scripts for the routines whose signatures changed drop the
+     * current definitions (not a stale older signature).
+     */
+    @Test
+    void routineRollbacksDropTheCurrentSignatures() throws Exception {
+        assertRollbackDropsFunction(
+                "db/changelog/changes/functions-rollback/dml_utils/run_migration_chunks-rollback.sql",
+                "dml_utils", "run_migration_chunks");
+        assertRollbackDropsFunction(
+                "db/changelog/changes/functions-rollback/dml_utils/run_function_over_table-rollback.sql",
+                "dml_utils", "run_function_over_table");
+        assertRollbackDropsFunction(
+                "db/changelog/changes/functions-rollback/dml_utils_lib/resolve_migration_run-rollback.sql",
+                "dml_utils_lib", "resolve_migration_run");
+        assertRollbackDropsFunction(
+                "db/changelog/changes/functions-rollback/dml_utils_lib/populate_migration_boundaries-rollback.sql",
+                "dml_utils_lib", "populate_migration_boundaries");
+    }
+
+    /**
+     * The 008 rollback removes the sleep column and its check.
+     */
+    @Test
+    void addSleepRollbackRemovesTheColumn() throws Exception {
+        String script = readScript("db/changelog/changes/rollback/008-add-sleep-rollback.sql");
+        RuntimeException rollback = new RollbackTransaction();
+        try (Connection owner = openOwnerConnection()) {
+            DSLContext ownerDsl = DSL.using(owner, SQLDialect.POSTGRES);
+            try {
+                ownerDsl.transaction(config -> {
+                    DSLContext tx = DSL.using(config);
+                    executeStatements(tx, script);
+                    Integer count = tx.fetchOne(
+                                    "SELECT count(*)::int FROM information_schema.columns"
+                                            + " WHERE table_schema = 'dml_utils_data'"
+                                            + " AND table_name = 'migration_run'"
+                                            + " AND column_name = 'sleep_ms'")
+                            .get(0, Integer.class);
+                    assertEquals(0, count, "the rollback should remove sleep_ms");
+                    throw rollback;
+                });
+                fail("the rollback transaction should have been rolled back");
+            } catch (RuntimeException error) {
+                if (error != rollback && error.getCause() != rollback) {
+                    throw error;
+                }
+            }
+        }
+        assertTrue(hasColumn("dml_utils_data", "migration_run", "sleep_ms"),
+                "the transactional rollback should restore sleep_ms");
+    }
+
+    private void assertRollbackDropsFunction(String resource, String schema, String name)
+            throws Exception {
+        String script = readScript(resource);
+        RuntimeException rollback = new RollbackTransaction();
+        try (Connection owner = openOwnerConnection()) {
+            DSLContext ownerDsl = DSL.using(owner, SQLDialect.POSTGRES);
+            try {
+                ownerDsl.transaction(config -> {
+                    DSLContext tx = DSL.using(config);
+                    executeStatements(tx, script);
+                    assertEquals(0, routineCount(tx, schema, name),
+                            "the rollback should drop " + schema + "." + name);
+                    throw rollback;
+                });
+                fail("the rollback transaction should have been rolled back");
+            } catch (RuntimeException error) {
+                if (error != rollback && error.getCause() != rollback) {
+                    throw error;
+                }
+            }
+        }
+        assertEquals(1, routineCount(dsl, schema, name),
+                "the transactional rollback should restore " + schema + "." + name);
     }
 
     /**
@@ -624,5 +754,9 @@ class MigrationTablesTest extends PostgresTestBase {
         assertEquals(Boolean.TRUE, dsl.select(MIGRATION_ERROR.UPDATED_AT.gt(recent))
                 .from(MIGRATION_ERROR).where(MIGRATION_ERROR.RUN_ID.eq(runId))
                 .fetchOne(0, Boolean.class), "the error trigger should overwrite updated_at");
+    }
+
+    private static final class RollbackTransaction extends RuntimeException {
+        private static final long serialVersionUID = 1L;
     }
 }

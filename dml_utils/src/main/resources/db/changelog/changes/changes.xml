@@ -70,6 +70,14 @@
         </rollback>
     </changeSet>
 
+    <!-- Per-run chunk throttle. Also lock-aware; new runs default to no delay. -->
+    <changeSet id="008-add-sleep" author="lee.horner" dbms="postgresql">
+        <sqlFile path="sql_changes/008-add-sleep.sql" relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="rollback/008-add-sleep-rollback.sql" relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
     <!-- Stored routines: one changeset each, one file per routine. They run
          after the tables so routines may reference them. -->
     <include file="functions.xml" relativeToChangelogFile="true"/>
