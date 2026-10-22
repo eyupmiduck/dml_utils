@@ -11,6 +11,8 @@ REVOKE USAGE ON DOMAIN dml_utils_data.non_null_text FROM public;
 GRANT USAGE ON DOMAIN dml_utils_data.non_null_text TO dml_utils_caller;
 REVOKE USAGE ON DOMAIN dml_utils_data.positive_integer FROM public;
 GRANT USAGE ON DOMAIN dml_utils_data.positive_integer TO dml_utils_caller;
+REVOKE USAGE ON DOMAIN dml_utils_data.non_negative_integer FROM public;
+GRANT USAGE ON DOMAIN dml_utils_data.non_negative_integer TO dml_utils_caller;
 REVOKE USAGE ON TYPE dml_utils_data.migration_key FROM public;
 GRANT USAGE ON TYPE dml_utils_data.migration_key TO dml_utils_caller;
 REVOKE USAGE ON TYPE dml_utils_data.chunking_strategy FROM public;
