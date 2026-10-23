@@ -143,39 +143,6 @@ class MigrationTablesTest extends PostgresTestBase {
                 "dml_utils", "set_migration_run_sleep_ms");
     }
 
-    /**
-     * The 008 rollback removes the sleep column and its check.
-     */
-    @Test
-    void addSleepRollbackRemovesTheColumn() throws Exception {
-        String script = readScript("db/changelog/changes/rollback/008-add-sleep-rollback.sql");
-        RuntimeException rollback = new RollbackTransaction();
-        try (Connection owner = openOwnerConnection()) {
-            DSLContext ownerDsl = DSL.using(owner, SQLDialect.POSTGRES);
-            try {
-                ownerDsl.transaction(config -> {
-                    DSLContext tx = DSL.using(config);
-                    executeStatements(tx, script);
-                    Integer count = tx.fetchOne(
-                                    "SELECT count(*)::int FROM information_schema.columns"
-                                            + " WHERE table_schema = 'dml_utils_data'"
-                                            + " AND table_name = 'migration_run'"
-                                            + " AND column_name = 'sleep_ms'")
-                            .get(0, Integer.class);
-                    assertEquals(0, count, "the rollback should remove sleep_ms");
-                    throw rollback;
-                });
-                fail("the rollback transaction should have been rolled back");
-            } catch (RuntimeException error) {
-                if (error != rollback && error.getCause() != rollback) {
-                    throw error;
-                }
-            }
-        }
-        assertTrue(hasColumn("dml_utils_data", "migration_run", "sleep_ms"),
-                "the transactional rollback should restore sleep_ms");
-    }
-
     private void assertRollbackDropsFunction(String resource, String schema, String name)
             throws Exception {
         String script = readScript(resource);

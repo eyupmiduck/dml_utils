@@ -54,7 +54,7 @@ BEGIN
            chunk_size,
            chunk_by,
            threads::integer,
-           sleep_ms,
+           sleep_ms::integer,
            driving_table_schema_name::text,
            driving_table_name::text,
            driving_table_alias::text,
@@ -79,7 +79,7 @@ BEGIN
     -- fails partway leaves the launched chunks committed and the run resumable,
     -- which the caller retries.
     o_effective_threads := CASE WHEN FOUND THEN l_stored_threads ELSE i_threads::integer END;
-    o_effective_sleep_ms := CASE WHEN FOUND THEN l_stored_sleep_ms ELSE i_sleep_ms END;
+    o_effective_sleep_ms := CASE WHEN FOUND THEN l_stored_sleep_ms ELSE i_sleep_ms::integer END;
     IF o_effective_threads > pg_catalog.current_setting('max_worker_processes')::integer THEN
         RAISE EXCEPTION 'threads (%) exceeds max_worker_processes (%)',
             o_effective_threads, pg_catalog.current_setting('max_worker_processes')

@@ -6,6 +6,7 @@ CREATE TABLE dml_utils_data.migration_run
     chunk_size                      integer                          NOT NULL,
     chunk_by                        dml_utils_data.chunking_strategy NOT NULL DEFAULT 'primary_key',
     threads                         dml_utils_data.positive_integer  NOT NULL,
+    sleep_ms                        dml_utils_data.non_negative_integer NOT NULL DEFAULT 0,
     driving_table_schema_name       dml_utils_data.non_null_text     NOT NULL,
     driving_table_name              dml_utils_data.non_null_text     NOT NULL,
     driving_table_alias             dml_utils_data.non_null_text     NOT NULL DEFAULT 't',
@@ -17,6 +18,7 @@ CREATE TABLE dml_utils_data.migration_run
     total_chunks                    bigint                           NOT NULL DEFAULT 0,
     total_chunks_completed          bigint                           NOT NULL DEFAULT 0,
     completed_at                    timestamptz,
+    cancelled_at                    timestamptz,
     archived_at                     timestamptz,
     CONSTRAINT migration_run_chunk_size_check CHECK (chunk_size > 0),
     -- A block run always records the physical relation filepath it was computed
@@ -35,6 +37,15 @@ CREATE TABLE dml_utils_data.migration_run
             OR (started_at IS NOT NULL AND completed_at >= started_at))
             AND (boundaries_calculated_at IS NULL
             OR (started_at IS NOT NULL AND boundaries_calculated_at >= started_at))
+        ),
+    -- A cancelled run is terminal and its cancellation cannot precede the start.
+    -- completed_at and cancelled_at are mutually exclusive.
+    CONSTRAINT migration_run_cancelled_at_check CHECK (
+        cancelled_at IS NULL
+            OR (started_at IS NOT NULL AND cancelled_at >= started_at)
+        ),
+    CONSTRAINT migration_run_completed_or_cancelled_check CHECK (
+        completed_at IS NULL OR cancelled_at IS NULL
         ),
     -- The run's progress counters: total_chunks is written once by
     -- populate_migration_boundaries (the boundaries minus the terminal high-water
@@ -62,6 +73,10 @@ COMMENT ON COLUMN dml_utils_data.migration_run.chunk_by IS
 COMMENT ON COLUMN dml_utils_data.migration_run.threads IS
     'Number of pg_background workers used to process the run''s chunks; may be '
         'changed with dml_utils.set_migration_run_threads while the run is unfinished.';
+COMMENT ON COLUMN dml_utils_data.migration_run.sleep_ms IS
+    'Milliseconds to wait after each successfully completed chunk before '
+        'launching another; 0 means no delay. Set when the run is created and '
+        'changed for later calls with dml_utils.set_migration_run_sleep_ms.';
 COMMENT ON COLUMN dml_utils_data.migration_run.driving_table_schema_name IS
     'Schema of the driving table whose primary-key order defines the chunks.';
 COMMENT ON COLUMN dml_utils_data.migration_run.driving_table_name IS
@@ -99,6 +114,9 @@ COMMENT ON COLUMN dml_utils_data.migration_run.completed_at IS
     'Actual server time when the run finished processing all chunks; NULL while '
         'the run is unfinished. Written in the caller''s transaction, so a failed '
         'processing attempt rolls it back.';
+COMMENT ON COLUMN dml_utils_data.migration_run.cancelled_at IS
+    'Actual server time when the run was cancelled; NULL unless cancelled. A '
+        'cancelled run is terminal: archive it and create a new run to resume.';
 COMMENT ON COLUMN dml_utils_data.migration_run.archived_at IS
     'Set when the run is archived; NULL means the run is active.';
 
@@ -143,6 +161,7 @@ CREATE TABLE dml_utils_data.migration_boundary
     updated_at   timestamptz                  NOT NULL DEFAULT pg_catalog.now(),
     started_at   timestamptz,
     completed_at timestamptz,
+    cancelled_at timestamptz,
     PRIMARY KEY (run_id, boundary_no),
     CONSTRAINT migration_boundary_run_fk
         FOREIGN KEY (run_id)
@@ -188,6 +207,10 @@ COMMENT ON COLUMN dml_utils_data.migration_boundary.started_at IS
         'reports started_at only for a chunk that completed.';
 COMMENT ON COLUMN dml_utils_data.migration_boundary.completed_at IS
     'Actual server time when the chunk for this boundary finished; NULL until then.';
+COMMENT ON COLUMN dml_utils_data.migration_boundary.cancelled_at IS
+    'Actual server time when the boundary was cancelled; NULL unless the run was '
+        'cancelled before this chunk completed. A boundary with completed_at set '
+        'is authoritative even if cancelled_at is also set.';
 
 -- A partial index so the coordinator's next-chunk lookup (the first boundary
 -- with completed_at IS NULL) seeks straight to the pending rows instead of
