@@ -2,6 +2,7 @@ package io.github.eyupmiduck.dmlutils;
 
 import io.github.eyupmiduck.changelogvalidator.testing.PublishedRelease;
 import io.github.eyupmiduck.changelogvalidator.testing.UpgradeTestBase;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
@@ -22,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
  * configuration (see {@link PostgresTestBase}); the previous release is resolved
  * from GitHub Packages automatically.
  */
+@Disabled("Changelog is being squashed before the first deployment; 1.9.0 snapshots are not upgradeable")
 class LiquibaseUpgradeTest extends UpgradeTestBase {
 
     @Override
