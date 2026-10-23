@@ -329,6 +329,22 @@
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>build-helper-maven-plugin</artifactId>
                 <executions>
+                    <!-- Register the main jOOQ output explicitly. The codegen
+                         plugin adds it when it runs, but IntelliJ's Maven
+                         importer needs the source root in the project model to
+                         pick it up reliably on reload. -->
+                    <execution>
+                        <id>add-jooq-source</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>add-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>target/generated-sources/jooq</source>
+                            </sources>
+                        </configuration>
+                    </execution>
                     <execution>
                         <id>add-jooq-fixtures-test-source</id>
                         <phase>generate-test-sources</phase>
