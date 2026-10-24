@@ -107,6 +107,40 @@ class ResolveMigrationRunTest extends PostgresTestBase {
     }
 
     /**
+     * An active run keeps the chunking strategy it was created with; a later
+     * call with a different strategy is ignored (the strategy is immutable for
+     * the boundaries already computed).
+     */
+    @Test
+    void reusesTheStoredChunkingStrategy() {
+        seedBigint(1, 2, 3);
+        String label = uniqueLabel("resolve-chunk-by");
+
+        ResolveMigrationRun first = resolve(label, TEMPLATE, "t", 2, 1);
+        ResolveMigrationRun second = resolveWithChunkBy(label, TEMPLATE, "t", 2, 1,
+                ChunkingStrategy.blocks, 0);
+
+        assertEquals(first.getORunId(), second.getORunId(), "the active run should be reused");
+        assertEquals(ChunkingStrategy.primary_key, second.getOChunkBy(),
+                "the stored strategy wins over a differing input");
+        assertArrayEquals(new String[]{"id"}, second.getOPrimaryKeyColumns(),
+                "the stored strategy keeps the primary-key columns");
+        assertArrayEquals(new String[]{"bigint"}, second.getOKeyKinds());
+    }
+
+    /**
+     * A NULL chunking strategy is rejected before a run is created.
+     */
+    @Test
+    void rejectsANullChunkingStrategy() {
+        seedBigint(1, 2, 3);
+
+        assertSqlState("22023", () -> Routines.resolveMigrationRun(
+                dsl.configuration(), TEMPLATE, schema(), name(),
+                uniqueLabel("resolve-chunk-by-null"), 2, 1, "t", null, 0));
+    }
+
+    /**
      * A negative sleep is rejected before it can be stored.
      */
     @Test
@@ -145,6 +179,22 @@ class ResolveMigrationRunTest extends PostgresTestBase {
     }
 
     /**
+     * A boundary-population worker failure is surfaced to the caller and leaves
+     * no active run behind.
+     */
+    @Test
+    void propagatesANewRunBoundaryFailure() {
+        String label = uniqueLabel("resolve-missing-table");
+
+        assertSqlState("42P01", () -> Routines.resolveMigrationRun(
+                dsl.configuration(), TEMPLATE, schema(), "does_not_exist",
+                label, 2, 1, "t", ChunkingStrategy.primary_key, 0));
+
+        assertEquals(0, dsl.fetchCount(MIGRATION_RUN, MIGRATION_RUN.LABEL.eq(label)),
+                "a failed worker transaction must not leave a run row");
+    }
+
+    /**
      * A thread count above {@code max_worker_processes} is rejected with
      * {@code 22023} for a new run.
      */
@@ -162,7 +212,14 @@ class ResolveMigrationRunTest extends PostgresTestBase {
 
     private ResolveMigrationRun resolve(String label, String sqlText, String alias, int chunkSize,
                                         int threads, int sleepMs) {
+        return resolveWithChunkBy(label, sqlText, alias, chunkSize, threads, ChunkingStrategy.primary_key,
+                sleepMs);
+    }
+
+    private ResolveMigrationRun resolveWithChunkBy(String label, String sqlText, String alias,
+                                                   int chunkSize, int threads, ChunkingStrategy chunkBy,
+                                                   int sleepMs) {
         return Routines.resolveMigrationRun(dsl.configuration(), sqlText, schema(), name(),
-                label, chunkSize, threads, alias, ChunkingStrategy.primary_key, sleepMs);
+                label, chunkSize, threads, alias, chunkBy, sleepMs);
     }
 }
