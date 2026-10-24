@@ -31,12 +31,39 @@ ALTER DEFAULT PRIVILEGES FOR ROLE dml_utils_owner IN SCHEMA dml_utils_data
 ALTER DEFAULT PRIVILEGES FOR ROLE dml_utils_owner IN SCHEMA dml_utils_data
     REVOKE USAGE ON TYPES FROM public;
 
+-- The caller can read metadata but never write it directly. The invoker-owned
+-- coordinator and chunk worker delegate every metadata write to the owner-owned
+-- SECURITY DEFINER helpers below.
 REVOKE ALL ON dml_utils_data.migration_run FROM public;
-GRANT SELECT, INSERT, UPDATE, DELETE ON dml_utils_data.migration_run TO dml_utils_caller;
+REVOKE INSERT, UPDATE, DELETE ON dml_utils_data.migration_run FROM dml_utils_caller;
+GRANT SELECT ON dml_utils_data.migration_run TO dml_utils_caller;
 REVOKE ALL ON dml_utils_data.migration_boundary FROM public;
-GRANT SELECT, INSERT, UPDATE, DELETE ON dml_utils_data.migration_boundary TO dml_utils_caller;
+REVOKE INSERT, UPDATE, DELETE ON dml_utils_data.migration_boundary FROM dml_utils_caller;
+GRANT SELECT ON dml_utils_data.migration_boundary TO dml_utils_caller;
 REVOKE ALL ON dml_utils_data.migration_error FROM public;
-GRANT SELECT, INSERT, UPDATE, DELETE ON dml_utils_data.migration_error TO dml_utils_caller;
+REVOKE INSERT, UPDATE, DELETE ON dml_utils_data.migration_error FROM dml_utils_caller;
+GRANT SELECT ON dml_utils_data.migration_error TO dml_utils_caller;
+
+-- Metadata write helpers called by the invoker-owned coordinator/worker.
+-- Note: these are callable by the caller because the same role runs the
+-- invoker-owned SQL; this centralizes writes but is not a hard authorization
+-- boundary against a malicious chunk template.
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.claim_migration_boundary(bigint, bigint)
+    FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.claim_migration_boundary(bigint, bigint)
+    TO dml_utils_caller;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.complete_migration_boundary(bigint, bigint, timestamptz)
+    FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.complete_migration_boundary(bigint, bigint, timestamptz)
+    TO dml_utils_caller;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.complete_migration_run(bigint)
+    FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.complete_migration_run(bigint)
+    TO dml_utils_caller;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.mark_migration_run_cancelled(bigint)
+    FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.mark_migration_run_cancelled(bigint)
+    TO dml_utils_caller;
 
 -- Trigger functions are invoked by the trigger machinery, not by callers, so
 -- revoke PUBLIC EXECUTE and grant it to no one.

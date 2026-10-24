@@ -13,7 +13,8 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.populate_migration_boundaries(
 )
     RETURNS bigint
     LANGUAGE plpgsql
-    SECURITY INVOKER
+    SECURITY DEFINER
+    SET search_path = pg_catalog
 AS
 $$
 DECLARE

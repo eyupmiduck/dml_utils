@@ -235,17 +235,26 @@ full runnable script.
 - `pg_background` must be installed and the caller must hold
   `pgbackground_role` (the custom image's init script grants it to
   `dml_utils_caller`).
-- The routine is `SECURITY INVOKER`: the caller needs whatever privileges the
-  chunk SQL needs on the driving table (typically `UPDATE`).
-- The routines are **not an authorization boundary** by design. A routine runs
-  with the caller's privileges and can do nothing the caller could not do by
-  running its SQL directly, so the routines deliberately do not check the
-  caller's privileges. `dml_utils_caller` is granted exactly the
-  `EXECUTE`/`USAGE`/DML it needs (see `999-grant-privileges.sql`), and
-  `ALTER DEFAULT PRIVILEGES` keeps future objects off `PUBLIC`; security comes
-  from that grant set, not from per-call checks. This also means a helper that
-  executes caller-supplied SQL (such as the internal `process_migration_chunk`)
-  is no more powerful than the caller's own statements.
+- `run_migration_chunks` and `process_migration_chunk` are `SECURITY INVOKER`:
+  the chunk SQL runs with the caller's privileges and needs whatever privileges
+  that SQL needs on the driving table (typically `UPDATE`). The caller role is
+  granted only `USAGE`/`EXECUTE` plus `SELECT` on the migration metadata; grant
+  application-table privileges to the application/login role that runs the
+  migration.
+- Metadata writes are delegated to owner-owned `SECURITY DEFINER` helpers
+  (`claim_migration_boundary`, `complete_migration_boundary`,
+  `complete_migration_run`, `mark_migration_run_cancelled`, and
+  `record_migration_error`) so the invoker-owned worker does not need direct
+  DML on `dml_utils_data`. Those helpers are callable by the caller because the
+  same role runs the invoker-owned SQL; this centralizes writes and prevents
+  accidental direct metadata DML, but it is **not a hard authorization boundary
+  against a malicious template**. Use trusted callers or a parser/template
+  allowlist if the SQL is untrusted.
+- The routines are not an authorization boundary by design. `dml_utils_caller`
+  is granted only the `EXECUTE`/`USAGE`/`SELECT` it needs (see
+  `999-grant-privileges.sql`), and `ALTER DEFAULT PRIVILEGES` keeps future
+  objects off `PUBLIC`; security comes from the grant set and the application
+  role's privileges, not from per-call checks.
 - Run under `READ COMMITTED`, and do not hold locks (or uncommitted writes) on
   the driving table across the call: a worker that needs a row the caller holds
   cannot make progress.
@@ -442,8 +451,11 @@ create its tracking tables and the `dml_utils`, `dml_utils_lib` and
 application schemas and their objects: it is the role enumerated in
 `999-grant-privileges.sql` and in the `ALTER DEFAULT PRIVILEGES` statements, so
 run every migration/upgrade as that same stable role (not a transient admin
-account). `dml_utils_caller` only holds `USAGE`/`EXECUTE`/DML and can never
-`ALTER` or `DROP` an object, so ownership stays separate from the caller grants.
+account). `dml_utils_caller` holds `USAGE`/`EXECUTE` and `SELECT` on the
+migration metadata, but no direct metadata DML, and can never `ALTER` or `DROP`
+an object, so ownership stays separate from the caller grants. The application/
+login role (a member of `dml_utils_caller`) needs the application-table
+privileges the chunk SQL uses.
 Creating objects otherwise (as a different role) leaves them with that role's
 default privileges, which the least-privilege grants do not cover.
 

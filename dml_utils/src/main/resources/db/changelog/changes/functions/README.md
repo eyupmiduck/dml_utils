@@ -18,14 +18,20 @@ Dependencies point downward: `dml_utils_lib` may reference `dml_utils_data`;
 changeset; the matching drop lives in `changes/functions-rollback/`. Every
 routine is `SECURITY INVOKER` unless it genuinely needs `SECURITY DEFINER`.
 
-The routines are intentionally **not an authorization boundary**: a routine runs
-with the caller's privileges and can do nothing the caller could not do by
-running its SQL directly, so no routine checks the caller's privileges. The
-caller role is granted only the `EXECUTE`/`USAGE`/DML it needs (see
-`sql_changes/999-grant-privileges.sql`), and `ALTER DEFAULT PRIVILEGES` keeps
-future objects off `PUBLIC`. A helper that executes caller-supplied SQL (for
-example `dml_utils_lib.process_migration_chunk`) is safe for the same reason — it
-is no more privileged than the caller's own statements, not a sandbox.
+The chunk executor is deliberately `SECURITY INVOKER`: `process_migration_chunk`
+runs caller-supplied SQL with the caller's privileges. Metadata writes are
+delegated to owner-owned `SECURITY DEFINER` helpers (`claim_migration_boundary`,
+`complete_migration_boundary`, `complete_migration_run`,
+`mark_migration_run_cancelled`, and `record_migration_error`), so the worker does
+not need direct DML on `dml_utils_data`. The caller role is granted only
+`EXECUTE`/`USAGE` plus `SELECT` on the migration metadata (see
+`sql_changes/999-grant-privileges.sql`); application-table privileges belong to
+the application/login role.
+
+This is not a hard authorization boundary: the metadata helpers are callable by
+the caller because the invoker-owned worker runs as that same role. It centralizes
+metadata writes and removes direct DML, but a malicious template can still call
+the helpers. Treat raw templates as trusted, or add a parser/template allowlist.
 
 One exception: `dml_utils_lib.migration_key_is_canonical` is loaded earlier, by
 `changes/sql_changes/005-create-migration-key-check.sql`, because the

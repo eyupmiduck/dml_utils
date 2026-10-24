@@ -6,7 +6,8 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.record_migration_error(
 )
     RETURNS void
     LANGUAGE plpgsql
-    SECURITY INVOKER
+    SECURITY DEFINER
+    SET search_path = pg_catalog
 AS
 $$
 BEGIN

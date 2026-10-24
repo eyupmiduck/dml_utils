@@ -9,76 +9,41 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.process_migration_chunk(
 AS
 $$
 DECLARE
-    l_boundary_no bigint;
-    l_started_at  timestamptz;
+    l_started_at timestamptz;
 BEGIN
-    -- Claim the boundary with SELECT ... FOR UPDATE: it locks the row for this
-    -- worker's transaction without writing, so a concurrent claim blocks on the
-    -- lock and, on re-check under READ COMMITTED, finds completed_at set and gets
-    -- no row. The completed_at IS NULL guard makes the claim exclusive, so a
-    -- boundary can be processed only once. Reading rather than updating here is
-    -- what lets the two milestones be written in a single UPDATE below, so a
-    -- boundary row is written once instead of twice.
-    SELECT boundary_no
-    INTO l_boundary_no
-    FROM dml_utils_data.migration_boundary
-    WHERE run_id = i_run_id
-      AND boundary_no = i_boundary_no
-      AND completed_at IS NULL
-      AND cancelled_at IS NULL
-        FOR UPDATE;
-
-    -- No row claimed means the boundary is missing, already completed or
-    -- cancelled.
-    IF l_boundary_no IS NULL THEN
-        RAISE EXCEPTION 'migration boundary % for run % was not found, is already completed or was cancelled',
-            i_boundary_no, i_run_id
-            USING ERRCODE = 'P0002';
-    END IF;
-
-    -- clock_timestamp(), not now(), so started_at is the actual server time the
-    -- chunk began, not the worker transaction's start time.
-    l_started_at := pg_catalog.clock_timestamp();
+    -- Claim the boundary through the owner-owned helper. The helper locks the
+    -- row with SELECT ... FOR UPDATE and retains that lock until this caller's
+    -- transaction ends; a concurrent worker blocks and then finds completed_at
+    -- set under READ COMMITTED. This routine stays SECURITY INVOKER so the chunk
+    -- SQL below runs as the caller; the helper is the only metadata writer.
+    l_started_at := dml_utils_lib.claim_migration_boundary(
+            i_run_id => i_run_id,
+            i_boundary_no => i_boundary_no);
 
     -- The chunk SQL is fully formed by dml_utils_lib.render_chunk_sql from
     -- validated identifiers and literal ids; this is the intended dynamic-SQL
-    -- boundary for running one chunk. The routine is SECURITY INVOKER on purpose:
-    -- it executes with the caller's privileges and can do nothing the caller
-    -- could not do by running the same statement directly, so it is not an
-    -- authorization boundary. Calling it directly with arbitrary SQL is
-    -- therefore no more privileged than the caller's own SQL, and no
-    -- provenance check is needed to keep it safe. If the chunk SQL fails, the
-    -- worker transaction aborts and the claim rolls back -- the boundary is left
-    -- unclaimed so a later run resumes it, and it reports no started_at.
+    -- boundary for running one chunk. Because this function is SECURITY INVOKER,
+    -- the statement runs with the caller's privileges and can do nothing the
+    -- caller could not do by running it directly. If it fails, the worker
+    -- transaction aborts and the claim rolls back, leaving the boundary
+    -- unclaimed for a retry.
     EXECUTE i_sql_text;
 
-    -- Record both milestones in one UPDATE after the chunk succeeds: started_at is
-    -- the claim time captured above and completed_at is stamped now, so it is the
-    -- finish time. The row is locked by the claim above, so no other transaction
-    -- can interleave; completed_at >= started_at, satisfying the time-order check.
-    UPDATE dml_utils_data.migration_boundary
-    SET started_at   = l_started_at,
-        completed_at = pg_catalog.clock_timestamp()
-    WHERE run_id = i_run_id
-      AND boundary_no = i_boundary_no;
-
-    -- Advance the run's completed-chunk counter in the same transaction as the
-    -- boundary completion, so the counter can never drift from the boundaries and
-    -- a failed chunk rolls both back together. The row is locked for the rest of
-    -- this transaction, so a concurrent worker's increment serialises behind it.
-    UPDATE dml_utils_data.migration_run
-    SET total_chunks_completed = total_chunks_completed + 1
-    WHERE run_id = i_run_id;
+    -- Complete the boundary through the owner-owned helper. The row lock from
+    -- claim_migration_boundary is still held, so no other transaction can
+    -- interleave; the helper writes both timestamps and advances the run counter
+    -- in this same transaction.
+    PERFORM dml_utils_lib.complete_migration_boundary(
+            i_run_id => i_run_id,
+            i_boundary_no => i_boundary_no,
+            i_started_at => l_started_at);
 END;
 $$;
 
 COMMENT ON FUNCTION dml_utils_lib.process_migration_chunk IS
-    'Claims one migration boundary (locking the row with SELECT ... FOR UPDATE) '
-        'and runs its chunk SQL in the caller''s transaction, then records '
-        'started_at and completed_at in a single UPDATE and advances the run''s '
-        'total_chunks_completed in that same transaction; raises P0002 when the '
-        'boundary is missing, already completed or cancelled. Both timestamps are '
-        'the actual server time of the event, not the transaction start. Intended '
-        'to run inside a pg_background worker. SECURITY INVOKER by design: it runs '
-        'with the caller''s privileges and is not an authorization boundary, so it '
-        'can do nothing the caller could not do directly.';
+    'Claims one migration boundary through the owner-owned claim helper, runs its '
+        'chunk SQL as the caller, then completes the boundary through the '
+        'owner-owned completion helper; raises P0002 when the boundary is missing, '
+        'already completed or cancelled. The routine is SECURITY INVOKER so the '
+        'chunk SQL runs with the invoker''s privileges; metadata writes are '
+        'delegated to SECURITY DEFINER helpers.';

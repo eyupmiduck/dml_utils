@@ -3,7 +3,8 @@ CREATE OR REPLACE FUNCTION dml_utils.cancel_migration_run(
 )
     RETURNS bigint
     LANGUAGE plpgsql
-    SECURITY INVOKER
+    SECURITY DEFINER
+    SET search_path = pg_catalog
 AS
 $$
 DECLARE

@@ -398,18 +398,8 @@ BEGIN
             -- before the cancel reached it.
             BEGIN
                 PERFORM public.pg_background_run(pg_catalog.format(
-                        'WITH cancelled_run AS (' ||
-                        ' UPDATE dml_utils_data.migration_run' ||
-                        ' SET cancelled_at = COALESCE(cancelled_at, pg_catalog.clock_timestamp())' ||
-                        ' WHERE run_id = %s' ||
-                        ' AND completed_at IS NULL' ||
-                        ' RETURNING run_id)' ||
-                        ' UPDATE dml_utils_data.migration_boundary' ||
-                        ' SET cancelled_at = COALESCE(cancelled_at, pg_catalog.clock_timestamp())' ||
-                        ' WHERE run_id = %s' ||
-                        ' AND completed_at IS NULL' ||
-                        ' AND cancelled_at IS NULL',
-                        l_run_id, l_run_id));
+                        'SELECT dml_utils_lib.mark_migration_run_cancelled(%s)',
+                        l_run_id));
             EXCEPTION
                 WHEN OTHERS THEN
                     NULL;
@@ -450,13 +440,10 @@ BEGIN
     END;
 
     -- All boundaries are claimed and every chunk SQL already ran; record the run
-    -- completion in the caller's transaction. clock_timestamp() so completed_at
-    -- is the actual server time the run finished, not the transaction start.
-    UPDATE dml_utils_data.migration_run
-    SET completed_at = pg_catalog.clock_timestamp()
-    WHERE run_id = l_run_id
-      AND completed_at IS NULL
-      AND cancelled_at IS NULL;
+    -- completion through the owner-owned helper. This routine stays SECURITY
+    -- INVOKER so the worker chunk SQL runs as the caller; only the helper writes
+    -- metadata.
+    PERFORM dml_utils_lib.complete_migration_run(i_run_id => l_run_id);
 END;
 $$;
 
