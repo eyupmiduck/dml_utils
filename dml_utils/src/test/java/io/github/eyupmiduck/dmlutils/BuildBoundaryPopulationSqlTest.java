@@ -34,6 +34,16 @@ class BuildBoundaryPopulationSqlTest extends PostgresTestBase {
         return TEST_BIGINT.getName();
     }
 
+    private static void assertMixed(MigrationBoundaryRecord boundary, long a, String b) {
+        assertEquals(a, boundary.getBoundaryId().getBigintValues()[0].longValue(),
+                "bigint position");
+        assertEquals(b, boundary.getBoundaryId().getTextValues()[1], "text position");
+    }
+
+    private static UUID uuid(int n) {
+        return UUID.fromString("00000000-0000-0000-0000-" + String.format("%012d", n));
+    }
+
     /**
      * Clears the fixture table and the run metadata between tests.
      */
@@ -224,16 +234,6 @@ class BuildBoundaryPopulationSqlTest extends PostgresTestBase {
                 "SELECT dml_utils_lib.build_boundary_population_sql(?, ?, "
                         + columns + ", " + kinds + ", 1, 2)",
                 schema(), name()));
-    }
-
-    private static void assertMixed(MigrationBoundaryRecord boundary, long a, String b) {
-        assertEquals(a, boundary.getBoundaryId().getBigintValues()[0].longValue(),
-                "bigint position");
-        assertEquals(b, boundary.getBoundaryId().getTextValues()[1], "text position");
-    }
-
-    private static UUID uuid(int n) {
-        return UUID.fromString("00000000-0000-0000-0000-" + String.format("%012d", n));
     }
 
     private List<MigrationBoundaryRecord> boundaries(long runId) {

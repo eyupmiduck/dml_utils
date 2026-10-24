@@ -12,20 +12,13 @@ import org.junit.jupiter.api.Test;
 import java.sql.Connection;
 import java.sql.Statement;
 import java.time.OffsetDateTime;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationError.MIGRATION_ERROR;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Exercises coordinator edge cases that the ordinary happy/failure path tests
@@ -178,10 +171,10 @@ class RunMigrationChunksEdgeCasesTest extends PostgresTestBase {
     private void awaitWorkerBlockedOnClaim() throws InterruptedException {
         for (int attempt = 0; attempt < 200; attempt++) {
             Integer blocked = dsl.fetchOne(
-                    "SELECT count(*)::int FROM pg_catalog.pg_stat_activity"
-                            + " WHERE pid <> pg_backend_pid()"
-                            + " AND wait_event_type = 'Lock'"
-                            + " AND query LIKE '%dml_utils_lib.process_migration_chunk%'")
+                            "SELECT count(*)::int FROM pg_catalog.pg_stat_activity"
+                                    + " WHERE pid <> pg_backend_pid()"
+                                    + " AND wait_event_type = 'Lock'"
+                                    + " AND query LIKE '%dml_utils_lib.process_migration_chunk%'")
                     .get(0, Integer.class);
             if (blocked != null && blocked > 0) {
                 return;
