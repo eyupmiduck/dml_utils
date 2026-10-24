@@ -424,6 +424,19 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
     }
 
     /**
+     * A NULL chunking strategy is rejected before a run is created.
+     */
+    @Test
+    void rejectsANullChunkingStrategy() {
+        createSource(1, 2, 3);
+
+        assertSqlState("22023", () -> io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines
+                .populateMigrationBoundaries(dsl.configuration(),
+                        TEST_BIGINT.getSchema().getName(), TEST_BIGINT.getName(),
+                        LABEL + "-" + ++labelCounter, SQL_TEXT, 2, 1, null, "t", 0));
+    }
+
+    /**
      * Builds the ordered uuid used for source key {@code n}.
      */
     private UUID uuid(int n) {
