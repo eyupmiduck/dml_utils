@@ -35,8 +35,10 @@ jobs:
       postgres-version: postgres:17-alpine
       project: dml_utils
       # The reusable workflows' setup-java only writes the `github` server;
-      # this file adds the second `github-ddl-utils` server.
-      maven-command: ./mvnw --batch-mode -s .github/scripts/settings.xml clean deploy
+      # this file adds the second `github-ddl-utils` server. The release script
+      # retries the known jOOQ-codegen/PostgreSQL startup race and defers
+      # deployment until the reactor builds; see maven-release-retry.sh.
+      maven-command: ./.github/scripts/maven-release-retry.sh
       # After the release, open a PR bumping the POM's <revision> to the next
       # patch snapshot. The PR is opened with RELEASE_TOKEN (a PAT/App token),
       # because GITHUB_TOKEN-opened PRs do not trigger the required checks.
