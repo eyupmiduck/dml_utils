@@ -241,8 +241,8 @@ full runnable script.
   granted only `USAGE`/`EXECUTE` plus `SELECT` on the migration metadata; grant
   application-table privileges to the application/login role that runs the
   migration.
-- Metadata writes are delegated to owner-owned `SECURITY DEFINER` helpers
-  (`claim_migration_boundary`, `complete_migration_boundary`,
+- Metadata writes are delegated to owner-owned `SECURITY DEFINER` helpers (`claim_migration_boundary`,
+  `complete_migration_boundary`,
   `complete_migration_run`, `mark_migration_run_cancelled`, and
   `record_migration_error`) so the invoker-owned worker does not need direct
   DML on `dml_utils_data`. Those helpers are callable by the caller because the
