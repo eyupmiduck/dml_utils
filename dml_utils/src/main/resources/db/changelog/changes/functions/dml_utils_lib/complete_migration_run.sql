@@ -14,10 +14,12 @@ BEGIN
     SET completed_at = pg_catalog.clock_timestamp()
     WHERE run_id = i_run_id
       AND completed_at IS NULL
-      AND cancelled_at IS NULL;
+      AND cancelled_at IS NULL
+      AND total_chunks_completed >= total_chunks;
 END;
 $$;
 
 COMMENT ON FUNCTION dml_utils_lib.complete_migration_run IS
-    'Marks a run complete when all its chunks have been claimed. SECURITY DEFINER '
-        'so the invoker-owned coordinator does not need metadata write privileges.';
+    'Marks a run complete only when completed chunks cover total_chunks. '
+        'SECURITY DEFINER so the invoker-owned coordinator does not need metadata '
+        'write privileges.';

@@ -250,6 +250,11 @@ full runnable script.
   accidental direct metadata DML, but it is **not a hard authorization boundary
   against a malicious template**. Use trusted callers or a parser/template
   allowlist if the SQL is untrusted.
+- `populate_migration_boundaries` is owner-owned so it can write metadata, but
+  it explicitly checks the caller's `SELECT` privilege on the driving table
+  before scanning it. The owner role must also be able to `SELECT` the driving
+  table (grant it if the application owns that table); the caller check prevents
+  using the definer context to read a table the caller cannot read directly.
 - The routines are not an authorization boundary by design. `dml_utils_caller`
   is granted only the `EXECUTE`/`USAGE`/`SELECT` it needs (see
   `999-grant-privileges.sql`), and `ALTER DEFAULT PRIVILEGES` keeps future

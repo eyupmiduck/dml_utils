@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Exercises coordinator edge cases that the ordinary happy/failure path tests
- * do not reach: a boundary claimed by another coordinator (P0002), a failure to
+ * do not reach: a boundary claimed by another coordinator (P0C01), a failure to
  * record a chunk error, and an unexpected coordinator-side render error while a
  * worker is in flight.
  */
@@ -51,13 +51,13 @@ class RunMigrationChunksEdgeCasesTest extends PostgresTestBase {
 
     /**
      * A boundary that another coordinator has claimed while this coordinator was
-     * launching it produces a worker P0002. That is benign: the coordinator must
+     * launching it produces a worker P0C01. That is benign: the coordinator must
      * continue to the next boundary, record no error, and complete the run.
      *
      * <p>The test holds a row lock on the first boundary before starting the
      * coordinator, so the launched worker blocks while the other session finishes
      * the boundary. Releasing the lock makes the worker re-check the row under
-     * READ COMMITTED and see {@code completed_at}, which is the real P0002 race.
+     * READ COMMITTED and see {@code completed_at}, which is the real claim race.
      */
     @Test
     void treatsABoundaryClaimedByAnotherCoordinatorAsBenign() throws Exception {
@@ -84,7 +84,7 @@ class RunMigrationChunksEdgeCasesTest extends PostgresTestBase {
             pool.awaitTermination(30, TimeUnit.SECONDS);
         }
 
-        assertTrue(runCompleted(runId), "the P0002 claim is benign and the run should complete");
+        assertTrue(runCompleted(runId), "the claim is benign and the run should complete");
         assertEquals(0, dsl.fetchCount(MIGRATION_ERROR, MIGRATION_ERROR.RUN_ID.eq(runId)),
                 "the benign claim must not be recorded as an error");
         assertEquals(3, completedBoundaries(runId),

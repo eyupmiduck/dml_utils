@@ -43,7 +43,7 @@ $$;
 COMMENT ON FUNCTION dml_utils_lib.process_migration_chunk IS
     'Claims one migration boundary through the owner-owned claim helper, runs its '
         'chunk SQL as the caller, then completes the boundary through the '
-        'owner-owned completion helper; raises P0002 when the boundary is missing, '
+        'owner-owned completion helper; raises P0C01 when the boundary is missing, '
         'already completed or cancelled. The routine is SECURITY INVOKER so the '
         'chunk SQL runs with the invoker''s privileges; metadata writes are '
         'delegated to SECURITY DEFINER helpers.';

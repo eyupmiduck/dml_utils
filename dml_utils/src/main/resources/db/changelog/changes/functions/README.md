@@ -778,10 +778,11 @@ i_sleep_ms    dml_utils_data.non_negative_integer DEFAULT 0
 RETURNS bigint
 ```
 
-`SECURITY INVOKER`. Creates a `dml_utils_data.migration_run` row for the label,
-with the recorded SQL text, chunk size, strategy, threads, per-chunk sleep,
-driving table and driving table alias (storing the alias and sleep at creation
-so a resume uses the same values), records the run's `started_at` (the run start, when the calculation begins), then
+`SECURITY DEFINER`, with a pinned `search_path`. Creates a
+`dml_utils_data.migration_run` row for the label, with the recorded SQL text,
+chunk size, strategy, threads, per-chunk sleep, driving table and driving table
+alias (storing the alias and sleep at creation so a resume uses the same values),
+records the run's `started_at` (the run start, when the calculation begins), then
 populates the boundaries for the strategy and records `boundaries_calculated_at`
 (when the range calculation finishes) and `total_chunks` (the boundary count minus
 the terminal high-water boundary, clamped to 0 for an empty source); returns the
@@ -807,7 +808,9 @@ an active (not archived) run already exists for the label. The
 `migration_boundary` rows are inserted with their own `started_at` and
 `completed_at` null. An empty source produces a run with no boundaries. Later
 inserts above the captured maximum fall outside the terminal boundary and are not
-processed.
+processed. Because the definer owner scans the driving table, the function checks
+the effective caller's `SELECT` privilege first (`42501` otherwise) and the owner
+must also be able to read that table.
 
 ###
 
@@ -984,18 +987,17 @@ i_sql_text    dml_utils_data.non_null_text
 RETURNS void
 ```
 
-`SECURITY INVOKER`. Claims one boundary by setting its `started_at` (an atomic
-`UPDATE ... RETURNING` that locks the row for the caller's transaction), runs
-the fully-formed chunk SQL, then sets its `completed_at` and advances the run's
-`total_chunks_completed` in that same transaction, so the counter cannot drift
-from the completed boundaries. Both timestamps are the
-actual server time of the event (`clock_timestamp()`), not the transaction start.
-Raises `no_data_found` (`P0002`) when the boundary does not exist, is already
-completed or was cancelled. If the chunk SQL fails, the transaction aborts and the claim rolls
-back — including `started_at` — so the chunk is retried on the next run. A
-boundary therefore reports `started_at` only for a chunk that actually
-completed; this is intended. Intended to run inside a `pg_background` worker,
-one call per chunk.
+`SECURITY INVOKER` for the chunk SQL. Claims one boundary through the
+owner-owned `claim_migration_boundary` helper (which locks the row for the
+caller's transaction and returns the claim timestamp), runs the fully-formed
+chunk SQL as the caller, then completes the boundary through the owner-owned
+`complete_migration_boundary` helper, which writes both timestamps and advances
+the run's `total_chunks_completed` in that same transaction. Raises
+`P0C01` when the boundary does not exist, is already completed or was cancelled.
+If the chunk SQL fails, the transaction aborts and the claim rolls back —
+including `started_at` — so the chunk is retried on the next run. A boundary
+therefore reports `started_at` only for a chunk that actually completed; this is
+intended. Intended to run inside a `pg_background` worker, one call per chunk.
 
 ### `dml_utils_lib.record_migration_error(i_run_id, i_boundary_no, i_sqlstate, i_message)`
 

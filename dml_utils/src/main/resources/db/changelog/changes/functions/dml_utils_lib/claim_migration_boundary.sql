@@ -24,9 +24,13 @@ BEGIN
         FOR UPDATE;
 
     IF l_boundary_no IS NULL THEN
+        -- P0C01 is the claim protocol's dedicated no-row code. It must not be
+        -- P0002: a P0002 raised by the user's chunk SQL would otherwise be
+        -- mistaken by run_migration_chunks for a benign concurrent claim and
+        -- retried forever.
         RAISE EXCEPTION 'migration boundary % for run % was not found, is already completed or was cancelled',
             i_boundary_no, i_run_id
-            USING ERRCODE = 'P0002';
+            USING ERRCODE = 'P0C01';
     END IF;
 
     -- The coordinator records this as started_at only after the chunk succeeds.
