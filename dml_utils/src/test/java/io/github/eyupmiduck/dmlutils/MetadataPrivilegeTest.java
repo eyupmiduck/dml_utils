@@ -36,6 +36,14 @@ class MetadataPrivilegeTest extends PostgresTestBase {
         }
     }
 
+    private static String schema(org.jooq.Table<?> table) {
+        return table.getSchema().getName();
+    }
+
+    private static String name(org.jooq.Table<?> table) {
+        return table.getName();
+    }
+
     @BeforeEach
     void resetFixtures() {
         dsl.deleteFrom(MIGRATION_RUN).execute();
@@ -265,14 +273,6 @@ class MetadataPrivilegeTest extends PostgresTestBase {
                 .from(MIGRATION_RUN)
                 .where(MIGRATION_RUN.RUN_ID.eq(runId))
                 .fetchOne(MIGRATION_RUN.TOTAL_CHUNKS_COMPLETED);
-    }
-
-    private static String schema(org.jooq.Table<?> table) {
-        return table.getSchema().getName();
-    }
-
-    private static String name(org.jooq.Table<?> table) {
-        return table.getName();
     }
 
     private long runId(String label) {

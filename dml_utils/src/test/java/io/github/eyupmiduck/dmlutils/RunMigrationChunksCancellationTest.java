@@ -51,6 +51,12 @@ class RunMigrationChunksCancellationTest extends PostgresTestBase {
         return table.getName();
     }
 
+    private static void setRole(Connection connection, String role) throws SQLException {
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("SET ROLE " + role);
+        }
+    }
+
     /**
      * Clears the fixture table and the migration metadata so each test starts
      * clean.
@@ -141,12 +147,6 @@ class RunMigrationChunksCancellationTest extends PostgresTestBase {
                         MIGRATION_BOUNDARY.RUN_ID.eq(runId)
                                 .and(MIGRATION_BOUNDARY.CANCELLED_AT.isNull())),
                 "the remaining boundaries are marked cancelled");
-    }
-
-    private static void setRole(Connection connection, String role) throws SQLException {
-        try (Statement statement = connection.createStatement()) {
-            statement.execute("SET ROLE " + role);
-        }
     }
 
     /**

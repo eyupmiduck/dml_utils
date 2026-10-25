@@ -26,11 +26,10 @@ BEGIN
     -- completed_at wins for a chunk that finished before cancellation reached
     -- it. A completed run is left untouched, so it cannot acquire cancelled
     -- boundaries after the fact.
-    IF NOT EXISTS (
-        SELECT 1
-        FROM dml_utils_data.migration_run AS r
-        WHERE r.run_id = i_run_id
-          AND r.completed_at IS NULL)
+    IF NOT EXISTS (SELECT 1
+                   FROM dml_utils_data.migration_run AS r
+                   WHERE r.run_id = i_run_id
+                     AND r.completed_at IS NULL)
     THEN
         RETURN;
     END IF;
