@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
@@ -48,6 +49,12 @@ class RunMigrationChunksCancellationTest extends PostgresTestBase {
 
     private static String name(Table<?> table) {
         return table.getName();
+    }
+
+    private static void setRole(Connection connection, String role) throws SQLException {
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("SET ROLE " + role);
+        }
     }
 
     /**
@@ -95,6 +102,47 @@ class RunMigrationChunksCancellationTest extends PostgresTestBase {
                         MIGRATION_BOUNDARY.RUN_ID.eq(runId)
                                 .and(MIGRATION_BOUNDARY.COMPLETED_AT.isNotNull())),
                 "an in-flight chunk is cancelled, not completed");
+        assertEquals(0, dsl.fetchCount(MIGRATION_BOUNDARY,
+                        MIGRATION_BOUNDARY.RUN_ID.eq(runId)
+                                .and(MIGRATION_BOUNDARY.CANCELLED_AT.isNull())),
+                "the remaining boundaries are marked cancelled");
+    }
+
+    /**
+     * The caller role can cancel an in-flight run even though it has only
+     * SELECT on the metadata tables; the owner-owned cancellation helper writes
+     * the marks.
+     */
+    @Test
+    void callerCanCancelAnInFlightRun() throws Exception {
+        seedBigint(1, 2, 3, 4, 5, 6);
+        String label = uniqueLabel("cancel-caller");
+
+        CompletableFuture<Void> run = CompletableFuture.runAsync(() -> {
+            try (Connection connection = openTestConnection()) {
+                setRole(connection, "dml_utils_caller");
+                DSLContext caller = DSL.using(connection, SQLDialect.POSTGRES);
+                Routines.runMigrationChunks(caller.configuration(), SLOW_TEMPLATE,
+                        schema(TEST_BIGINT), name(TEST_BIGINT), label, 2, 1, "t",
+                        ChunkingStrategy.primary_key, 1, 0);
+            } catch (Exception error) {
+                throw new CompletionException(error);
+            }
+        });
+
+        long runId = awaitChunkInFlight(label);
+        try (Connection connection = openTestConnection()) {
+            setRole(connection, "dml_utils_caller");
+            DSLContext caller = DSL.using(connection, SQLDialect.POSTGRES);
+            assertEquals(runId, Routines.cancelMigrationRun(caller.configuration(), label));
+        }
+
+        run.get(30, TimeUnit.SECONDS);
+
+        MigrationRunRecord record = dsl.selectFrom(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne();
+        assertNotNull(record.getCancelledAt(), "the run is cancelled");
         assertEquals(0, dsl.fetchCount(MIGRATION_BOUNDARY,
                         MIGRATION_BOUNDARY.RUN_ID.eq(runId)
                                 .and(MIGRATION_BOUNDARY.CANCELLED_AT.isNull())),

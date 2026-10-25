@@ -13,7 +13,8 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.populate_migration_boundaries(
 )
     RETURNS bigint
     LANGUAGE plpgsql
-    SECURITY INVOKER
+    SECURITY DEFINER
+    SET search_path = pg_catalog
 AS
 $$
 DECLARE
@@ -21,6 +22,7 @@ DECLARE
     l_key_kinds           text[];
     l_relation_filepath   text;
     l_run_id              bigint;
+    l_caller              name;
 BEGIN
     IF i_chunk_by IS NULL THEN
         RAISE EXCEPTION 'i_chunk_by must not be NULL'
@@ -31,6 +33,24 @@ BEGIN
     PERFORM dml_utils_lib.assert_table_exists(
             i_schema_name => i_schema_name,
             i_table_name => i_table_name);
+
+    -- This function is SECURITY DEFINER so the boundary INSERT/UPDATE can run as
+    -- the owner, but the driving-table scan must still be authorized by the
+    -- caller. Recover the effective caller from SET ROLE and check its SELECT
+    -- privilege before reading the table, so a caller cannot use the definer
+    -- context to read a table it could not read directly.
+    l_caller := COALESCE(NULLIF(pg_catalog.current_setting('role', true), 'none'),
+                         session_user)::name;
+    IF NOT pg_catalog.has_table_privilege(
+            l_caller,
+            pg_catalog.format('%I.%I', i_schema_name, i_table_name),
+            'SELECT')
+    THEN
+        RAISE EXCEPTION 'caller lacks SELECT privilege on table %.%',
+            i_schema_name, i_table_name
+            USING ERRCODE = '42501';
+    END IF;
+
     PERFORM dml_utils_lib.assert_no_active_run_for_label(i_label => i_label);
 
     -- A primary-key run reads the key columns and kinds; a block run instead

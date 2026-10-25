@@ -294,6 +294,46 @@
         </rollback>
     </changeSet>
 
+    <changeSet id="function-dml_utils_lib.claim_migration_boundary" author="lee.horner"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils_lib/claim_migration_boundary.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils_lib/claim_migration_boundary-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="function-dml_utils_lib.complete_migration_boundary" author="lee.horner"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils_lib/complete_migration_boundary.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils_lib/complete_migration_boundary-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="function-dml_utils_lib.complete_migration_run" author="lee.horner"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils_lib/complete_migration_run.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils_lib/complete_migration_run-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="function-dml_utils_lib.mark_migration_run_cancelled" author="lee.horner"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils_lib/mark_migration_run_cancelled.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils_lib/mark_migration_run_cancelled-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
     <changeSet id="function-dml_utils.run_migration_chunks" author="lee.horner"
                dbms="postgresql" runOnChange="true">
         <createProcedure path="functions/dml_utils/run_migration_chunks.sql"

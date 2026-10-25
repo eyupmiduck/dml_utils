@@ -27,6 +27,23 @@ REVOKE SELECT, INSERT, UPDATE, DELETE ON dml_utils_data.migration_error FROM dml
 GRANT EXECUTE ON FUNCTION dml_utils_data.set_updated_at() TO public;
 GRANT EXECUTE ON FUNCTION dml_utils_data.reject_migration_run_update() TO public;
 GRANT EXECUTE ON FUNCTION dml_utils_data.reject_migration_boundary_update() TO public;
+
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.claim_migration_boundary(bigint, bigint)
+    FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.claim_migration_boundary(bigint, bigint)
+    TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.complete_migration_boundary(bigint, bigint, timestamptz)
+    FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.complete_migration_boundary(bigint, bigint, timestamptz)
+    TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.complete_migration_run(bigint)
+    FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.complete_migration_run(bigint)
+    TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.mark_migration_run_cancelled(bigint)
+    FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.mark_migration_run_cancelled(bigint)
+    TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_schema_exists(
     dml_utils_data.non_null_text
     ) FROM dml_utils_caller;

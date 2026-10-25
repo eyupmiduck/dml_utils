@@ -27,55 +27,55 @@ trigger; the test does not call it by name. Test-class names are from
 
 ## Routine matrix
 
-| Schema | Routine | Branches* | Test evidence |
-|---|---|---:|---|
-| `dml_utils` | `archive_migration_run` | 2 | MigrationMaintenanceTest |
-| `dml_utils` | `cancel_migration_run` | 5 | CancelMigrationRunTest |
-| `dml_utils` | `delete_archived_migration_runs` | 0 | MigrationMaintenanceTest (overload 1) |
-| `dml_utils` | `delete_archived_migration_runs` | 0 | MigrationMaintenanceTest (overload 2) |
-| `dml_utils` | `explain_function_over_table` | 2 | ExplainFunctionOverTableTest |
-| `dml_utils` | `explain_function_over_table_chunk` | 0 | ExplainFunctionOverTableTest |
-| `dml_utils` | `explain_migration_chunk` | 0 | ExplainMigrationChunksTest |
-| `dml_utils` | `explain_migration_chunks` | 2 | ExplainMigrationChunksTest |
-| `dml_utils` | `migration_boundaries` | 0 | MigrationMaintenanceTest |
-| `dml_utils` | `migration_errors` | 0 | MigrationMaintenanceTest |
-| `dml_utils` | `migration_run_summary` | 0 | MigrationMaintenanceTest |
-| `dml_utils` | `run_function_over_table` | 7 | RunFunctionOverTableTest; LiquibaseUpgradeTest |
-| `dml_utils` | `run_migration_chunks` | 71 | RunMigrationChunksTest; RunMigrationChunksBlockTest; RunMigrationChunksCancellationTest; RunMigrationChunksEdgeCasesTest; RunFunctionOverTableTest (indirect); LiquibaseUpgradeTest |
-| `dml_utils` | `set_migration_run_function` | 3 | RunFunctionOverTableTest |
-| `dml_utils` | `set_migration_run_sleep_ms` | 3 | RunMigrationChunksTest; MigrationTablesTest |
-| `dml_utils` | `set_migration_run_sql_text` | 3 | RunMigrationChunksTest |
-| `dml_utils` | `set_migration_run_threads` | 3 | RunMigrationChunksTest |
-| `dml_utils_data` | `reject_migration_boundary_update` | 7 | MigrationTablesTest; MigrationBoundaryValidationTest (indirect trigger) |
-| `dml_utils_data` | `reject_migration_run_update` | 10 | MigrationTablesTest (indirect trigger) |
-| `dml_utils_data` | `set_updated_at` | 0 | MigrationTablesTest |
-| `dml_utils_lib` | `assert_chunking_template` | 6 | RenderChunkSqlTest |
-| `dml_utils_lib` | `assert_no_active_run_for_label` | 4 | AssertNoActiveRunForLabelTest |
-| `dml_utils_lib` | `assert_plain_heap` | 8 | AssertPlainHeapTest |
-| `dml_utils_lib` | `assert_relation_filepath` | 7 | RelationFilepathTest |
-| `dml_utils_lib` | `assert_schema_exists` | 4 | AssertSchemaExistsTest |
-| `dml_utils_lib` | `assert_table_exists` | 4 | AssertTableExistsTest |
-| `dml_utils_lib` | `build_block_boundary_population_sql` | 3 | BuildBlockBoundaryPopulationSqlTest; RunMigrationChunksBlockTest (indirect) |
-| `dml_utils_lib` | `build_boundary_population_sql` | 31 | BuildBoundaryPopulationSqlTest; PopulateMigrationBoundariesTest (indirect) |
-| `dml_utils_lib` | `build_function_chunk_template` | 16 | RunFunctionOverTableTest (direct + validation) |
-| `dml_utils_lib` | `explain_chunk_plan` | 3 | ExplainChunkPlansTest |
-| `dml_utils_lib` | `explain_chunk_plans` | 6 | ExplainChunkPlansTest |
-| `dml_utils_lib` | `explain_query_plan` | 3 | ExplainQueryPlanTest |
-| `dml_utils_lib` | `migration_key_pair_values` | 14 | MigrationKeyPairValuesTest |
-| `dml_utils_lib` | `migration_key_values` | 13 | MigrationBoundaryValidationTest |
-| `dml_utils_lib` | `populate_migration_boundaries` | 9 | PopulateMigrationBoundariesTest; MigrationBoundaryValidationTest; RunMigrationChunksBlockTest (indirect) |
-| `dml_utils_lib` | `prepare_chunk_sql_render` | 20 | PrepareChunkSqlRenderTest; RenderChunkSqlTest |
-| `dml_utils_lib` | `primary_key_attributes` | 10 | PrimaryKeyAttributesTest |
-| `dml_utils_lib` | `primary_key_columns` | 10 | MigrationBoundaryValidationTest |
-| `dml_utils_lib` | `primary_key_kinds` | 5 | MigrationBoundaryValidationTest |
-| `dml_utils_lib` | `process_migration_chunk` | 5 | ProcessMigrationChunkTest; RunMigrationChunksTest |
-| `dml_utils_lib` | `record_migration_error` | 0 | MigrationErrorTest |
-| `dml_utils_lib` | `relation_filepath` | 6 | RelationFilepathTest |
-| `dml_utils_lib` | `render_block_chunk_sql` | 12 | RenderBlockChunkSqlTest |
-| `dml_utils_lib` | `render_chunk_sql` | 0 | RenderChunkSqlTest |
-| `dml_utils_lib` | `render_prepared_chunk_sql` | 80 | RenderPreparedChunkSqlTest; RenderChunkSqlTest |
-| `dml_utils_lib` | `resolve_migration_run` | 34 | ResolveMigrationRunTest; RunMigrationChunksTest; RunMigrationChunksBlockTest; LiquibaseUpgradeTest |
-| `dml_utils_lib` | `synthetic_chunk_boundary_values` | 13 | SyntheticChunkBoundaryValuesTest |
+| Schema           | Routine                               | Branches* | Test evidence                                                                                                                                                                       |
+|------------------|---------------------------------------|----------:|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `dml_utils`      | `archive_migration_run`               |         2 | MigrationMaintenanceTest                                                                                                                                                            |
+| `dml_utils`      | `cancel_migration_run`                |         5 | CancelMigrationRunTest                                                                                                                                                              |
+| `dml_utils`      | `delete_archived_migration_runs`      |         0 | MigrationMaintenanceTest (overload 1)                                                                                                                                               |
+| `dml_utils`      | `delete_archived_migration_runs`      |         0 | MigrationMaintenanceTest (overload 2)                                                                                                                                               |
+| `dml_utils`      | `explain_function_over_table`         |         2 | ExplainFunctionOverTableTest                                                                                                                                                        |
+| `dml_utils`      | `explain_function_over_table_chunk`   |         0 | ExplainFunctionOverTableTest                                                                                                                                                        |
+| `dml_utils`      | `explain_migration_chunk`             |         0 | ExplainMigrationChunksTest                                                                                                                                                          |
+| `dml_utils`      | `explain_migration_chunks`            |         2 | ExplainMigrationChunksTest                                                                                                                                                          |
+| `dml_utils`      | `migration_boundaries`                |         0 | MigrationMaintenanceTest                                                                                                                                                            |
+| `dml_utils`      | `migration_errors`                    |         0 | MigrationMaintenanceTest                                                                                                                                                            |
+| `dml_utils`      | `migration_run_summary`               |         0 | MigrationMaintenanceTest                                                                                                                                                            |
+| `dml_utils`      | `run_function_over_table`             |         7 | RunFunctionOverTableTest; LiquibaseUpgradeTest                                                                                                                                      |
+| `dml_utils`      | `run_migration_chunks`                |        71 | RunMigrationChunksTest; RunMigrationChunksBlockTest; RunMigrationChunksCancellationTest; RunMigrationChunksEdgeCasesTest; RunFunctionOverTableTest (indirect); LiquibaseUpgradeTest |
+| `dml_utils`      | `set_migration_run_function`          |         3 | RunFunctionOverTableTest                                                                                                                                                            |
+| `dml_utils`      | `set_migration_run_sleep_ms`          |         3 | RunMigrationChunksTest; MigrationTablesTest                                                                                                                                         |
+| `dml_utils`      | `set_migration_run_sql_text`          |         3 | RunMigrationChunksTest                                                                                                                                                              |
+| `dml_utils`      | `set_migration_run_threads`           |         3 | RunMigrationChunksTest                                                                                                                                                              |
+| `dml_utils_data` | `reject_migration_boundary_update`    |         7 | MigrationTablesTest; MigrationBoundaryValidationTest (indirect trigger)                                                                                                             |
+| `dml_utils_data` | `reject_migration_run_update`         |        10 | MigrationTablesTest (indirect trigger)                                                                                                                                              |
+| `dml_utils_data` | `set_updated_at`                      |         0 | MigrationTablesTest                                                                                                                                                                 |
+| `dml_utils_lib`  | `assert_chunking_template`            |         6 | RenderChunkSqlTest                                                                                                                                                                  |
+| `dml_utils_lib`  | `assert_no_active_run_for_label`      |         4 | AssertNoActiveRunForLabelTest                                                                                                                                                       |
+| `dml_utils_lib`  | `assert_plain_heap`                   |         8 | AssertPlainHeapTest                                                                                                                                                                 |
+| `dml_utils_lib`  | `assert_relation_filepath`            |         7 | RelationFilepathTest                                                                                                                                                                |
+| `dml_utils_lib`  | `assert_schema_exists`                |         4 | AssertSchemaExistsTest                                                                                                                                                              |
+| `dml_utils_lib`  | `assert_table_exists`                 |         4 | AssertTableExistsTest                                                                                                                                                               |
+| `dml_utils_lib`  | `build_block_boundary_population_sql` |         3 | BuildBlockBoundaryPopulationSqlTest; RunMigrationChunksBlockTest (indirect)                                                                                                         |
+| `dml_utils_lib`  | `build_boundary_population_sql`       |        31 | BuildBoundaryPopulationSqlTest; PopulateMigrationBoundariesTest (indirect)                                                                                                          |
+| `dml_utils_lib`  | `build_function_chunk_template`       |        16 | RunFunctionOverTableTest (direct + validation)                                                                                                                                      |
+| `dml_utils_lib`  | `explain_chunk_plan`                  |         3 | ExplainChunkPlansTest                                                                                                                                                               |
+| `dml_utils_lib`  | `explain_chunk_plans`                 |         6 | ExplainChunkPlansTest                                                                                                                                                               |
+| `dml_utils_lib`  | `explain_query_plan`                  |         3 | ExplainQueryPlanTest                                                                                                                                                                |
+| `dml_utils_lib`  | `migration_key_pair_values`           |        14 | MigrationKeyPairValuesTest                                                                                                                                                          |
+| `dml_utils_lib`  | `migration_key_values`                |        13 | MigrationBoundaryValidationTest                                                                                                                                                     |
+| `dml_utils_lib`  | `populate_migration_boundaries`       |         9 | PopulateMigrationBoundariesTest; MigrationBoundaryValidationTest; RunMigrationChunksBlockTest (indirect)                                                                            |
+| `dml_utils_lib`  | `prepare_chunk_sql_render`            |        20 | PrepareChunkSqlRenderTest; RenderChunkSqlTest                                                                                                                                       |
+| `dml_utils_lib`  | `primary_key_attributes`              |        10 | PrimaryKeyAttributesTest                                                                                                                                                            |
+| `dml_utils_lib`  | `primary_key_columns`                 |        10 | MigrationBoundaryValidationTest                                                                                                                                                     |
+| `dml_utils_lib`  | `primary_key_kinds`                   |         5 | MigrationBoundaryValidationTest                                                                                                                                                     |
+| `dml_utils_lib`  | `process_migration_chunk`             |         5 | ProcessMigrationChunkTest; RunMigrationChunksTest                                                                                                                                   |
+| `dml_utils_lib`  | `record_migration_error`              |         0 | MigrationErrorTest                                                                                                                                                                  |
+| `dml_utils_lib`  | `relation_filepath`                   |         6 | RelationFilepathTest                                                                                                                                                                |
+| `dml_utils_lib`  | `render_block_chunk_sql`              |        12 | RenderBlockChunkSqlTest                                                                                                                                                             |
+| `dml_utils_lib`  | `render_chunk_sql`                    |         0 | RenderChunkSqlTest                                                                                                                                                                  |
+| `dml_utils_lib`  | `render_prepared_chunk_sql`           |        80 | RenderPreparedChunkSqlTest; RenderChunkSqlTest                                                                                                                                      |
+| `dml_utils_lib`  | `resolve_migration_run`               |        34 | ResolveMigrationRunTest; RunMigrationChunksTest; RunMigrationChunksBlockTest; LiquibaseUpgradeTest                                                                                  |
+| `dml_utils_lib`  | `synthetic_chunk_boundary_values`     |        13 | SyntheticChunkBoundaryValuesTest                                                                                                                                                    |
 
 ## Gaps closed by the new tests
 

@@ -11,9 +11,11 @@ import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 import java.util.concurrent.*;
 
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
 import static org.junit.jupiter.api.Assertions.*;
@@ -21,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Verifies {@code dml_utils_lib.process_migration_chunk}: it claims a boundary,
  * runs the supplied chunk SQL, and records completion, and raises
- * {@code P0002} for a missing or already-completed boundary.
+ * {@code P0C01} for a missing or already-completed boundary.
  */
 class ProcessMigrationChunkTest extends PostgresTestBase {
 
@@ -94,18 +96,18 @@ class ProcessMigrationChunkTest extends PostgresTestBase {
     }
 
     /**
-     * An unknown boundary raises {@code P0002}.
+     * An unknown boundary raises {@code P0C01}.
      */
     @Test
     void rejectsMissingBoundary() {
         createSource(1, 2, 3);
         long runId = populate(2);
 
-        assertSqlState("P0002", () -> processChunk(runId, 999, "SELECT 1"));
+        assertSqlState("P0C01", () -> processChunk(runId, 999, "SELECT 1"));
     }
 
     /**
-     * An already-completed boundary raises {@code P0002} and does not run the
+     * An already-completed boundary raises {@code P0C01} and does not run the
      * SQL again.
      */
     @Test
@@ -116,14 +118,30 @@ class ProcessMigrationChunkTest extends PostgresTestBase {
         processChunk(runId, 0, "UPDATE " + qualified(TEST_BIGINT)
                 + " SET payload = 'done' WHERE id >= 1 AND id < 3");
 
-        assertSqlState("P0002", () -> processChunk(runId, 0, "UPDATE " + qualified(TEST_BIGINT)
+        assertSqlState("P0C01", () -> processChunk(runId, 0, "UPDATE " + qualified(TEST_BIGINT)
                 + " SET payload = 'again' WHERE id >= 1 AND id < 3"));
         assertEquals(2, payloadCount(), "the second call must not run the SQL");
     }
 
     /**
+     * A cancelled boundary also raises {@code P0C01} and is not executed.
+     */
+    @Test
+    void rejectsCancelledBoundary() {
+        createSource(1, 2, 3, 4);
+        long runId = populate(2);
+        dsl.update(MIGRATION_BOUNDARY)
+                .set(MIGRATION_BOUNDARY.CANCELLED_AT, OffsetDateTime.now())
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(0L))
+                .execute();
+
+        assertSqlState("P0C01", () -> processChunk(runId, 0, "SELECT 1"));
+    }
+
+    /**
      * Two concurrent claims for the same boundary: the atomic claim lets exactly
-     * one caller run the chunk SQL, and the other receives {@code P0002} without
+     * one caller run the chunk SQL, and the other receives {@code P0C01} without
      * running it.
      */
     @Test
@@ -148,7 +166,7 @@ class ProcessMigrationChunkTest extends PostgresTestBase {
                                 context.configuration(), runId, 0L, sql);
                         return true;
                     } catch (DataAccessException e) {
-                        if ("P0002".equals(sqlStateOf(e))) {
+                        if ("P0C01".equals(sqlStateOf(e))) {
                             return false;
                         }
                         throw e;

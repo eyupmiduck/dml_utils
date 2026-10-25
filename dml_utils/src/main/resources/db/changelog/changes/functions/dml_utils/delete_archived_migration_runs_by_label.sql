@@ -4,7 +4,8 @@ CREATE OR REPLACE FUNCTION dml_utils.delete_archived_migration_runs(
     RETURNS bigint
     LANGUAGE sql
     VOLATILE
-    SECURITY INVOKER
+    SECURITY DEFINER
+    SET search_path = pg_catalog
 AS
 $$
 WITH deleted AS (

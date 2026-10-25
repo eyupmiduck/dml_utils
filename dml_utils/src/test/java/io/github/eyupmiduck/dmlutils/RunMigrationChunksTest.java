@@ -370,6 +370,10 @@ class RunMigrationChunksTest extends PostgresTestBase {
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId)
                         .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(0L)))
                 .execute();
+        dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.TOTAL_CHUNKS_COMPLETED, 1L)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute();
 
         run(label, 2, TEST_BIGINT);
 
@@ -743,6 +747,57 @@ class RunMigrationChunksTest extends PostgresTestBase {
         assertNotNull(error, "the failing chunk (boundary 2, row id 3) should be recorded");
         assertEquals("22012", error.getSqlstate());
         assertEquals(2L, error.getBoundaryNo(), "the failing boundary is the one for id 3");
+    }
+
+    /**
+     * A P0002 raised by the chunk SQL itself must not be mistaken for the
+     * coordinator's benign claim-protocol signal. The worker failure is recorded
+     * and stops the run instead of being retried forever.
+     */
+    @Test
+    void chunkSqlNoDataFoundIsNotTreatedAsABenignClaim() {
+        createSource(1, 2, 3);
+        String label = label("chunk-p0002");
+        String template = "DO $$ DECLARE l_value integer; BEGIN"
+                + " SELECT 1 INTO STRICT l_value FROM <driving_table>"
+                + " WHERE <chunking_clause> AND false; END $$";
+
+        assertSqlState("P0002", () -> runWith(label, template, 2, 1, TEST_BIGINT));
+
+        long runId = runId(label);
+        assertFalse(runCompleted(runId), "the failed run must not be marked complete");
+        MigrationErrorRecord error = dsl.selectFrom(MIGRATION_ERROR)
+                .where(MIGRATION_ERROR.RUN_ID.eq(runId))
+                .fetchOne();
+        assertNotNull(error, "the P0002 must be recorded as a chunk error");
+        assertEquals("P0002", error.getSqlstate());
+        assertEquals(0, completedBoundaries(runId),
+                "the boundary whose SQL raised P0002 must remain unclaimed");
+    }
+
+    /**
+     * A P0C01 raised by the chunk SQL is only benign when the boundary is
+     * actually completed or cancelled. A still-pending boundary must be recorded
+     * as a failure rather than retried forever.
+     */
+    @Test
+    void chunkSqlClaimCodeWithPendingBoundaryIsNotBenign() {
+        createSource(1, 2, 3);
+        String label = label("chunk-p0c01");
+        String template = "DO $$ BEGIN"
+                + " PERFORM 1 FROM <driving_table> WHERE <chunking_clause>;"
+                + " RAISE EXCEPTION 'spoofed claim' USING ERRCODE = 'P0C01';"
+                + " END $$";
+
+        assertSqlState("P0C01", () -> runWith(label, template, 2, 1, TEST_BIGINT));
+
+        long runId = runId(label);
+        assertFalse(runCompleted(runId), "the failed run must not be marked complete");
+        MigrationErrorRecord error = dsl.selectFrom(MIGRATION_ERROR)
+                .where(MIGRATION_ERROR.RUN_ID.eq(runId))
+                .fetchOne();
+        assertNotNull(error, "the spoofed claim code must be recorded as a chunk error");
+        assertEquals("P0C01", error.getSqlstate());
     }
 
     /**

@@ -4,7 +4,8 @@ CREATE OR REPLACE FUNCTION dml_utils.set_migration_run_threads(
 )
     RETURNS void
     LANGUAGE plpgsql
-    SECURITY INVOKER
+    SECURITY DEFINER
+    SET search_path = pg_catalog
 AS
 $$
 BEGIN

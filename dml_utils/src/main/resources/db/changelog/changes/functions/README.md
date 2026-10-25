@@ -18,14 +18,20 @@ Dependencies point downward: `dml_utils_lib` may reference `dml_utils_data`;
 changeset; the matching drop lives in `changes/functions-rollback/`. Every
 routine is `SECURITY INVOKER` unless it genuinely needs `SECURITY DEFINER`.
 
-The routines are intentionally **not an authorization boundary**: a routine runs
-with the caller's privileges and can do nothing the caller could not do by
-running its SQL directly, so no routine checks the caller's privileges. The
-caller role is granted only the `EXECUTE`/`USAGE`/DML it needs (see
-`sql_changes/999-grant-privileges.sql`), and `ALTER DEFAULT PRIVILEGES` keeps
-future objects off `PUBLIC`. A helper that executes caller-supplied SQL (for
-example `dml_utils_lib.process_migration_chunk`) is safe for the same reason — it
-is no more privileged than the caller's own statements, not a sandbox.
+The chunk executor is deliberately `SECURITY INVOKER`: `process_migration_chunk`
+runs caller-supplied SQL with the caller's privileges. Metadata writes are
+delegated to owner-owned `SECURITY DEFINER` helpers (`claim_migration_boundary`,
+`complete_migration_boundary`, `complete_migration_run`,
+`mark_migration_run_cancelled`, and `record_migration_error`), so the worker does
+not need direct DML on `dml_utils_data`. The caller role is granted only
+`EXECUTE`/`USAGE` plus `SELECT` on the migration metadata (see
+`sql_changes/999-grant-privileges.sql`); application-table privileges belong to
+the application/login role.
+
+This is not a hard authorization boundary: the metadata helpers are callable by
+the caller because the invoker-owned worker runs as that same role. It centralizes
+metadata writes and removes direct DML, but a malicious template can still call
+the helpers. Treat raw templates as trusted, or add a parser/template allowlist.
 
 One exception: `dml_utils_lib.migration_key_is_canonical` is loaded earlier, by
 `changes/sql_changes/005-create-migration-key-check.sql`, because the
@@ -772,10 +778,11 @@ i_sleep_ms    dml_utils_data.non_negative_integer DEFAULT 0
 RETURNS bigint
 ```
 
-`SECURITY INVOKER`. Creates a `dml_utils_data.migration_run` row for the label,
-with the recorded SQL text, chunk size, strategy, threads, per-chunk sleep,
-driving table and driving table alias (storing the alias and sleep at creation
-so a resume uses the same values), records the run's `started_at` (the run start, when the calculation begins), then
+`SECURITY DEFINER`, with a pinned `search_path`. Creates a
+`dml_utils_data.migration_run` row for the label, with the recorded SQL text,
+chunk size, strategy, threads, per-chunk sleep, driving table and driving table
+alias (storing the alias and sleep at creation so a resume uses the same values),
+records the run's `started_at` (the run start, when the calculation begins), then
 populates the boundaries for the strategy and records `boundaries_calculated_at`
 (when the range calculation finishes) and `total_chunks` (the boundary count minus
 the terminal high-water boundary, clamped to 0 for an empty source); returns the
@@ -801,7 +808,9 @@ an active (not archived) run already exists for the label. The
 `migration_boundary` rows are inserted with their own `started_at` and
 `completed_at` null. An empty source produces a run with no boundaries. Later
 inserts above the captured maximum fall outside the terminal boundary and are not
-processed.
+processed. Because the definer owner scans the driving table, the function checks
+the effective caller's `SELECT` privilege first (`42501` otherwise) and the owner
+must also be able to read that table.
 
 ###
 
@@ -978,18 +987,17 @@ i_sql_text    dml_utils_data.non_null_text
 RETURNS void
 ```
 
-`SECURITY INVOKER`. Claims one boundary by setting its `started_at` (an atomic
-`UPDATE ... RETURNING` that locks the row for the caller's transaction), runs
-the fully-formed chunk SQL, then sets its `completed_at` and advances the run's
-`total_chunks_completed` in that same transaction, so the counter cannot drift
-from the completed boundaries. Both timestamps are the
-actual server time of the event (`clock_timestamp()`), not the transaction start.
-Raises `no_data_found` (`P0002`) when the boundary does not exist, is already
-completed or was cancelled. If the chunk SQL fails, the transaction aborts and the claim rolls
-back — including `started_at` — so the chunk is retried on the next run. A
-boundary therefore reports `started_at` only for a chunk that actually
-completed; this is intended. Intended to run inside a `pg_background` worker,
-one call per chunk.
+`SECURITY INVOKER` for the chunk SQL. Claims one boundary through the
+owner-owned `claim_migration_boundary` helper (which locks the row for the
+caller's transaction and returns the claim timestamp), runs the fully-formed
+chunk SQL as the caller, then completes the boundary through the owner-owned
+`complete_migration_boundary` helper, which writes both timestamps and advances
+the run's `total_chunks_completed` in that same transaction. Raises
+`P0C01` when the boundary does not exist, is already completed or was cancelled.
+If the chunk SQL fails, the transaction aborts and the claim rolls back —
+including `started_at` — so the chunk is retried on the next run. A boundary
+therefore reports `started_at` only for a chunk that actually completed; this is
+intended. Intended to run inside a `pg_background` worker, one call per chunk.
 
 ### `dml_utils_lib.record_migration_error(i_run_id, i_boundary_no, i_sqlstate, i_message)`
 

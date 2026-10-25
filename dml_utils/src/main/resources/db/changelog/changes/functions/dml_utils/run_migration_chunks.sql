@@ -287,11 +287,21 @@ BEGIN
             PERFORM public.pg_background_detach(l_handle.pid, l_handle.cookie);
 
             IF l_outcome.has_error THEN
-                -- P0002 means the boundary was already claimed and completed by
-                -- another coordinator; that is benign, so do not record an error or
-                -- abort this coordinator.
-                IF l_outcome.sqlstate = 'P0002' THEN
-                    CONTINUE;
+                -- P0C01 is the claim protocol's dedicated code. Treat it as
+                -- benign only if the boundary is now completed or cancelled;
+                -- that proves another coordinator or the cancellation path won
+                -- the race. A P0C01 from user SQL (or a stale claim failure) with
+                -- a still-pending boundary must be recorded as an error, not
+                -- retried forever.
+                IF l_outcome.sqlstate = 'P0C01' THEN
+                    IF EXISTS (SELECT 1
+                               FROM dml_utils_data.migration_boundary AS b
+                               WHERE b.run_id = l_run_id
+                                 AND b.boundary_no = l_boundary_no
+                                 AND (b.completed_at IS NOT NULL
+                                   OR b.cancelled_at IS NOT NULL)) THEN
+                        CONTINUE;
+                    END IF;
                 END IF;
 
                 -- Record the failure first, in its own worker/transaction, so the
@@ -398,18 +408,8 @@ BEGIN
             -- before the cancel reached it.
             BEGIN
                 PERFORM public.pg_background_run(pg_catalog.format(
-                        'WITH cancelled_run AS (' ||
-                        ' UPDATE dml_utils_data.migration_run' ||
-                        ' SET cancelled_at = COALESCE(cancelled_at, pg_catalog.clock_timestamp())' ||
-                        ' WHERE run_id = %s' ||
-                        ' AND completed_at IS NULL' ||
-                        ' RETURNING run_id)' ||
-                        ' UPDATE dml_utils_data.migration_boundary' ||
-                        ' SET cancelled_at = COALESCE(cancelled_at, pg_catalog.clock_timestamp())' ||
-                        ' WHERE run_id = %s' ||
-                        ' AND completed_at IS NULL' ||
-                        ' AND cancelled_at IS NULL',
-                        l_run_id, l_run_id));
+                        'SELECT dml_utils_lib.mark_migration_run_cancelled(%s)',
+                        l_run_id));
             EXCEPTION
                 WHEN OTHERS THEN
                     NULL;
@@ -450,13 +450,10 @@ BEGIN
     END;
 
     -- All boundaries are claimed and every chunk SQL already ran; record the run
-    -- completion in the caller's transaction. clock_timestamp() so completed_at
-    -- is the actual server time the run finished, not the transaction start.
-    UPDATE dml_utils_data.migration_run
-    SET completed_at = pg_catalog.clock_timestamp()
-    WHERE run_id = l_run_id
-      AND completed_at IS NULL
-      AND cancelled_at IS NULL;
+    -- completion through the owner-owned helper. This routine stays SECURITY
+    -- INVOKER so the worker chunk SQL runs as the caller; only the helper writes
+    -- metadata.
+    PERFORM dml_utils_lib.complete_migration_run(i_run_id => l_run_id);
 END;
 $$;
 
@@ -472,7 +469,7 @@ COMMENT ON FUNCTION dml_utils.run_migration_chunks IS
         'in-flight chunks commit, drains and detaches them, and re-raises the '
         'error; the failure is recorded (best effort) in '
         'dml_utils_data.migration_error first. A boundary already claimed by '
-        'another coordinator (P0002) is treated as benign. A run cancelled with '
+        'another coordinator (P0C01) is treated as benign. A run cancelled with '
         'dml_utils.cancel_migration_run stops launching, cancels the in-flight '
         'workers, marks the run and its remaining boundaries cancelled and '
         'returns; a cancelled run is terminal.';
