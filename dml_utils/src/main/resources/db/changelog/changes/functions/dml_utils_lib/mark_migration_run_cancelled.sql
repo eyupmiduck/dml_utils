@@ -13,11 +13,10 @@ BEGIN
     -- worker, so the marks survive a caller rollback.
     WITH cancelled_run AS (
         UPDATE dml_utils_data.migration_run
-        SET cancelled_at = COALESCE(cancelled_at, pg_catalog.clock_timestamp())
-        WHERE run_id = i_run_id
-          AND completed_at IS NULL
-        RETURNING run_id
-        )
+            SET cancelled_at = COALESCE(cancelled_at, pg_catalog.clock_timestamp())
+            WHERE run_id = i_run_id
+                AND completed_at IS NULL
+            RETURNING run_id)
     UPDATE dml_utils_data.migration_boundary
     SET cancelled_at = COALESCE(cancelled_at, pg_catalog.clock_timestamp())
     WHERE run_id = i_run_id

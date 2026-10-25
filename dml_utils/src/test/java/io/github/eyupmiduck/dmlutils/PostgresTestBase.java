@@ -33,34 +33,6 @@ import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_
 abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.testing.PostgresTestBase {
 
     /**
-     * Grants the test harness its extra setup privileges after the template
-     * database is migrated.
-     *
-     * <p>The production changelog deliberately gives {@code dml_utils_caller}
-     * read-only metadata access and delegates writes to owner-owned helpers. The
-     * test role still needs direct metadata writes for fixture setup and
-     * assertions, and needs the caller's application-table privileges so it can
-     * exercise the invoker-owned chunk path. These are test-only grants: they are
-     * applied per test database as the owner, not by the production changelog.
-     */
-    @BeforeEach
-    void grantTestHarnessPrivileges() throws SQLException {
-        try (Connection owner = openOwnerConnection();
-             Statement statement = owner.createStatement()) {
-            statement.execute("GRANT SELECT, INSERT, UPDATE, DELETE"
-                    + " ON dml_utils_data.migration_run TO dml_utils_test");
-            statement.execute("GRANT SELECT, INSERT, UPDATE, DELETE"
-                    + " ON dml_utils_data.migration_boundary TO dml_utils_test");
-            statement.execute("GRANT SELECT, INSERT, UPDATE, DELETE"
-                    + " ON dml_utils_data.migration_error TO dml_utils_test");
-
-            statement.execute("GRANT USAGE ON SCHEMA dml_utils_fixtures TO dml_utils_caller");
-            statement.execute("GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE"
-                    + " ON ALL TABLES IN SCHEMA dml_utils_fixtures TO dml_utils_caller");
-        }
-    }
-
-    /**
      * The schema Liquibase keeps its tracking tables in, so they stay out of the
      * application schemas.
      */
@@ -73,7 +45,6 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
      * changelog.
      */
     static final String FIXTURES_RESOURCE = "db/changelog-fixtures/db.changelog-fixtures.xml";
-
     /**
      * The container configuration, shared by this base and
      * {@link LiquibaseUpgradeTest} so the two cannot drift (the container's
@@ -169,6 +140,34 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
             }
         } catch (Exception error) {
             throw new SQLException("could not install ddl_utils", error);
+        }
+    }
+
+    /**
+     * Grants the test harness its extra setup privileges after the template
+     * database is migrated.
+     *
+     * <p>The production changelog deliberately gives {@code dml_utils_caller}
+     * read-only metadata access and delegates writes to owner-owned helpers. The
+     * test role still needs direct metadata writes for fixture setup and
+     * assertions, and needs the caller's application-table privileges so it can
+     * exercise the invoker-owned chunk path. These are test-only grants: they are
+     * applied per test database as the owner, not by the production changelog.
+     */
+    @BeforeEach
+    void grantTestHarnessPrivileges() throws SQLException {
+        try (Connection owner = openOwnerConnection();
+             Statement statement = owner.createStatement()) {
+            statement.execute("GRANT SELECT, INSERT, UPDATE, DELETE"
+                    + " ON dml_utils_data.migration_run TO dml_utils_test");
+            statement.execute("GRANT SELECT, INSERT, UPDATE, DELETE"
+                    + " ON dml_utils_data.migration_boundary TO dml_utils_test");
+            statement.execute("GRANT SELECT, INSERT, UPDATE, DELETE"
+                    + " ON dml_utils_data.migration_error TO dml_utils_test");
+
+            statement.execute("GRANT USAGE ON SCHEMA dml_utils_fixtures TO dml_utils_caller");
+            statement.execute("GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE"
+                    + " ON ALL TABLES IN SCHEMA dml_utils_fixtures TO dml_utils_caller");
         }
     }
 

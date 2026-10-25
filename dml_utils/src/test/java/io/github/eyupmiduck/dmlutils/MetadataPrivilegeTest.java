@@ -14,10 +14,7 @@ import java.sql.Statement;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationError.MIGRATION_ERROR;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Verifies the metadata-privilege boundary: the caller can read migration
@@ -29,6 +26,12 @@ class MetadataPrivilegeTest extends PostgresTestBase {
 
     private static final String ROLE_TEMPLATE =
             "UPDATE <driving_table> SET payload = current_user WHERE <chunking_clause>";
+
+    private static void setRole(Connection connection, String role) throws Exception {
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("SET ROLE " + role);
+        }
+    }
 
     @BeforeEach
     void resetFixtures() {
@@ -117,11 +120,5 @@ class MetadataPrivilegeTest extends PostgresTestBase {
                 .from(MIGRATION_RUN)
                 .where(MIGRATION_RUN.LABEL.eq(label))
                 .fetchOne(MIGRATION_RUN.RUN_ID);
-    }
-
-    private static void setRole(Connection connection, String role) throws Exception {
-        try (Statement statement = connection.createStatement()) {
-            statement.execute("SET ROLE " + role);
-        }
     }
 }
