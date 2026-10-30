@@ -1,5 +1,6 @@
 package io.github.eyupmiduck.dmlutils;
 
+import io.github.eyupmiduck.changelogvalidator.testing.ChangelogTestSupport;
 import liquibase.Liquibase;
 import liquibase.database.Database;
 import liquibase.database.DatabaseFactory;
@@ -171,58 +172,36 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
         }
     }
 
-    @Override
-    protected String defaultPostgresImage() {
-        return POSTGRES_IMAGE;
-    }
-
-    @Override
-    protected String databaseName() {
-        return DATABASE;
-    }
-
-    @Override
-    protected String ownerUser() {
-        return OWNER_USER;
-    }
-
-    @Override
-    protected String ownerPassword() {
-        return OWNER_PASSWORD;
-    }
-
-    @Override
-    protected String testUser() {
-        return TEST_USER;
-    }
-
-    @Override
-    protected String testPassword() {
-        return TEST_PASSWORD;
-    }
-
-    @Override
-    protected String fixturesResource() {
-        return FIXTURES_RESOURCE;
-    }
+    /**
+     * The one container and changelog configuration, returned by this class and
+     * by {@link LiquibaseUpgradeTest} so the two cannot drift.
+     *
+     * <p>The master changelog is the install changelog: ddl_utils first, then the
+     * dml_utils changes, so the test database has the DDL helpers that future
+     * migrations call.
+     */
+    static final Configuration CONFIGURATION = new Configuration(
+            DATABASE, OWNER_USER, OWNER_PASSWORD, TEST_USER, TEST_PASSWORD,
+            POSTGRES_IMAGE, "db/changelog-install/db.changelog-install.xml",
+            DATABASE_CHANGELOG_TABLE, DATABASE_CHANGELOG_LOCK_TABLE, FIXTURES_RESOURCE);
 
     /**
-     * The install changelog: ddl_utils first, then the dml_utils changes, so the
-     * test database has the DDL helpers that future migrations call.
+     * The configuration for {@link LiquibaseUpgradeTest}. It differs from
+     * {@link #CONFIGURATION} only in the master changelog: the upgrade test
+     * compares dml_utils with its own previous release, so it must apply the
+     * plain dml_utils changelog and not the install changelog that bundles
+     * ddl_utils. Its template is still built from its own extension hook, which
+     * pre-installs ddl_utils, so the roles, image, tracking tables and fixtures
+     * stay shared.
      */
-    @Override
-    protected String masterResource() {
-        return "db/changelog-install/db.changelog-install.xml";
-    }
+    static final Configuration UPGRADE_CONFIGURATION = new Configuration(
+            DATABASE, OWNER_USER, OWNER_PASSWORD, TEST_USER, TEST_PASSWORD,
+            POSTGRES_IMAGE, ChangelogTestSupport.MASTER_RESOURCE,
+            DATABASE_CHANGELOG_TABLE, DATABASE_CHANGELOG_LOCK_TABLE, FIXTURES_RESOURCE);
 
     @Override
-    protected String databaseChangeLogTableName() {
-        return DATABASE_CHANGELOG_TABLE;
-    }
-
-    @Override
-    protected String databaseChangeLogLockTableName() {
-        return DATABASE_CHANGELOG_LOCK_TABLE;
+    protected Configuration configuration() {
+        return CONFIGURATION;
     }
 
     /**
