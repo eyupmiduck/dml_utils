@@ -1,39 +1,52 @@
 package io.github.eyupmiduck.dmlutils;
 
-import io.github.eyupmiduck.changelogvalidator.testing.RoutineAssertions;
-import org.junit.jupiter.api.Test;
+import io.github.eyupmiduck.changelogvalidator.testing.RollbackSignatureContract;
 
-import java.sql.Connection;
+import java.util.Collection;
 import java.util.List;
 
 /**
- * Guards the routine rollback files: every routine must have a
+ * Guards the routine rollback files, inheriting the shared
+ * {@link RollbackSignatureContract}: every routine must have a
  * {@code DROP FUNCTION IF EXISTS <signature>} rollback that resolves to an
- * existing routine, and no signature may be dropped twice. Delegates to the
- * shared {@link RoutineAssertions#assertRollbackDropsMatchRoutines}.
+ * existing routine, and no signature may be dropped twice.
  *
  * <p>Because {@code IF EXISTS} makes a stale DROP a silent no-op, a signature
  * change that is not propagated to the rollback would otherwise go unnoticed
  * until a rollback left the routine behind.
  */
-class RollbackSignatureTest extends PostgresTestBase {
+class RollbackSignatureTest extends RollbackSignatureContract {
 
     /**
-     * The rollback signatures of the function tree and the schema changesets
-     * equal the routines in {@code dml_utils}, {@code dml_utils_lib} and
-     * {@code dml_utils_data}. The latter tree is included because
-     * {@code migration_key_is_canonical} is created by a schema changeset rather
-     * than a routine changeset.
+     * The dml_utils container and changelog configuration.
      *
-     * @throws Exception if the rollback files or the catalog cannot be read
+     * @return the configuration
      */
-    @Test
-    void rollbackDropsMatchTheRoutines() throws Exception {
-        try (Connection connection = openTestConnection()) {
-            RoutineAssertions.assertRollbackDropsMatchRoutines(connection,
-                    List.of("dml_utils", "dml_utils_lib", "dml_utils_data"),
-                    List.of("db/changelog/changes/functions-rollback",
-                            "db/changelog/changes/rollback"));
-        }
+    @Override
+    protected Configuration configuration() {
+        return PostgresTestBase.CONFIGURATION;
+    }
+
+    /**
+     * The schemas that hold the project's routines.
+     *
+     * @return the routine schemas
+     */
+    @Override
+    protected Collection<String> routineSchemas() {
+        return List.of("dml_utils", "dml_utils_lib", "dml_utils_data");
+    }
+
+    /**
+     * The rollback trees for the function changesets and the schema changesets.
+     * The latter is included because {@code migration_key_is_canonical} is
+     * created by a schema changeset rather than a routine changeset.
+     *
+     * @return the rollback directories
+     */
+    @Override
+    protected Collection<String> rollbackDirectories() {
+        return List.of("db/changelog/changes/functions-rollback",
+                "db/changelog/changes/rollback");
     }
 }
