@@ -1,31 +1,36 @@
 package io.github.eyupmiduck.dmlutils;
 
-import io.github.eyupmiduck.changelogvalidator.testing.TrackingTableAssertions;
-import org.junit.jupiter.api.Test;
+import io.github.eyupmiduck.changelogvalidator.testing.TrackingTablesContract;
 
-import java.sql.Connection;
+import java.util.Collection;
 import java.util.List;
 
 /**
  * Verifies that Liquibase keeps its tracking tables out of the application
  * schemas: they live in the dedicated {@code liquibase} schema, prefixed with
  * {@code dml_utils_}, rather than as the generic {@code databasechangelog} /
- * {@code databasechangeloglock} tables. Delegates to the shared
- * {@link TrackingTableAssertions}.
+ * {@code databasechangeloglock} tables. Inherits the shared
+ * {@link TrackingTablesContract}.
  */
-class LiquibaseTrackingTablesTest extends PostgresTestBase {
+class LiquibaseTrackingTablesTest extends TrackingTablesContract {
 
     /**
-     * The tracking tables exist in the {@code liquibase} schema with the
-     * {@code dml_utils_} prefix, and the generic names are absent from every
-     * application schema.
+     * The dml_utils container and changelog configuration.
+     *
+     * @return the configuration
      */
-    @Test
-    void trackingTablesLiveInTheLiquibaseSchema() throws Exception {
-        try (Connection connection = openTestConnection()) {
-            TrackingTableAssertions.assertTrackingTablesAreIsolated(connection, LIQUIBASE_SCHEMA,
-                    DATABASE_CHANGELOG_TABLE, DATABASE_CHANGELOG_LOCK_TABLE,
-                    List.of(PUBLIC_SCHEMA, "dml_utils", "dml_utils_lib", "dml_utils_data"));
-        }
+    @Override
+    protected Configuration configuration() {
+        return PostgresTestBase.CONFIGURATION;
+    }
+
+    /**
+     * The schemas that must not hold Liquibase's generic tracking-table names.
+     *
+     * @return the application schemas
+     */
+    @Override
+    protected Collection<String> applicationSchemas() {
+        return List.of(PUBLIC_SCHEMA, "dml_utils", "dml_utils_lib", "dml_utils_data");
     }
 }

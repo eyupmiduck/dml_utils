@@ -1,5 +1,6 @@
 package io.github.eyupmiduck.dmlutils;
 
+import io.github.eyupmiduck.changelogvalidator.testing.TestResources;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.enums.ChunkingStrategy;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.udt.records.MigrationKeyRecord;
 import org.jooq.DSLContext;
@@ -9,8 +10,6 @@ import org.jooq.impl.DSL;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -35,14 +34,6 @@ class MigrationTablesTest extends PostgresTestBase {
                                 + " WHERE n.nspname = ? AND p.proname = ?",
                         schema, name)
                 .get(0, Integer.class);
-    }
-
-    private static String readScript(String resource) throws IOException {
-        try (InputStream in = MigrationTablesTest.class.getClassLoader()
-                .getResourceAsStream(resource)) {
-            assertNotNull(in, "missing test resource " + resource);
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-        }
     }
 
     private static void executeStatements(DSLContext context, String sql) {
@@ -145,7 +136,7 @@ class MigrationTablesTest extends PostgresTestBase {
 
     private void assertRollbackDropsFunction(String resource, String schema, String name)
             throws Exception {
-        String script = readScript(resource);
+        String script = TestResources.read(resource);
         RuntimeException rollback = new RollbackTransaction();
         try (Connection owner = openOwnerConnection()) {
             DSLContext ownerDsl = DSL.using(owner, SQLDialect.POSTGRES);

@@ -69,7 +69,8 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
     static final Configuration CONFIGURATION = new Configuration(
             DATABASE, OWNER_USER, OWNER_PASSWORD, TEST_USER, TEST_PASSWORD,
             POSTGRES_IMAGE, "db/changelog-install/db.changelog-install.xml",
-            DATABASE_CHANGELOG_TABLE, DATABASE_CHANGELOG_LOCK_TABLE, FIXTURES_RESOURCE);
+            DATABASE_CHANGELOG_TABLE, DATABASE_CHANGELOG_LOCK_TABLE, FIXTURES_RESOURCE,
+            PostgresTestBase::installProjectExtensions);
     /**
      * The configuration for {@link LiquibaseUpgradeTest}. It differs from
      * {@link #CONFIGURATION} only in the master changelog: the upgrade test
@@ -82,7 +83,8 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
     static final Configuration UPGRADE_CONFIGURATION = new Configuration(
             DATABASE, OWNER_USER, OWNER_PASSWORD, TEST_USER, TEST_PASSWORD,
             POSTGRES_IMAGE, ChangelogTestSupport.MASTER_RESOURCE,
-            DATABASE_CHANGELOG_TABLE, DATABASE_CHANGELOG_LOCK_TABLE, FIXTURES_RESOURCE);
+            DATABASE_CHANGELOG_TABLE, DATABASE_CHANGELOG_LOCK_TABLE, FIXTURES_RESOURCE,
+            PostgresTestBase::installProjectExtensionsAndDdlUtils);
 
     /**
      * Returns a jOOQ field reference by name, for fixture columns when no
@@ -327,10 +329,17 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
                 .fetchOne(MIGRATION_BOUNDARY.STARTED_AT.isNotNull()));
     }
 
-    @Override
-    protected void installExtensions(String templateDatabase) throws SQLException {
-        try (Connection admin = openAdminConnection(templateDatabase)) {
-            installProjectExtensions(admin);
-        }
+    /**
+     * Installs the extensions and grants the template and upgrade scratch
+     * databases need: the image's extensions and role grants, then the staged
+     * ddl_utils changelog, so the upgrade test's plain dml_utils changelog can
+     * call the DDL helpers.
+     *
+     * @param admin a superuser connection to the target database
+     * @throws SQLException if an installation step fails
+     */
+    static void installProjectExtensionsAndDdlUtils(Connection admin) throws SQLException {
+        installProjectExtensions(admin);
+        installDdlUtils(admin);
     }
 }

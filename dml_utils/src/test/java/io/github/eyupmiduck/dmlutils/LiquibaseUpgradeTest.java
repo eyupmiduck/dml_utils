@@ -4,8 +4,6 @@ import io.github.eyupmiduck.changelogvalidator.testing.PublishedRelease;
 import io.github.eyupmiduck.changelogvalidator.testing.UpgradeTestBase;
 import org.junit.jupiter.api.Test;
 
-import java.sql.Connection;
-import java.sql.SQLException;
 import java.util.Collection;
 import java.util.List;
 
@@ -50,18 +48,6 @@ class LiquibaseUpgradeTest extends UpgradeTestBase {
     @Override
     protected Configuration configuration() {
         return PostgresTestBase.UPGRADE_CONFIGURATION;
-    }
-
-    /**
-     * Installs the same extensions as the template, so the container's shared
-     * template is identical whichever test class prepares it first.
-     */
-    @Override
-    protected void installExtensions(String database) throws SQLException {
-        try (Connection admin = openAdminConnection(database)) {
-            PostgresTestBase.installProjectExtensions(admin);
-            PostgresTestBase.installDdlUtils(admin);
-        }
     }
 
     /**
