@@ -290,6 +290,17 @@ jOOQ codegen and tests. CI: GitHub Actions (`.github/workflows/maven.yml`) runs
   database cloned with `CREATE DATABASE ... TEMPLATE ...` (fast, isolated
   data). Use the inherited `dsl` (jOOQ); do not run Liquibase or start
   containers in individual tests.
+- The container configuration is the single `PostgresTestBase.CONFIGURATION` /
+  `UPGRADE_CONFIGURATION` value, which also carries the extension installer.
+  Return it from `configuration()` in the base, the contract tests and
+  `LiquibaseUpgradeTest` instead of overriding the individual accessors.
+- A test whose shape already exists as a contract inherits it rather than
+  copying the body: `ChangelogLinterContract`, `ChangelogNamingContract`,
+  `ChangelogSqlFilesContract`, `TrackingTablesContract`,
+  `PlpgsqlCheckContract`, `RollbackSignatureContract`, `UpgradeContract`.
+  Supply only the project schemas and the configuration.
+- Read classpath SQL through `TestResources` (one resource, or every `.sql`
+  file in a directory) instead of re-implementing the stream handling.
 - Every test class and test method must have Javadoc describing the behavior
   it verifies.
 - Prefer testing observable behavior rather than implementation details.
