@@ -172,6 +172,20 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
     }
 
     /**
+     * Installs the extensions and grants the template and upgrade scratch
+     * databases need: the image's extensions and role grants, then the staged
+     * ddl_utils changelog, so the upgrade test's plain dml_utils changelog can
+     * call the DDL helpers.
+     *
+     * @param admin a superuser connection to the target database
+     * @throws SQLException if an installation step fails
+     */
+    static void installProjectExtensionsAndDdlUtils(Connection admin) throws SQLException {
+        installProjectExtensions(admin);
+        installDdlUtils(admin);
+    }
+
+    /**
      * Grants the test harness its extra setup privileges after the template
      * database is migrated.
      *
@@ -327,19 +341,5 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId)
                         .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(boundaryNo)))
                 .fetchOne(MIGRATION_BOUNDARY.STARTED_AT.isNotNull()));
-    }
-
-    /**
-     * Installs the extensions and grants the template and upgrade scratch
-     * databases need: the image's extensions and role grants, then the staged
-     * ddl_utils changelog, so the upgrade test's plain dml_utils changelog can
-     * call the DDL helpers.
-     *
-     * @param admin a superuser connection to the target database
-     * @throws SQLException if an installation step fails
-     */
-    static void installProjectExtensionsAndDdlUtils(Connection admin) throws SQLException {
-        installProjectExtensions(admin);
-        installDdlUtils(admin);
     }
 }
