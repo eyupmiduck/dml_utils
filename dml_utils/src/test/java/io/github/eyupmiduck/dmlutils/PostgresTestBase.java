@@ -58,6 +58,31 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
     static final String OWNER_PASSWORD = "dml_utils_owner";
     static final String TEST_USER = "dml_utils_test";
     static final String TEST_PASSWORD = "dml_utils_test";
+    /**
+     * The one container and changelog configuration, returned by this class and
+     * by {@link LiquibaseUpgradeTest} so the two cannot drift.
+     *
+     * <p>The master changelog is the install changelog: ddl_utils first, then the
+     * dml_utils changes, so the test database has the DDL helpers that future
+     * migrations call.
+     */
+    static final Configuration CONFIGURATION = new Configuration(
+            DATABASE, OWNER_USER, OWNER_PASSWORD, TEST_USER, TEST_PASSWORD,
+            POSTGRES_IMAGE, "db/changelog-install/db.changelog-install.xml",
+            DATABASE_CHANGELOG_TABLE, DATABASE_CHANGELOG_LOCK_TABLE, FIXTURES_RESOURCE);
+    /**
+     * The configuration for {@link LiquibaseUpgradeTest}. It differs from
+     * {@link #CONFIGURATION} only in the master changelog: the upgrade test
+     * compares dml_utils with its own previous release, so it must apply the
+     * plain dml_utils changelog and not the install changelog that bundles
+     * ddl_utils. Its template is still built from its own extension hook, which
+     * pre-installs ddl_utils, so the roles, image, tracking tables and fixtures
+     * stay shared.
+     */
+    static final Configuration UPGRADE_CONFIGURATION = new Configuration(
+            DATABASE, OWNER_USER, OWNER_PASSWORD, TEST_USER, TEST_PASSWORD,
+            POSTGRES_IMAGE, ChangelogTestSupport.MASTER_RESOURCE,
+            DATABASE_CHANGELOG_TABLE, DATABASE_CHANGELOG_LOCK_TABLE, FIXTURES_RESOURCE);
 
     /**
      * Returns a jOOQ field reference by name, for fixture columns when no
@@ -171,33 +196,6 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
                     + " ON ALL TABLES IN SCHEMA dml_utils_fixtures TO dml_utils_caller");
         }
     }
-
-    /**
-     * The one container and changelog configuration, returned by this class and
-     * by {@link LiquibaseUpgradeTest} so the two cannot drift.
-     *
-     * <p>The master changelog is the install changelog: ddl_utils first, then the
-     * dml_utils changes, so the test database has the DDL helpers that future
-     * migrations call.
-     */
-    static final Configuration CONFIGURATION = new Configuration(
-            DATABASE, OWNER_USER, OWNER_PASSWORD, TEST_USER, TEST_PASSWORD,
-            POSTGRES_IMAGE, "db/changelog-install/db.changelog-install.xml",
-            DATABASE_CHANGELOG_TABLE, DATABASE_CHANGELOG_LOCK_TABLE, FIXTURES_RESOURCE);
-
-    /**
-     * The configuration for {@link LiquibaseUpgradeTest}. It differs from
-     * {@link #CONFIGURATION} only in the master changelog: the upgrade test
-     * compares dml_utils with its own previous release, so it must apply the
-     * plain dml_utils changelog and not the install changelog that bundles
-     * ddl_utils. Its template is still built from its own extension hook, which
-     * pre-installs ddl_utils, so the roles, image, tracking tables and fixtures
-     * stay shared.
-     */
-    static final Configuration UPGRADE_CONFIGURATION = new Configuration(
-            DATABASE, OWNER_USER, OWNER_PASSWORD, TEST_USER, TEST_PASSWORD,
-            POSTGRES_IMAGE, ChangelogTestSupport.MASTER_RESOURCE,
-            DATABASE_CHANGELOG_TABLE, DATABASE_CHANGELOG_LOCK_TABLE, FIXTURES_RESOURCE);
 
     @Override
     protected Configuration configuration() {
