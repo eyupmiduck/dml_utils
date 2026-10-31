@@ -16,7 +16,9 @@ set -eu
 here="$(cd "$(dirname "$0")" && pwd)"
 . "$here/config.env"
 # Optional personal overrides, kept out of git (copy config.local.env.example).
-if [ -f "$here/config.local.env" ]; then
+# BENCH_IGNORE_LOCAL_CONFIG=1 skips them, so benchmark/smoke.sh is not affected
+# by a developer's personal sweep.
+if [ -f "$here/config.local.env" ] && [ "${BENCH_IGNORE_LOCAL_CONFIG:-0}" != 1 ]; then
     . "$here/config.local.env"
 fi
 
