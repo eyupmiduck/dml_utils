@@ -18,7 +18,9 @@ here="$(cd "$(dirname "$0")" && pwd)"
 repo_root="$(cd "$here/.." && pwd)"
 . "$here/config.env"
 # Optional personal overrides, kept out of git (copy config.local.env.example).
-if [ -f "$here/config.local.env" ]; then
+# BENCH_IGNORE_LOCAL_CONFIG=1 skips them, so benchmark/smoke.sh is not affected
+# by a developer's personal sweep.
+if [ -f "$here/config.local.env" ] && [ "${BENCH_IGNORE_LOCAL_CONFIG:-0}" != 1 ]; then
     . "$here/config.local.env"
 fi
 
@@ -82,10 +84,27 @@ psql_stdin() {
     docker exec -i "$BENCH_CONTAINER" psql -U "$BENCH_DB_USER" -d "$BENCH_DB" "$@"
 }
 
-# The real server only listens on the default socket once its init scripts have
-# run (the temporary init server uses a different socket), so a successful
-# `SELECT 1` here means the container is ready.
+# The image's entrypoint starts a temporary server for its init scripts, stops
+# it, then starts the real server. A psql check can succeed against the
+# temporary server and then hit "the database system is shutting down" (seen on
+# CI), so wait for the entrypoint to report that init is complete before polling
+# psql. A reused container has that line in its logs already, so the wait passes
+# immediately.
 echo "waiting for postgres ..." >&2
+init_deadline=$(( $(date +%s) + 120 ))
+while ! docker logs "$BENCH_CONTAINER" 2>&1 | grep -q "PostgreSQL init process complete"; do
+    if [ "$(docker inspect -f '{{.State.Running}}' "$BENCH_CONTAINER" 2>/dev/null)" != "true" ]; then
+        echo "postgres container exited during init" >&2
+        docker logs "$BENCH_CONTAINER" >&2 || true
+        exit 1
+    fi
+    if [ "$(date +%s)" -ge "$init_deadline" ]; then
+        echo "postgres did not finish its init scripts" >&2
+        docker logs "$BENCH_CONTAINER" >&2 || true
+        exit 1
+    fi
+    sleep 1
+done
 ready=0
 for _ in $(seq 1 90); do
     if psql_run -At -c 'SELECT 1' >/dev/null 2>&1; then
@@ -192,5 +211,21 @@ psql_stdin -v ON_ERROR_STOP=1 \
     -v target_table="$BENCH_TARGET_TABLE" \
     -v pk_def="$pk_def" \
     -f - < "$here/sql/create-target.sql"
+
+# dml_utils_lib.populate_migration_boundaries is SECURITY DEFINER: it writes the
+# run metadata as the owner, and its boundary query scans the driving table in
+# that definer context. The fixture schema is created outside the
+# Liquibase-managed schemas by the benchmark's superuser, so the owner needs
+# explicit USAGE and SELECT or the boundary scan fails with "permission denied
+# for schema benchmark". Only the source is read there; the per-chunk workload
+# runs SECURITY INVOKER as the benchmark user.
+psql_stdin -q -v ON_ERROR_STOP=1 \
+    -v schema="$BENCH_SCHEMA" \
+    -v source_table="$BENCH_SOURCE_TABLE" \
+    -v owner="$BENCH_OWNER_USER" \
+    -f - <<'SQL'
+GRANT USAGE ON SCHEMA :"schema" TO :"owner";
+GRANT SELECT ON :"schema".:"source_table" TO :"owner";
+SQL
 
 echo "benchmark database ready: $BENCH_CONTAINER / $BENCH_DB" >&2

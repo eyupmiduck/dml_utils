@@ -219,6 +219,21 @@ use `benchmark/psql.sh` for an interactive session. To remove the container and
 reclaim its disk space, run `benchmark/teardown.sh` (the host results are kept;
 recreate with `benchmark/setup.sh`).
 
+## Smoke test
+
+`benchmark/smoke.sh` runs a small end-to-end check without touching the
+configured benchmark database. It creates an isolated container, volume and
+network, loads 2,000 rows, runs one measured run per chunking strategy (`primary_key` and `blocks`) with two threads,
+and tears everything down again.
+Pass `--keep` to leave the isolated database running (published on port 55434)
+for inspection.
+
+The script ignores `config.local.env` (`BENCH_IGNORE_LOCAL_CONFIG=1`) and uses
+its own container names, so it is safe to run next to a configured sweep. CI
+runs the same script from `.github/workflows/benchmark-smoke.yml` when the
+benchmark, a changelog or the build files change; run it locally after changing
+a routine or the harness.
+
 ## Files
 
 ```
@@ -230,6 +245,7 @@ benchmark/
   report.sh               format the results into results/<BENCH_REPORT>
   chart.awk               render the mean total time as the report's SVG chart
   psql.sh                 open a psql session on the benchmark container
+  smoke.sh                small isolated end-to-end check, used by CI
   teardown.sh             remove the container, data volume and network
   sql/create-source.sql   deterministic synthetic source table + data
   sql/create-target.sql   throwaway destination the workload inserts into
