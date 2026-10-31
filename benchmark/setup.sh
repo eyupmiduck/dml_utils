@@ -84,10 +84,27 @@ psql_stdin() {
     docker exec -i "$BENCH_CONTAINER" psql -U "$BENCH_DB_USER" -d "$BENCH_DB" "$@"
 }
 
-# The real server only listens on the default socket once its init scripts have
-# run (the temporary init server uses a different socket), so a successful
-# `SELECT 1` here means the container is ready.
+# The image's entrypoint starts a temporary server for its init scripts, stops
+# it, then starts the real server. A psql check can succeed against the
+# temporary server and then hit "the database system is shutting down" (seen on
+# CI), so wait for the entrypoint to report that init is complete before polling
+# psql. A reused container has that line in its logs already, so the wait passes
+# immediately.
 echo "waiting for postgres ..." >&2
+init_deadline=$(( $(date +%s) + 120 ))
+while ! docker logs "$BENCH_CONTAINER" 2>&1 | grep -q "PostgreSQL init process complete"; do
+    if [ "$(docker inspect -f '{{.State.Running}}' "$BENCH_CONTAINER" 2>/dev/null)" != "true" ]; then
+        echo "postgres container exited during init" >&2
+        docker logs "$BENCH_CONTAINER" >&2 || true
+        exit 1
+    fi
+    if [ "$(date +%s)" -ge "$init_deadline" ]; then
+        echo "postgres did not finish its init scripts" >&2
+        docker logs "$BENCH_CONTAINER" >&2 || true
+        exit 1
+    fi
+    sleep 1
+done
 ready=0
 for _ in $(seq 1 90); do
     if psql_run -At -c 'SELECT 1' >/dev/null 2>&1; then
