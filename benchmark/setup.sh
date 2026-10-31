@@ -193,4 +193,20 @@ psql_stdin -v ON_ERROR_STOP=1 \
     -v pk_def="$pk_def" \
     -f - < "$here/sql/create-target.sql"
 
+# dml_utils_lib.populate_migration_boundaries is SECURITY DEFINER: it writes the
+# run metadata as the owner, and its boundary query scans the driving table in
+# that definer context. The fixture schema is created outside the
+# Liquibase-managed schemas by the benchmark's superuser, so the owner needs
+# explicit USAGE and SELECT or the boundary scan fails with "permission denied
+# for schema benchmark". Only the source is read there; the per-chunk workload
+# runs SECURITY INVOKER as the benchmark user.
+psql_stdin -q -v ON_ERROR_STOP=1 \
+    -v schema="$BENCH_SCHEMA" \
+    -v source_table="$BENCH_SOURCE_TABLE" \
+    -v owner="$BENCH_OWNER_USER" \
+    -f - <<'SQL'
+GRANT USAGE ON SCHEMA :"schema" TO :"owner";
+GRANT SELECT ON :"schema".:"source_table" TO :"owner";
+SQL
+
 echo "benchmark database ready: $BENCH_CONTAINER / $BENCH_DB" >&2

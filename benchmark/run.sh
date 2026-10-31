@@ -36,6 +36,8 @@ done
 
 usage() {
     echo "usage: $0 [--reset]" >&2
+    echo "  --reset starts a fresh results CSV; to recreate the benchmark" >&2
+    echo "  database, run ./setup.sh [--refresh] instead." >&2
 }
 
 reset=0
@@ -43,7 +45,12 @@ for arg in "$@"; do
     case "$arg" in
         --reset) reset=1 ;;
         -h|--help) usage; exit 0 ;;
-        *) echo "unknown argument: $arg" >&2; usage; exit 2 ;;
+        *)
+            echo "unknown argument: $arg" >&2
+            echo "  to recreate the benchmark database, run ./setup.sh --refresh" >&2
+            usage
+            exit 2
+            ;;
     esac
 done
 
