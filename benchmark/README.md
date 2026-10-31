@@ -223,8 +223,8 @@ recreate with `benchmark/setup.sh`).
 
 `benchmark/smoke.sh` runs a small end-to-end check without touching the
 configured benchmark database. It creates an isolated container, volume and
-network, loads 2,000 rows, runs one measured run per chunking strategy
-(`primary_key` and `blocks`) with two threads, and tears everything down again.
+network, loads 2,000 rows, runs one measured run per chunking strategy (`primary_key` and `blocks`) with two threads,
+and tears everything down again.
 Pass `--keep` to leave the isolated database running (published on port 55434)
 for inspection.
 
