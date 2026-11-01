@@ -34,12 +34,12 @@ CREATE TABLE dml_utils_data.migration_run
         (chunk_by = 'blocks') = (driving_table_relation_filepath IS NOT NULL)
         ),
     -- An ordered-key run records the index and the key descriptor; the other
-    -- strategies leave all three unset.
+    -- strategies leave all three unset. All-or-nothing: a partly populated
+    -- descriptor is rejected too, so a non-ordered run cannot carry a stale key
+    -- that explain or resume might later pick up.
     CONSTRAINT migration_run_ordered_key_check CHECK (
-        (chunk_by = 'ordered_key') = (
-            ordered_key_index IS NOT NULL
-            AND ordered_key_columns IS NOT NULL
-            AND ordered_key_kinds IS NOT NULL)
+        pg_catalog.num_nonnulls(ordered_key_index, ordered_key_columns, ordered_key_kinds)
+            = CASE WHEN chunk_by = 'ordered_key' THEN 3 ELSE 0 END
         ),
     CONSTRAINT migration_run_ordered_key_shape_check CHECK (
         ordered_key_columns IS NULL

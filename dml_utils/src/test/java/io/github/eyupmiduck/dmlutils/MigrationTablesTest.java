@@ -462,6 +462,29 @@ class MigrationTablesTest extends PostgresTestBase {
                         PUBLIC_SCHEMA, "migration_tables_source",
                         "migration_tables_source_key", new String[]{"id"}, new String[]{"bigint"})
                 .execute());
+
+        // A partly populated descriptor is rejected in both directions: a
+        // non-ordered run may not carry a stray index, and an ordered run must
+        // supply all three parts.
+        assertDomainViolation(() -> dsl.insertInto(MIGRATION_RUN)
+                .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE,
+                        MIGRATION_RUN.CHUNK_BY, MIGRATION_RUN.THREADS,
+                        MIGRATION_RUN.DRIVING_TABLE_SCHEMA_NAME, MIGRATION_RUN.DRIVING_TABLE_NAME,
+                        MIGRATION_RUN.ORDERED_KEY_INDEX)
+                .values("primary-key-with-partial-descriptor", "SELECT 1", 1,
+                        ChunkingStrategy.primary_key, 1,
+                        PUBLIC_SCHEMA, "migration_tables_source", "migration_tables_source_key")
+                .execute());
+
+        assertDomainViolation(() -> dsl.insertInto(MIGRATION_RUN)
+                .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE,
+                        MIGRATION_RUN.CHUNK_BY, MIGRATION_RUN.THREADS,
+                        MIGRATION_RUN.DRIVING_TABLE_SCHEMA_NAME, MIGRATION_RUN.DRIVING_TABLE_NAME,
+                        MIGRATION_RUN.ORDERED_KEY_COLUMNS, MIGRATION_RUN.ORDERED_KEY_KINDS)
+                .values("ordered-key-without-index", "SELECT 1", 1, ChunkingStrategy.ordered_key, 1,
+                        PUBLIC_SCHEMA, "migration_tables_source",
+                        new String[]{"id"}, new String[]{"bigint"})
+                .execute());
     }
 
     /**
