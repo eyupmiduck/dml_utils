@@ -4,6 +4,7 @@ import io.github.eyupmiduck.changelogvalidator.testing.TestResources;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.enums.ChunkingStrategy;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.udt.records.MigrationKeyRecord;
 import org.jooq.DSLContext;
+import org.jooq.Field;
 import org.jooq.Record;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
@@ -17,6 +18,7 @@ import java.util.UUID;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationError.MIGRATION_ERROR;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRunLeaf.MIGRATION_RUN_LEAF;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -64,6 +66,8 @@ class MigrationTablesTest extends PostgresTestBase {
         assertTrue(hasColumn("dml_utils_data", "migration_run", "driving_table_name"),
                 "driving_table_name should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "chunk_by"), "chunk_by should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_run", "partition_wise"),
+                "partition_wise should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "driving_table_relation_filepath"),
                 "driving_table_relation_filepath should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "total_chunks"),
@@ -75,11 +79,22 @@ class MigrationTablesTest extends PostgresTestBase {
         assertTrue(hasColumn("dml_utils_data", "migration_boundary", "run_id"), "run_id should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_boundary", "boundary_no"), "boundary_no should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_boundary", "boundary_id"), "boundary_id should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_boundary", "leaf_ordinal"),
+                "leaf_ordinal should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_boundary", "created_at"), "created_at should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_boundary", "updated_at"), "updated_at should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_boundary", "started_at"), "started_at should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_boundary", "completed_at"), "completed_at should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_boundary", "cancelled_at"), "cancelled_at should exist");
+
+        assertTrue(tableExists("dml_utils_data", "migration_run_leaf"),
+                "migration_run_leaf should exist");
+        for (String column : List.of("run_id", "leaf_ordinal", "leaf_schema_name", "leaf_name",
+                "leaf_oid", "leaf_bound", "relation_filepath", "state", "boundary_count",
+                "calculated_at", "error_sqlstate", "error_message", "created_at", "updated_at")) {
+            assertTrue(hasColumn("dml_utils_data", "migration_run_leaf", column),
+                    column + " should exist");
+        }
 
         assertTrue(tableExists("dml_utils_data", "migration_error"), "migration_error should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_error", "error_id"), "error_id should exist");
@@ -265,6 +280,223 @@ class MigrationTablesTest extends PostgresTestBase {
                 .set(MIGRATION_BOUNDARY.CANCELLED_AT, (OffsetDateTime) null)
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
                 .execute());
+    }
+
+    /**
+     * A leaf manifest and a boundary leaf are accepted only for a partition-wise
+     * run, and a partition-wise boundary must identify its leaf.
+     */
+    @Test
+    void enforcesPartitionWiseLeafIdentity() {
+        Long partitionWise = insertPartitionWiseRun(ChunkingStrategy.primary_key);
+        insertLeaf(partitionWise, 1, "pending", null, 100001L);
+        insertBoundary(partitionWise, 0L, 1);
+
+        Long single = insertRun();
+        assertSqlState("22023", () -> insertLeaf(single, 1, "pending", null, 100002L));
+        assertSqlState("22023", () -> insertBoundary(single, 0L, 1));
+        assertSqlState("22023", () -> insertBoundary(partitionWise, 1L, null));
+        assertSqlState("23503", () -> insertBoundary(partitionWise, 2L, 99));
+    }
+
+    /**
+     * A blocks leaf must record its filepath, a key-strategy leaf must not, and
+     * the calculation state must agree with its timestamps, errors and count.
+     */
+    @Test
+    void enforcesLeafStrategyAndStateConstraints() {
+        Long blocks = insertPartitionWiseRun(ChunkingStrategy.blocks);
+        assertSqlState("22023", () -> insertLeaf(blocks, 1, "pending", null, 100001L));
+        insertLeaf(blocks, 1, "pending", "base/1/2", 100001L);
+
+        Long key = insertPartitionWiseRun(ChunkingStrategy.primary_key);
+        assertSqlState("22023", () -> insertLeaf(key, 1, "pending", "base/1/3", 100002L));
+        insertLeaf(key, 1, "pending", null, 100002L);
+
+        assertDomainViolation(() -> dsl.update(MIGRATION_RUN_LEAF)
+                .set(MIGRATION_RUN_LEAF.STATE, "calculated")
+                .where(MIGRATION_RUN_LEAF.RUN_ID.eq(key))
+                .and(MIGRATION_RUN_LEAF.LEAF_ORDINAL.eq(1))
+                .execute());
+        assertDomainViolation(() -> dsl.update(MIGRATION_RUN_LEAF)
+                .set(MIGRATION_RUN_LEAF.STATE, "failed")
+                .where(MIGRATION_RUN_LEAF.RUN_ID.eq(key))
+                .and(MIGRATION_RUN_LEAF.LEAF_ORDINAL.eq(1))
+                .execute());
+        assertDomainViolation(() -> dsl.update(MIGRATION_RUN_LEAF)
+                .set(MIGRATION_RUN_LEAF.BOUNDARY_COUNT, 1L)
+                .where(MIGRATION_RUN_LEAF.RUN_ID.eq(key))
+                .and(MIGRATION_RUN_LEAF.LEAF_ORDINAL.eq(1))
+                .execute());
+
+        dsl.update(MIGRATION_RUN_LEAF)
+                .set(MIGRATION_RUN_LEAF.STATE, "calculated")
+                .set(MIGRATION_RUN_LEAF.CALCULATED_AT, OffsetDateTime.now())
+                .set(MIGRATION_RUN_LEAF.BOUNDARY_COUNT, 2L)
+                .where(MIGRATION_RUN_LEAF.RUN_ID.eq(key))
+                .and(MIGRATION_RUN_LEAF.LEAF_ORDINAL.eq(1))
+                .execute();
+    }
+
+    /**
+     * Every column of the leaf identity snapshot is frozen once the manifest is
+     * created, and the run's partition_wise flag is immutable.
+     */
+    @Test
+    void enforcesPartitionIdentityImmutability() {
+        Long run = insertPartitionWiseRun(ChunkingStrategy.primary_key);
+        Long other = insertPartitionWiseRun(ChunkingStrategy.primary_key);
+        Long blocks = insertPartitionWiseRun(ChunkingStrategy.blocks);
+        insertLeaf(run, 1, "pending", null, 100001L);
+        insertLeaf(run, 2, "pending", null, 100002L);
+        insertLeaf(blocks, 1, "pending", "base/1/2", 100003L);
+
+        assertSqlState("22023", () -> updateLeaf(run, 1,
+                MIGRATION_RUN_LEAF.RUN_ID, other));
+        assertSqlState("22023", () -> updateLeaf(run, 1,
+                MIGRATION_RUN_LEAF.LEAF_ORDINAL, 3));
+        assertSqlState("22023", () -> updateLeaf(run, 1,
+                MIGRATION_RUN_LEAF.LEAF_SCHEMA_NAME, "other"));
+        assertSqlState("22023", () -> updateLeaf(run, 1,
+                MIGRATION_RUN_LEAF.LEAF_NAME, "renamed"));
+        assertSqlState("22023", () -> updateLeaf(run, 1,
+                MIGRATION_RUN_LEAF.LEAF_OID, 100009L));
+        assertSqlState("22023", () -> updateLeaf(run, 1,
+                MIGRATION_RUN_LEAF.LEAF_BOUND,
+                "FOR VALUES FROM ('2026-02-01') TO ('2026-03-01')"));
+        // A blocks leaf keeps a non-null filepath, so this reaches the identity
+        // snapshot check rather than the strategy rule.
+        assertSqlState("22023", () -> updateLeaf(blocks, 1,
+                MIGRATION_RUN_LEAF.RELATION_FILEPATH, "base/1/3"));
+        assertSqlState("22023", () -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.PARTITION_WISE, false)
+                .where(MIGRATION_RUN.RUN_ID.eq(run))
+                .execute());
+    }
+
+    /**
+     * A boundary cannot move to another leaf or lose its leaf, and a
+     * single-relation boundary cannot gain one.
+     */
+    @Test
+    void enforcesBoundaryLeafImmutability() {
+        Long run = insertPartitionWiseRun(ChunkingStrategy.primary_key);
+        insertLeaf(run, 1, "pending", null, 100001L);
+        insertLeaf(run, 2, "pending", null, 100002L);
+        insertBoundary(run, 0L, 1);
+
+        assertSqlState("22023", () -> updateBoundary(run, 0L,
+                MIGRATION_BOUNDARY.LEAF_ORDINAL, 2));
+        assertSqlState("22023", () -> updateBoundary(run, 0L,
+                MIGRATION_BOUNDARY.LEAF_ORDINAL, (Integer) null));
+
+        Long single = insertRun();
+        insertBoundary(single, 0L, null);
+        assertSqlState("22023", () -> updateBoundary(single, 0L,
+                MIGRATION_BOUNDARY.LEAF_ORDINAL, 1));
+    }
+
+    /**
+     * Deleting a run cascades its manifest and boundaries.
+     */
+    @Test
+    void deletingARunCascadesItsLeafManifest() {
+        Long run = insertPartitionWiseRun(ChunkingStrategy.primary_key);
+        insertLeaf(run, 1, "pending", null, 100001L);
+        insertBoundary(run, 0L, 1);
+
+        dsl.deleteFrom(MIGRATION_RUN).where(MIGRATION_RUN.RUN_ID.eq(run)).execute();
+
+        assertEquals(0, dsl.fetchCount(MIGRATION_RUN_LEAF,
+                MIGRATION_RUN_LEAF.RUN_ID.eq(run)));
+        assertEquals(0, dsl.fetchCount(MIGRATION_BOUNDARY,
+                MIGRATION_BOUNDARY.RUN_ID.eq(run)));
+    }
+
+    /**
+     * A leaf or boundary for a run that does not exist is rejected with
+     * {@code 23503}.
+     */
+    @Test
+    void rejectsLeafRowsForAMissingRun() {
+        assertSqlState("23503", () -> insertLeaf(-1L, 1, "pending", null, 100001L));
+        assertSqlState("23503", () -> insertBoundary(-1L, 0L, 1));
+    }
+
+    /**
+     * A valid partition-wise leaf and boundary accept state and processing-time
+     * updates; only the identity snapshot is frozen.
+     */
+    @Test
+    void allowsPartitionWiseStateAndTimingUpdates() {
+        Long run = insertPartitionWiseRun(ChunkingStrategy.primary_key);
+        insertLeaf(run, 1, "pending", null, 100001L);
+        insertBoundary(run, 0L, 1);
+
+        dsl.update(MIGRATION_RUN_LEAF)
+                .set(MIGRATION_RUN_LEAF.STATE, "calculating")
+                .where(MIGRATION_RUN_LEAF.RUN_ID.eq(run))
+                .and(MIGRATION_RUN_LEAF.LEAF_ORDINAL.eq(1))
+                .execute();
+
+        OffsetDateTime started = OffsetDateTime.now();
+        dsl.update(MIGRATION_BOUNDARY)
+                .set(MIGRATION_BOUNDARY.STARTED_AT, started)
+                .set(MIGRATION_BOUNDARY.COMPLETED_AT, started)
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(run))
+                .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(0L))
+                .execute();
+    }
+
+    private <T> int updateLeaf(Long runId, int ordinal, Field<T> field, T value) {
+        return dsl.update(MIGRATION_RUN_LEAF)
+                .set(field, value)
+                .where(MIGRATION_RUN_LEAF.RUN_ID.eq(runId))
+                .and(MIGRATION_RUN_LEAF.LEAF_ORDINAL.eq(ordinal))
+                .execute();
+    }
+
+    private <T> int updateBoundary(Long runId, long boundaryNo, Field<T> field, T value) {
+        return dsl.update(MIGRATION_BOUNDARY)
+                .set(field, value)
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(boundaryNo))
+                .execute();
+    }
+
+    private Long insertPartitionWiseRun(ChunkingStrategy chunkBy) {
+        return dsl.insertInto(MIGRATION_RUN)
+                .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE,
+                        MIGRATION_RUN.CHUNK_BY, MIGRATION_RUN.PARTITION_WISE,
+                        MIGRATION_RUN.THREADS, MIGRATION_RUN.DRIVING_TABLE_SCHEMA_NAME,
+                        MIGRATION_RUN.DRIVING_TABLE_NAME)
+                .values(uniqueLabel("partition-wise"), "SELECT 1", 1, chunkBy, true, 1,
+                        PUBLIC_SCHEMA, "migration_tables_source")
+                .returningResult(MIGRATION_RUN.RUN_ID)
+                .fetchOne(MIGRATION_RUN.RUN_ID);
+    }
+
+    private void insertLeaf(Long runId, int ordinal, String state, String filepath,
+                            Long leafOid) {
+        dsl.insertInto(MIGRATION_RUN_LEAF)
+                .columns(MIGRATION_RUN_LEAF.RUN_ID, MIGRATION_RUN_LEAF.LEAF_ORDINAL,
+                        MIGRATION_RUN_LEAF.LEAF_SCHEMA_NAME, MIGRATION_RUN_LEAF.LEAF_NAME,
+                        MIGRATION_RUN_LEAF.LEAF_OID, MIGRATION_RUN_LEAF.LEAF_BOUND,
+                        MIGRATION_RUN_LEAF.RELATION_FILEPATH, MIGRATION_RUN_LEAF.STATE)
+                .values(runId, ordinal, PUBLIC_SCHEMA, "leaf_" + ordinal, leafOid,
+                        "FOR VALUES FROM ('2026-01-01') TO ('2026-02-01')",
+                        filepath, state)
+                .execute();
+    }
+
+    private void insertBoundary(Long runId, long boundaryNo, Integer leafOrdinal) {
+        dsl.insertInto(MIGRATION_BOUNDARY)
+                .columns(MIGRATION_BOUNDARY.RUN_ID, MIGRATION_BOUNDARY.BOUNDARY_NO,
+                        MIGRATION_BOUNDARY.BOUNDARY_ID, MIGRATION_BOUNDARY.LEAF_ORDINAL)
+                .values(runId, boundaryNo,
+                        new MigrationKeyRecord(new Long[]{1L}, null, null, null),
+                        leafOrdinal)
+                .execute();
     }
 
     /**

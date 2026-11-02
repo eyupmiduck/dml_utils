@@ -1,0 +1,1 @@
+DROP TRIGGER IF EXISTS migration_run_leaf_set_updated_at ON dml_utils_data.migration_run_leaf;
