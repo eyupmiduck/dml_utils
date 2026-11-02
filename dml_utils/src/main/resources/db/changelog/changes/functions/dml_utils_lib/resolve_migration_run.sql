@@ -133,7 +133,9 @@ BEGIN
             EXCEPTION
                 WHEN undefined_object
                     OR feature_not_supported
-                    OR invalid_parameter_value THEN
+                    OR invalid_parameter_value
+                    OR undefined_table
+                    OR invalid_schema_name THEN
                     -- The resolver's specific code is useful for a new run, but a
                     -- resume must fail with one stable code: the stored index is
                     -- no longer usable for these boundaries.
