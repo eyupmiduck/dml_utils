@@ -53,10 +53,12 @@ BEGIN
 
     PERFORM dml_utils_lib.assert_no_active_run_for_label(i_label => i_label);
 
-    -- A range run reads the boundary-key columns and kinds; a block run instead
-    -- records the driving table's physical filepath so a resume can detect a
-    -- heap rewrite. The blocks<->filepath check on migration_run then requires
-    -- exactly one of the two to be set.
+    -- A primary-key run reads the primary-key columns and kinds. A block run
+    -- instead records the driving table's physical filepath so a resume can
+    -- detect a heap rewrite, and the blocks<->filepath check on migration_run
+    -- requires exactly one of the two to be set. (The ordered_key strategy is
+    -- wired in a later change; until then this branch still resolves the
+    -- primary key.)
     IF i_chunk_by = 'blocks' THEN
         PERFORM dml_utils_lib.assert_plain_heap(
                 i_schema_name => i_schema_name,

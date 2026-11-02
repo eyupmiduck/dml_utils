@@ -48,7 +48,7 @@ class BuildBoundaryPopulationSqlTest extends PostgresTestBase {
     }
 
     private static OffsetDateTime timestamp(int second) {
-        return OffsetDateTime.parse("2026-01-01T00:00:0" + second + "Z");
+        return OffsetDateTime.parse(String.format("2026-01-01T00:00:%02dZ", second));
     }
 
     private static void assertTimestamptzBigint(MigrationBoundaryRecord boundary, int second, long id) {

@@ -207,8 +207,8 @@ $$;
 COMMENT ON FUNCTION dml_utils_lib.build_boundary_population_sql IS
     'Returns the statement that scans the driving table in boundary-key order and '
         'inserts the run''s chunk boundaries (one start per chunk plus the terminal '
-        'high-water boundary) as the contiguous sequence 0..N. The key columns and '
-        'kinds are passed in (from primary_key_columns/primary_key_kinds or '
-        'ordered_key_columns/ordered_key_kinds); the run id and chunk size are '
-        'inlined so the runner executes and the explain path explains the identical '
-        'statement.';
+        'high-water boundary) as the contiguous sequence 0..N. The caller supplies '
+        'the key columns and kinds (primary_key_columns/primary_key_kinds for a '
+        'primary-key run, or ordered_key_columns/ordered_key_kinds once the '
+        'ordered-key path is wired); the run id and chunk size are inlined so the '
+        'runner executes and the explain path explains the identical statement.';
