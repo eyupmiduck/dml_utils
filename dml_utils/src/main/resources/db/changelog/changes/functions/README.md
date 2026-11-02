@@ -1161,7 +1161,7 @@ yields no starts.
 ```sql
 i_run_id bigint
 RETURNS TABLE
-(o_key_columns name[], o_key_kinds text[])
+    (o_key_columns name [], o_key_kinds text [])
 ```
 
 `STABLE`, `SECURITY INVOKER`. Returns the boundary key a run chunks by: NULL for
