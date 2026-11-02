@@ -125,10 +125,22 @@ BEGIN
                     i_label, l_stored_ordered_key_index;
             END IF;
 
-            PERFORM dml_utils_lib.assert_usable_ordered_key(
-                    i_schema_name => o_effective_schema_name,
-                    i_table_name => o_effective_table_name,
-                    i_index_name => l_stored_ordered_key_index);
+            BEGIN
+                PERFORM dml_utils_lib.assert_usable_ordered_key(
+                        i_schema_name => o_effective_schema_name,
+                        i_table_name => o_effective_table_name,
+                        i_index_name => l_stored_ordered_key_index);
+            EXCEPTION
+                WHEN undefined_object
+                    OR feature_not_supported
+                    OR invalid_parameter_value THEN
+                    -- The resolver's specific code is useful for a new run, but a
+                    -- resume must fail with one stable code: the stored index is
+                    -- no longer usable for these boundaries.
+                    RAISE EXCEPTION 'ordered-key index %.% is no longer usable for run %: %',
+                        o_effective_schema_name, l_stored_ordered_key_index, o_run_id, SQLERRM
+                        USING ERRCODE = '55000';
+            END;
 
             IF dml_utils_lib.ordered_key_columns(
                        i_schema_name => o_effective_schema_name,

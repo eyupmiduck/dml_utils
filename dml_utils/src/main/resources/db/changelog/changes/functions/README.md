@@ -58,7 +58,9 @@ A run chunks the driving table one of three ways, recorded in the run's `chunk_b
   `NULLS LAST`. The resolved descriptor is stored with the run, so resume and
   explain use the same key; a resumed run re-validates the stored index and
   fails closed if it no longer matches. The chunk SQL must not modify the key
-  columns.
+  columns: this is a caller contract, not detected, because inspecting the
+  template for writes to the key is unreliable. A run whose key is mutated
+  should be archived and restarted after the data is corrected.
 - **`blocks`**: fixed-block chunks from the physical heap order. The boundaries
   are heap block numbers and a chunk is the half-open ctid range
   `ctid >= '(start,0)' AND ctid < '(end,0)'`, which plans as a TID Range Scan (PostgreSQL 14+). Boundary computation is
