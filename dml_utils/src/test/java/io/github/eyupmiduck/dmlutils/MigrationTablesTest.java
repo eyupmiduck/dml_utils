@@ -37,6 +37,16 @@ class MigrationTablesTest extends PostgresTestBase {
                 .get(0, Integer.class);
     }
 
+    private static int triggerCount(DSLContext context, String table, String trigger) {
+        return context.fetchOne(
+                        "SELECT count(*)::int FROM pg_catalog.pg_trigger AS t"
+                                + " JOIN pg_catalog.pg_class AS c ON c.oid = t.tgrelid"
+                                + " JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace"
+                                + " WHERE n.nspname = ? AND c.relname = ? AND t.tgname = ?",
+                        "dml_utils_data", table, trigger)
+                .get(0, Integer.class);
+    }
+
     private static void executeStatements(DSLContext context, String sql) {
         for (String statement : sql.split(";")) {
             if (!statement.isBlank()) {
@@ -171,6 +181,50 @@ class MigrationTablesTest extends PostgresTestBase {
         }
         assertEquals(1, routineCount(dsl, schema, name),
                 "the transactional rollback should restore " + schema + "." + name);
+    }
+
+    /**
+     * Each partition-wise trigger rollback drops exactly its trigger, so a
+     * rollback that is replayed after a partial one leaves the other triggers
+     * intact.
+     */
+    @Test
+    void triggerRollbacksDropThePartitionWiseTriggers() throws Exception {
+        assertRollbackDropsTrigger(
+                "db/changelog/changes/triggers-rollback/dml_utils_data/migration_run_leaf_set_updated_at-rollback.sql",
+                "migration_run_leaf", "migration_run_leaf_set_updated_at");
+        assertRollbackDropsTrigger(
+                "db/changelog/changes/triggers-rollback/dml_utils_data/migration_run_leaf_check-rollback.sql",
+                "migration_run_leaf", "migration_run_leaf_check");
+        assertRollbackDropsTrigger(
+                "db/changelog/changes/triggers-rollback/dml_utils_data/migration_boundary_leaf-rollback.sql",
+                "migration_boundary", "migration_boundary_leaf");
+    }
+
+    private void assertRollbackDropsTrigger(String resource, String table, String trigger)
+            throws Exception {
+        String script = TestResources.read(resource);
+        RuntimeException rollback = new RollbackTransaction();
+        try (Connection owner = openOwnerConnection()) {
+            DSLContext ownerDsl = DSL.using(owner, SQLDialect.POSTGRES);
+            try {
+                ownerDsl.transaction(config -> {
+                    DSLContext tx = DSL.using(config);
+                    // The script is one guarded DO statement, so execute it whole.
+                    tx.execute(script);
+                    assertEquals(0, triggerCount(tx, table, trigger),
+                            "the rollback should drop dml_utils_data." + table + "." + trigger);
+                    throw rollback;
+                });
+                fail("the rollback transaction should have been rolled back");
+            } catch (RuntimeException error) {
+                if (error != rollback && error.getCause() != rollback) {
+                    throw error;
+                }
+            }
+        }
+        assertEquals(1, triggerCount(dsl, table, trigger),
+                "the transactional rollback should restore dml_utils_data." + table + "." + trigger);
     }
 
     /**
@@ -375,6 +429,58 @@ class MigrationTablesTest extends PostgresTestBase {
     }
 
     /**
+     * The ordered-key descriptor identifies the key the boundaries were computed
+     * from, so no part of it can change after the run is created.
+     */
+    @Test
+    void enforcesTheOrderedKeyDescriptorImmutability() {
+        Long run = insertOrderedKeyRun();
+
+        assertSqlState("22023", () -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.ORDERED_KEY_INDEX, "other_key")
+                .where(MIGRATION_RUN.RUN_ID.eq(run))
+                .execute());
+        assertSqlState("22023", () -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.ORDERED_KEY_COLUMNS, new String[]{"id"})
+                .where(MIGRATION_RUN.RUN_ID.eq(run))
+                .execute());
+        assertSqlState("22023", () -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.ORDERED_KEY_KINDS, new String[]{"bigint"})
+                .where(MIGRATION_RUN.RUN_ID.eq(run))
+                .execute());
+    }
+
+    /**
+     * The {@code updated_at} trigger is attached to {@code migration_run_leaf}
+     * and overwrites a caller-supplied value on UPDATE, so a caller cannot bypass
+     * it.
+     */
+    @Test
+    void updatedAtIsMaintainedByTheTriggerOnMigrationRunLeaf() {
+        assertTrue(triggerExists("dml_utils_data", "migration_run_leaf",
+                        "migration_run_leaf_set_updated_at"),
+                "migration_run_leaf_set_updated_at should be attached to dml_utils_data.migration_run_leaf");
+
+        Long run = insertPartitionWiseRun(ChunkingStrategy.primary_key);
+        insertLeaf(run, 1, "pending", null, 100001L);
+
+        dsl.update(MIGRATION_RUN_LEAF)
+                .set(MIGRATION_RUN_LEAF.UPDATED_AT, OffsetDateTime.parse("2000-01-01T00:00:00Z"))
+                .where(MIGRATION_RUN_LEAF.RUN_ID.eq(run))
+                .and(MIGRATION_RUN_LEAF.LEAF_ORDINAL.eq(1))
+                .execute();
+
+        Boolean recent = dsl.select(
+                        MIGRATION_RUN_LEAF.UPDATED_AT.gt(OffsetDateTime.parse("2020-01-01T00:00:00Z")))
+                .from(MIGRATION_RUN_LEAF)
+                .where(MIGRATION_RUN_LEAF.RUN_ID.eq(run))
+                .and(MIGRATION_RUN_LEAF.LEAF_ORDINAL.eq(1))
+                .fetchOne(0, Boolean.class);
+        assertEquals(Boolean.TRUE, recent,
+                "the trigger should overwrite updated_at with the transaction timestamp");
+    }
+
+    /**
      * A boundary cannot move to another leaf or lose its leaf, and a
      * single-relation boundary cannot gain one.
      */
@@ -462,6 +568,21 @@ class MigrationTablesTest extends PostgresTestBase {
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
                 .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(boundaryNo))
                 .execute();
+    }
+
+    private Long insertOrderedKeyRun() {
+        return dsl.insertInto(MIGRATION_RUN)
+                .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE,
+                        MIGRATION_RUN.CHUNK_BY, MIGRATION_RUN.THREADS,
+                        MIGRATION_RUN.DRIVING_TABLE_SCHEMA_NAME, MIGRATION_RUN.DRIVING_TABLE_NAME,
+                        MIGRATION_RUN.ORDERED_KEY_INDEX, MIGRATION_RUN.ORDERED_KEY_COLUMNS,
+                        MIGRATION_RUN.ORDERED_KEY_KINDS)
+                .values(uniqueLabel("ordered-key"), "SELECT 1", 1, ChunkingStrategy.ordered_key, 1,
+                        PUBLIC_SCHEMA, "migration_tables_source",
+                        "migration_tables_source_key", new String[]{"created_at", "id"},
+                        new String[]{"timestamptz", "bigint"})
+                .returningResult(MIGRATION_RUN.RUN_ID)
+                .fetchOne(MIGRATION_RUN.RUN_ID);
     }
 
     private Long insertPartitionWiseRun(ChunkingStrategy chunkBy) {

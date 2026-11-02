@@ -7,6 +7,18 @@ $$
 DECLARE
     l_partition_wise boolean;
 BEGIN
+    -- A processing update (claim, complete, cancel) leaves the run and the leaf
+    -- unchanged, and migration_boundary_immutable rejects a change to either, so
+    -- the row was already validated on insert. Skip the catalog lookup on that
+    -- hot path; a caller that disabled the immutable trigger still gets the
+    -- checks below.
+    IF TG_OP = 'UPDATE'
+        AND NEW.run_id IS NOT DISTINCT FROM OLD.run_id
+        AND NEW.leaf_ordinal IS NOT DISTINCT FROM OLD.leaf_ordinal
+    THEN
+        RETURN NEW;
+    END IF;
+
     SELECT run.partition_wise
     INTO l_partition_wise
     FROM dml_utils_data.migration_run AS run
@@ -33,4 +45,5 @@ $$;
 COMMENT ON FUNCTION dml_utils_data.check_migration_boundary_leaf IS
     'BEFORE INSERT OR UPDATE trigger that requires leaf_ordinal for a '
         'partition-wise run boundary and rejects it for a single-relation run; '
-        'the composite foreign key resolves the ordinal to the leaf manifest.';
+        'the composite foreign key resolves the ordinal to the leaf manifest. On '
+        'update it skips the lookup when the run and leaf are unchanged.';

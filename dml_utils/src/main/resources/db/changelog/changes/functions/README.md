@@ -1164,11 +1164,13 @@ RETURNS trigger
 `SECURITY INVOKER`, not callable by users (PUBLIC `EXECUTE` is revoked and it is
 granted to no one). The `BEFORE UPDATE ... FOR EACH ROW` trigger on
 `migration_run` that rejects any change to `label`, `chunk_size`, `chunk_by`,
-`partition_wise` or the driving table (`driving_table_schema_name`,
-`driving_table_name`, `driving_table_relation_filepath`), all fixed when the run
-is created or (for the filepath) when its boundaries are computed, and to
-`total_chunks` once `boundaries_calculated_at` is set (the two are written
-together); `total_chunks_completed` stays mutable for the chunk workers.
+`partition_wise`, the ordered-key descriptor (`ordered_key_index`,
+`ordered_key_columns`, `ordered_key_kinds`) or the driving table
+(`driving_table_schema_name`, `driving_table_name`,
+`driving_table_relation_filepath`), all fixed when the run is created or (for the
+filepath) when its boundaries are computed, and to `total_chunks` once
+`boundaries_calculated_at` is set (the two are written together);
+`total_chunks_completed` stays mutable for the chunk workers.
 
 ### `dml_utils_data.reject_migration_boundary_update()`
 
@@ -1205,4 +1207,6 @@ RETURNS trigger
 granted to no one). The `BEFORE INSERT OR UPDATE ... FOR EACH ROW` trigger on
 `migration_boundary` that requires `leaf_ordinal` for a partition-wise run and
 rejects it for a single-relation run; the composite foreign key resolves the
-ordinal to the run's leaf manifest.
+ordinal to the run's leaf manifest. On update it returns early when the run and
+leaf are unchanged, so the claim/complete path does not repeat the catalog
+lookup.
