@@ -140,18 +140,18 @@ the captured environment and dataset.
 
 Each run calls `run_migration_chunks` once and reads the run's timestamps back:
 
-| column in the CSV | meaning                                                                  |
-|-------------------|--------------------------------------------------------------------------|
-| `strategy`        | the chunking strategy (`primary_key`, `ordered_key` or `blocks`)        |
+| column in the CSV | meaning                                                                            |
+|-------------------|------------------------------------------------------------------------------------|
+| `strategy`        | the chunking strategy (`primary_key`, `ordered_key` or `blocks`)                   |
 | `chunk_unit`      | the chunk-size unit: `rows` for `primary_key`/`ordered_key`, `blocks` for `blocks` |
-| `chunk_size`      | the configured chunk size, in `chunk_unit`                               |
-| `threads`         | the thread count                                                         |
-| `run`             | the measured run number                                                  |
-| `chunks`          | the number of chunks the run processed                                   |
-| `range_seconds`   | `boundaries_calculated_at - started_at` — the boundary calculation       |
-| `chunk_seconds`   | `completed_at - boundaries_calculated_at` — the workload over all chunks |
-| `total_seconds`   | `completed_at - started_at`                                              |
-| `pk_columns`      | the key columns, joined by `+` (`k1+k2`, or `created_at+id` for `ordered_key`) |
+| `chunk_size`      | the configured chunk size, in `chunk_unit`                                         |
+| `threads`         | the thread count                                                                   |
+| `run`             | the measured run number                                                            |
+| `chunks`          | the number of chunks the run processed                                             |
+| `range_seconds`   | `boundaries_calculated_at - started_at` — the boundary calculation                 |
+| `chunk_seconds`   | `completed_at - boundaries_calculated_at` — the workload over all chunks           |
+| `total_seconds`   | `completed_at - started_at`                                                        |
+| `pk_columns`      | the key columns, joined by `+` (`k1+k2`, or `created_at+id` for `ordered_key`)     |
 
 Warm-up runs are not recorded. `report.sh` groups the rows by `(strategy,
 chunk_size, pk_columns)` and averages the timing columns per group and thread
@@ -163,22 +163,22 @@ All parameters live in [`config.env`](config.env) and are documented there; put
 personal overrides in a gitignored `config.local.env` (copy
 `config.local.env.example`). The ones you are most likely to change:
 
-| parameter                                 | default                | purpose                                                 |
-|-------------------------------------------|------------------------|---------------------------------------------------------|
-| `BENCH_ROWS`                              | `1000000`              | synthetic source rows                                   |
-| `BENCH_PK_COLUMNS`                        | `1`                    | number of bigint primary-key columns (1 to 3)           |
-| `BENCH_ORDERED_SOURCE_TABLE`              | `bench_ordered_source` | UUIDv4-keyed ordered-key source                         |
-| `BENCH_ORDERED_TARGET_TABLE`              | `bench_ordered_target` | throwaway ordered-key destination                       |
-| `BENCH_ORDERED_INDEX`                     | `bench_ordered_created_at_id_idx` | the `(created_at, id)` unique index           |
-| `BENCH_CHUNK_SIZE`                        | `1000`                 | chunk size, in the unit of `BENCH_CHUNK_BY`             |
-| `BENCH_CHUNK_BY`                          | `primary_key`          | chunking strategy: `primary_key`, `ordered_key` or `blocks` |
-| `BENCH_THREADS_FROM` / `BENCH_THREADS_TO` | `1` / `20`             | thread sweep                                            |
-| `BENCH_RUNS`                              | `10`                   | measured runs per thread value (the mean is over these) |
-| `BENCH_WARMUP_RUNS`                       | `1`                    | unrecorded warm-up runs per thread value                |
-| `BENCH_SQL`                               | INSERT into the target | the workload run once per chunk                         |
-| `BENCH_ORDERED_SQL`                       | INSERT into the ordered target | the ordered-key workload                       |
-| `BENCH_MAX_WORKER_PROCESSES`              | `30`                   | must cover `BENCH_THREADS_TO`                           |
-| `BENCH_SHARED_BUFFERS`                    | `512MB`                | server setting for the run                              |
+| parameter                                 | default                           | purpose                                                     |
+|-------------------------------------------|-----------------------------------|-------------------------------------------------------------|
+| `BENCH_ROWS`                              | `1000000`                         | synthetic source rows                                       |
+| `BENCH_PK_COLUMNS`                        | `1`                               | number of bigint primary-key columns (1 to 3)               |
+| `BENCH_ORDERED_SOURCE_TABLE`              | `bench_ordered_source`            | UUIDv4-keyed ordered-key source                             |
+| `BENCH_ORDERED_TARGET_TABLE`              | `bench_ordered_target`            | throwaway ordered-key destination                           |
+| `BENCH_ORDERED_INDEX`                     | `bench_ordered_created_at_id_idx` | the `(created_at, id)` unique index                         |
+| `BENCH_CHUNK_SIZE`                        | `1000`                            | chunk size, in the unit of `BENCH_CHUNK_BY`                 |
+| `BENCH_CHUNK_BY`                          | `primary_key`                     | chunking strategy: `primary_key`, `ordered_key` or `blocks` |
+| `BENCH_THREADS_FROM` / `BENCH_THREADS_TO` | `1` / `20`                        | thread sweep                                                |
+| `BENCH_RUNS`                              | `10`                              | measured runs per thread value (the mean is over these)     |
+| `BENCH_WARMUP_RUNS`                       | `1`                               | unrecorded warm-up runs per thread value                    |
+| `BENCH_SQL`                               | INSERT into the target            | the workload run once per chunk                             |
+| `BENCH_ORDERED_SQL`                       | INSERT into the ordered target    | the ordered-key workload                                    |
+| `BENCH_MAX_WORKER_PROCESSES`              | `30`                              | must cover `BENCH_THREADS_TO`                               |
+| `BENCH_SHARED_BUFFERS`                    | `512MB`                           | server setting for the run                                  |
 
 `BENCH_SQL` must contain `<driving_table>` and `<chunking_clause>` exactly once;
 the driving table is aliased `t`. The default keeps the source table untouched by
@@ -237,8 +237,8 @@ recreate with `benchmark/setup.sh`).
 
 `benchmark/smoke.sh` runs a small end-to-end check without touching the
 configured benchmark database. It creates an isolated container, volume and
-network, loads 2,000 rows, runs one measured run per chunking strategy
-(`primary_key`, `blocks` and `ordered_key`) with two threads,
+network, loads 2,000 rows, runs one measured run per chunking strategy (`primary_key`, `blocks` and `ordered_key`) with
+two threads,
 and tears everything down again.
 Pass `--keep` to leave the isolated database running (published on port 55434)
 for inspection.
