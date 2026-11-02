@@ -4,6 +4,8 @@ import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -15,6 +17,7 @@ import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeCollated.TEST_COMPOSITE_COLLATED;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositePk.TEST_COMPOSITE_PK;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeThree.TEST_COMPOSITE_THREE;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestOrderedKey.TEST_ORDERED_KEY;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -101,6 +104,7 @@ class RenderChunkSqlTest extends PostgresTestBase {
     @BeforeEach
     void resetFixture() {
         dsl.truncate(TEST_BIGINT).execute();
+        dsl.truncate(TEST_ORDERED_KEY).execute();
         for (long id = 1; id <= 5; id++) {
             dsl.insertInto(TEST_BIGINT, TEST_BIGINT.ID).values(id).execute();
         }
@@ -135,6 +139,66 @@ class RenderChunkSqlTest extends PostgresTestBase {
 
         assertEquals(List.of(2L, 3L, 4L), updatedIds(),
                 "a final chunk covers [start, end] - the end row is included");
+    }
+
+    /**
+     * A rendered (timestamptz, bigint) predicate selects exactly the rows in the
+     * half-open range, using the timestamp and then the id tiebreaker: no gaps and
+     * no overlap with the next boundary.
+     */
+    @Test
+    void renderedCompositePredicateSelectsTheOrderedKeyRowsWhenExecuted() {
+        seedOrderedKey();
+        String template = "UPDATE <driving_table> SET payload = 'x' WHERE <chunking_clause>";
+        String sql = Routines.renderChunkSql(dsl.configuration(), template,
+                TEST_ORDERED_KEY.getSchema().getName(), TEST_ORDERED_KEY.getName(), "t",
+                new String[]{"created_at", "id"}, new String[]{"timestamptz", "bigint"},
+                new String[]{timestamp(1).toString(), "2"},
+                new String[]{timestamp(2).toString(), "4"}, false);
+        dsl.execute(sql);
+
+        assertEquals(List.of(2L, 3L), updatedOrderedKeyIds(),
+                "the non-final chunk covers [(t1, 2), (t2, 4))");
+
+        dsl.truncate(TEST_ORDERED_KEY).execute();
+        seedOrderedKey();
+        String finalChunk = Routines.renderChunkSql(dsl.configuration(), template,
+                TEST_ORDERED_KEY.getSchema().getName(), TEST_ORDERED_KEY.getName(), "t",
+                new String[]{"created_at", "id"}, new String[]{"timestamptz", "bigint"},
+                new String[]{timestamp(1).toString(), "2"},
+                new String[]{timestamp(2).toString(), "4"}, true);
+        dsl.execute(finalChunk);
+
+        assertEquals(List.of(2L, 3L, 4L), updatedOrderedKeyIds(),
+                "the final chunk includes the end row without a gap");
+    }
+
+    private static OffsetDateTime timestamp(int second) {
+        return OffsetDateTime.parse(String.format("2026-01-01T00:00:%02dZ", second));
+    }
+
+    private static UUID uuid(int n) {
+        return UUID.fromString("00000000-0000-0000-0000-" + String.format("%012d", n));
+    }
+
+    private void seedOrderedKey() {
+        for (int i = 1; i <= 5; i++) {
+            dsl.insertInto(TEST_ORDERED_KEY,
+                            TEST_ORDERED_KEY.ID, TEST_ORDERED_KEY.CREATED_AT,
+                            TEST_ORDERED_KEY.EXTERNAL_ID, TEST_ORDERED_KEY.LABEL,
+                            TEST_ORDERED_KEY.COLLATED_LABEL, TEST_ORDERED_KEY.NUMERIC_KEY)
+                    .values((long) i, timestamp((i + 1) / 2), uuid(i), "k" + i, "k" + i,
+                            BigDecimal.valueOf(i))
+                    .execute();
+        }
+    }
+
+    private List<Long> updatedOrderedKeyIds() {
+        return dsl.select(TEST_ORDERED_KEY.ID)
+                .from(TEST_ORDERED_KEY)
+                .where(TEST_ORDERED_KEY.PAYLOAD.eq("x"))
+                .orderBy(TEST_ORDERED_KEY.CREATED_AT, TEST_ORDERED_KEY.ID)
+                .fetch(TEST_ORDERED_KEY.ID);
     }
 
     private List<Long> updatedIds() {
@@ -188,6 +252,45 @@ class RenderChunkSqlTest extends PostgresTestBase {
                 "UPDATE public.src t SET processed = true"
                         + " WHERE (t.id >= '11223344-5566-7788-99aa-bbccddeeff00'::uuid"
                         + " AND t.id < '11223344-5566-7788-99aa-bbccddeeff01'::uuid)",
+                rendered);
+    }
+
+    /**
+     * A timestamptz key is rendered as a quoted literal cast to timestamptz, so
+     * it compares by instant rather than as text.
+     */
+    @Test
+    void rendersTimestamptzKeyWithAnExplicitCast() {
+        String rendered = render(false, "timestamptz",
+                "2026-01-01T00:00:00+00", "2026-01-02T00:00:00+00");
+
+        assertEquals(
+                "UPDATE public.src t SET processed = true"
+                        + " WHERE (t.id >= '2026-01-01T00:00:00+00'::timestamptz"
+                        + " AND t.id < '2026-01-02T00:00:00+00'::timestamptz)",
+                rendered);
+    }
+
+    /**
+     * A timestamptz/bigint composite key renders its two positions with their own
+     * casts and keeps the lexicographic box decomposition.
+     */
+    @Test
+    void rendersTimestamptzCompositeKeyAsADisjunctionOfBoxes() {
+        String rendered = Routines.renderChunkSql(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{"created_at", "id"}, new String[]{"timestamptz", "bigint"},
+                new String[]{"2026-01-01T00:00:00+00", "1"},
+                new String[]{"2026-01-02T00:00:00+00", "5"}, false);
+
+        assertEquals(
+                "UPDATE public.src t SET processed = true"
+                        + " WHERE (t.created_at = '2026-01-01T00:00:00+00'::timestamptz"
+                        + " AND t.id >= '1'::bigint"
+                        + " OR t.created_at > '2026-01-01T00:00:00+00'::timestamptz"
+                        + " AND t.created_at < '2026-01-02T00:00:00+00'::timestamptz"
+                        + " OR t.created_at = '2026-01-02T00:00:00+00'::timestamptz"
+                        + " AND t.id < '5'::bigint)",
                 rendered);
     }
 
