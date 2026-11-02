@@ -587,13 +587,13 @@ row per key column in index order, with its ordinal position, name, type oid,
 type and collapsed boundary kind (`bigint`, `text`, `uuid` or `timestamptz`).
 `INCLUDE` columns are ignored. It rejects:
 
-| Situation | SQLSTATE |
-|---|---|
-| Missing index on the table | `42704` |
-| Missing schema / table | `3F000` / `42P01` |
-| Non-plain (partitioned) table, non-btree, non-unique, partial, expression, DESC / NULLS FIRST, non-default opclass, collation mismatch, nullable key column | `0A000` |
-| Index not valid/ready/live | `55000` |
-| Wrong arity (more than three key columns) or unsupported key type | `22023` |
+| Situation                                                                                                                                                   | SQLSTATE          |
+|-------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------|
+| Missing index on the table                                                                                                                                  | `42704`           |
+| Missing schema / table                                                                                                                                      | `3F000` / `42P01` |
+| Non-plain (partitioned) table, non-btree, non-unique, partial, expression, DESC / NULLS FIRST, non-default opclass, collation mismatch, nullable key column | `0A000`           |
+| Index not valid/ready/live                                                                                                                                  | `55000`           |
+| Wrong arity (more than three key columns) or unsupported key type                                                                                           | `22023`           |
 
 The index must be a valid, live, unique btree index on one to three simple
 `NOT NULL` columns using the type's default btree operator class and the
@@ -748,8 +748,8 @@ the active run for the label or creates one (populating its boundaries in a
 `pg_background` worker so they commit autonomously), then returns the run id,
 whether it was already complete, the effective sql_text/schema/table/alias/
 threads, sleep and chunking strategy (the stored values for a resumed run,
-ignoring differing inputs with a notice), and the boundary key columns and kinds
-(the stored ordered-key descriptor for `ordered_key`, the real primary key for
+ignoring differing inputs with a notice), and the boundary key columns and kinds (the stored ordered-key descriptor for
+`ordered_key`, the real primary key for
 `primary_key`, or a single `bigint` block number for `blocks`).
 `i_boundary_key_index` is required for a new `ordered_key` run and rejected for a
 new run of the other strategies (`22023`); a resumed run keeps its stored index,
