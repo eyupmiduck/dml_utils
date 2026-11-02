@@ -1106,8 +1106,8 @@ with no blocks yields no boundaries. See the block-strategy limitations above.
 i_key_columns name[]
 i_key_kinds   text[]
 RETURNS TABLE
-    (o_select_list text, o_id_list text, o_order_by text,
-     o_order_by_desc text, o_pack_expression text)
+(o_select_list text, o_id_list text, o_order_by text,
+    o_order_by_desc text, o_pack_expression text)
 ```
 
 `STABLE`, `SECURITY INVOKER`. Validates a one-to-three-column boundary key (one-dimensional, 1-based, matching lengths,
@@ -1118,6 +1118,7 @@ expression. Shared by the single-relation and per-leaf boundary builders so the
 key logic cannot drift.
 
 ###
+
 `dml_utils_lib.build_leaf_boundary_population_sql(i_schema_name, i_table_name, i_key_columns, i_key_kinds, i_run_id, i_chunk_size, i_leaf_ordinal)`
 
 ```sql
@@ -1138,6 +1139,7 @@ after the boundaries already committed for the run, tagged with
 existing boundaries, so the flat sequence stays contiguous across commits.
 
 ###
+
 `dml_utils_lib.build_block_leaf_boundary_population_sql(i_schema_name, i_table_name, i_run_id, i_chunk_size, i_leaf_ordinal)`
 
 ```sql
@@ -1158,7 +1160,8 @@ yields no starts.
 
 ```sql
 i_run_id bigint
-RETURNS TABLE (o_key_columns name[], o_key_kinds text[])
+RETURNS TABLE
+(o_key_columns name[], o_key_kinds text[])
 ```
 
 `STABLE`, `SECURITY INVOKER`. Returns the boundary key a run chunks by: NULL for

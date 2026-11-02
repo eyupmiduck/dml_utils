@@ -685,7 +685,7 @@ COMMENT ON COLUMN dml_utils_fixtures.test_partitioned_quoted.payload IS
 
 CREATE TABLE dml_utils_fixtures."test partitioned ""odd"""
     PARTITION OF dml_utils_fixtures.test_partitioned_quoted
-    FOR VALUES FROM (0) TO (100);
+        FOR VALUES FROM (0) TO (100);
 
 COMMENT ON TABLE dml_utils_fixtures."test partitioned ""odd""" IS
     'Fixture: a leaf whose name contains a space and a double quote.';
