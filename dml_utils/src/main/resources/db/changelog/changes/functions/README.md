@@ -1104,14 +1104,15 @@ RETURNS TABLE
      o_order_by_desc text, o_pack_expression text)
 ```
 
-`STABLE`, `SECURITY INVOKER`. Validates a one-to-three-column boundary key
-(one-dimensional, 1-based, matching lengths, known kinds) and returns the SQL
+`STABLE`, `SECURITY INVOKER`. Validates a one-to-three-column boundary key (one-dimensional, 1-based, matching lengths,
+known kinds) and returns the SQL
 fragments that read, order and pack it: the `idN`-aliased select list, the `idN`
 list, the ascending and descending `ORDER BY`, and the `migration_key` row
 expression. Shared by the single-relation and per-leaf boundary builders so the
 key logic cannot drift.
 
-### `dml_utils_lib.build_leaf_boundary_population_sql(i_schema_name, i_table_name, i_key_columns, i_key_kinds, i_run_id, i_chunk_size, i_leaf_ordinal)`
+###
+`dml_utils_lib.build_leaf_boundary_population_sql(i_schema_name, i_table_name, i_key_columns, i_key_kinds, i_run_id, i_chunk_size, i_leaf_ordinal)`
 
 ```sql
 i_schema_name  dml_utils_data.non_null_text
@@ -1130,7 +1131,8 @@ after the boundaries already committed for the run, tagged with
 `i_leaf_ordinal`. The base `boundary_no` is `max(boundary_no) + 1` over the run's
 existing boundaries, so the flat sequence stays contiguous across commits.
 
-### `dml_utils_lib.build_block_leaf_boundary_population_sql(i_schema_name, i_table_name, i_run_id, i_chunk_size, i_leaf_ordinal)`
+###
+`dml_utils_lib.build_block_leaf_boundary_population_sql(i_schema_name, i_table_name, i_run_id, i_chunk_size, i_leaf_ordinal)`
 
 ```sql
 i_schema_name  dml_utils_data.non_null_text
@@ -1319,8 +1321,7 @@ RETURNS trigger
 granted to no one). The `BEFORE UPDATE ... FOR EACH ROW` trigger on
 `migration_run` that rejects any change to `label`, `chunk_size`, `chunk_by`,
 `partition_wise`, the ordered-key descriptor (`ordered_key_index`,
-`ordered_key_columns`, `ordered_key_kinds`) or the driving table
-(`driving_table_schema_name`, `driving_table_name`,
+`ordered_key_columns`, `ordered_key_kinds`) or the driving table (`driving_table_schema_name`, `driving_table_name`,
 `driving_table_relation_filepath`), all fixed when the run is created or (for the
 filepath) when its boundaries are computed, and to `total_chunks` once
 `boundaries_calculated_at` is set (the two are written together);

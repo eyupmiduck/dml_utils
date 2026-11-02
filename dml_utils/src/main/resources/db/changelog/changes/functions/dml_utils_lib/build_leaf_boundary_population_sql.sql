@@ -29,7 +29,8 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
 
-    SELECT * INTO l_descriptor
+    SELECT *
+    INTO l_descriptor
     FROM dml_utils_lib.boundary_key_descriptor_sql(
             i_key_columns => i_key_columns,
             i_key_kinds => i_key_kinds);

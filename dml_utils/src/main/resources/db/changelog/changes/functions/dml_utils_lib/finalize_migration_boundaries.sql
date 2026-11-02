@@ -8,14 +8,14 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.finalize_migration_boundaries(
 AS
 $$
 DECLARE
-    l_run            dml_utils_data.migration_run%ROWTYPE;
-    l_leaf_ordinal   integer;
-    l_leaf_schema    text;
-    l_leaf_name      text;
-    l_caller         name;
-    l_terminal_key   dml_utils_data.migration_key;
-    l_boundary_no    bigint;
-    l_total_chunks   bigint;
+    l_run          dml_utils_data.migration_run%ROWTYPE;
+    l_leaf_ordinal integer;
+    l_leaf_schema  text;
+    l_leaf_name    text;
+    l_caller       name;
+    l_terminal_key dml_utils_data.migration_key;
+    l_boundary_no  bigint;
+    l_total_chunks bigint;
 BEGIN
     IF i_run_id IS NULL THEN
         RAISE EXCEPTION 'run id must not be NULL'
@@ -23,7 +23,8 @@ BEGIN
     END IF;
 
     -- Serialize finalization with leaf calculation on the run row.
-    SELECT * INTO l_run
+    SELECT *
+    INTO l_run
     FROM dml_utils_data.migration_run AS run
     WHERE run.run_id = i_run_id
         FOR UPDATE;

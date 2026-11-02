@@ -9,16 +9,16 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.assert_migration_leaf_unchanged(
 AS
 $$
 DECLARE
-    l_chunk_by            dml_utils_data.chunking_strategy;
-    l_schema_name         text;
-    l_name                text;
-    l_oid                 oid;
-    l_bound               text;
-    l_relation_filepath   text;
-    l_live_oid            oid;
-    l_live_relkind        text;
-    l_live_bound          text;
-    l_live_filepath       text;
+    l_chunk_by          dml_utils_data.chunking_strategy;
+    l_schema_name       text;
+    l_name              text;
+    l_oid               oid;
+    l_bound             text;
+    l_relation_filepath text;
+    l_live_oid          oid;
+    l_live_relkind      text;
+    l_live_bound        text;
+    l_live_filepath     text;
 BEGIN
     SELECT run.chunk_by,
            leaf.leaf_schema_name::text,
@@ -27,11 +27,11 @@ BEGIN
            leaf.leaf_bound,
            leaf.relation_filepath
     INTO l_chunk_by,
-         l_schema_name,
-         l_name,
-         l_oid,
-         l_bound,
-         l_relation_filepath
+        l_schema_name,
+        l_name,
+        l_oid,
+        l_bound,
+        l_relation_filepath
     FROM dml_utils_data.migration_run AS run
              JOIN dml_utils_data.migration_run_leaf AS leaf ON leaf.run_id = run.run_id
     WHERE run.run_id = i_run_id
@@ -47,9 +47,9 @@ BEGIN
            pg_catalog.pg_get_expr(c.relpartbound, c.oid),
            pg_catalog.pg_relation_filepath(c.oid)
     INTO l_live_oid,
-         l_live_relkind,
-         l_live_bound,
-         l_live_filepath
+        l_live_relkind,
+        l_live_bound,
+        l_live_filepath
     FROM pg_catalog.pg_class AS c
              JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
     WHERE n.nspname = l_schema_name

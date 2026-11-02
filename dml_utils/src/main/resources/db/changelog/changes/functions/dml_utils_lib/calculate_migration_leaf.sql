@@ -8,13 +8,13 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.calculate_migration_leaf(
 AS
 $$
 DECLARE
-    l_run               dml_utils_data.migration_run%ROWTYPE;
-    l_leaf              dml_utils_data.migration_run_leaf%ROWTYPE;
-    l_key_columns       name[];
-    l_key_kinds         text[];
-    l_descriptor        record;
-    l_caller            name;
-    l_boundary_count    bigint;
+    l_run            dml_utils_data.migration_run%ROWTYPE;
+    l_leaf           dml_utils_data.migration_run_leaf%ROWTYPE;
+    l_key_columns    name[];
+    l_key_kinds      text[];
+    l_descriptor     record;
+    l_caller         name;
+    l_boundary_count bigint;
 BEGIN
     IF i_run_id IS NULL THEN
         RAISE EXCEPTION 'run id must not be NULL'
@@ -24,7 +24,8 @@ BEGIN
     -- The run row lock serializes leaf calculation for this run: a second worker
     -- waits here, then sees the committed leaf state instead of appending the
     -- same leaf twice. The coordinator also holds the run-level advisory lock.
-    SELECT * INTO l_run
+    SELECT *
+    INTO l_run
     FROM dml_utils_data.migration_run AS run
     WHERE run.run_id = i_run_id
         FOR UPDATE;
@@ -48,7 +49,8 @@ BEGIN
     -- The first leaf that is not calculated, in manifest order. pending,
     -- calculating (a crashed claim) and failed are all retryable; calculated is
     -- never recomputed.
-    SELECT * INTO l_leaf
+    SELECT *
+    INTO l_leaf
     FROM dml_utils_data.migration_run_leaf AS leaf
     WHERE leaf.run_id = i_run_id
       AND leaf.state <> 'calculated'
@@ -85,11 +87,11 @@ BEGIN
     -- the leaf pending/failed rather than calculation without boundaries. A
     -- retried failed or stale-calculating leaf starts from an empty count.
     UPDATE dml_utils_data.migration_run_leaf
-    SET state           = 'calculating',
-        boundary_count  = 0,
-        calculated_at   = NULL,
-        error_sqlstate  = NULL,
-        error_message   = NULL
+    SET state          = 'calculating',
+        boundary_count = 0,
+        calculated_at  = NULL,
+        error_sqlstate = NULL,
+        error_message  = NULL
     WHERE run_id = i_run_id
       AND leaf_ordinal = l_leaf.leaf_ordinal;
 
@@ -101,7 +103,8 @@ BEGIN
                 i_chunk_size => l_run.chunk_size,
                 i_leaf_ordinal => l_leaf.leaf_ordinal);
     ELSE
-        SELECT * INTO l_descriptor
+        SELECT *
+        INTO l_descriptor
         FROM dml_utils_lib.migration_run_boundary_key(i_run_id => i_run_id);
         l_key_columns := l_descriptor.o_key_columns;
         l_key_kinds := l_descriptor.o_key_kinds;

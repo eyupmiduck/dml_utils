@@ -135,7 +135,10 @@ BEGIN
                 END);
 
     RETURN QUERY
-        SELECT l_key_select_list, l_key_id_list, l_order_by, l_order_by_desc,
+        SELECT l_key_select_list,
+               l_key_id_list,
+               l_order_by,
+               l_order_by_desc,
                l_pack_expression;
 END;
 $$;

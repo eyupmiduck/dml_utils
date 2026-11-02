@@ -8,16 +8,16 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.leaf_terminal_boundary_id(
 AS
 $$
 DECLARE
-    l_chunk_by             dml_utils_data.chunking_strategy;
-    l_schema_name          text;
-    l_name                 text;
-    l_run_key              record;
-    l_descriptor           record;
-    l_block_count          bigint;
-    l_bigint_values        bigint[];
-    l_text_values          text[];
-    l_uuid_values          uuid[];
-    l_timestamptz_values   timestamptz[];
+    l_chunk_by           dml_utils_data.chunking_strategy;
+    l_schema_name        text;
+    l_name               text;
+    l_run_key            record;
+    l_descriptor         record;
+    l_block_count        bigint;
+    l_bigint_values      bigint[];
+    l_text_values        text[];
+    l_uuid_values        uuid[];
+    l_timestamptz_values timestamptz[];
 BEGIN
     SELECT run.chunk_by, leaf.leaf_schema_name::text, leaf.leaf_name::text
     INTO l_chunk_by, l_schema_name, l_name
@@ -40,8 +40,8 @@ BEGIN
                 pg_catalog.format('%I.%I', l_schema_name, l_name))
             INTO l_block_count;
 
-        RETURN ROW(ARRAY[l_block_count]::bigint[], NULL::text[], NULL::uuid[],
-                   NULL::timestamptz[])::dml_utils_data.migration_key;
+        RETURN ROW (ARRAY [l_block_count]::bigint[], NULL::text[], NULL::uuid[],
+            NULL::timestamptz[])::dml_utils_data.migration_key;
     END IF;
 
     -- The terminal high-water key is the last row of the leaf in the run's key
@@ -49,10 +49,12 @@ BEGIN
     -- so the terminal is comparable with them. The packed key is selected as its
     -- four arrays because a composite result cannot be assigned to a composite
     -- variable directly.
-    SELECT * INTO l_run_key
+    SELECT *
+    INTO l_run_key
     FROM dml_utils_lib.migration_run_boundary_key(i_run_id => i_run_id);
 
-    SELECT * INTO l_descriptor
+    SELECT *
+    INTO l_descriptor
     FROM dml_utils_lib.boundary_key_descriptor_sql(
             i_key_columns => l_run_key.o_key_columns,
             i_key_kinds => l_run_key.o_key_kinds);
@@ -75,8 +77,8 @@ BEGIN
             USING ERRCODE = '55000';
     END IF;
 
-    RETURN ROW(l_bigint_values, l_text_values, l_uuid_values,
-               l_timestamptz_values)::dml_utils_data.migration_key;
+    RETURN ROW (l_bigint_values, l_text_values, l_uuid_values,
+        l_timestamptz_values)::dml_utils_data.migration_key;
 END;
 $$;
 

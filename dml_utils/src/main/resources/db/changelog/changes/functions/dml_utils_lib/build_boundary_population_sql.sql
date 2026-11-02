@@ -26,7 +26,8 @@ BEGIN
     -- The shared helper validates the key descriptor and renders the select,
     -- order and pack fragments. Both the single-relation and per-leaf builders
     -- use it, so the key logic cannot drift between them.
-    SELECT * INTO l_descriptor
+    SELECT *
+    INTO l_descriptor
     FROM dml_utils_lib.boundary_key_descriptor_sql(
             i_key_columns => i_key_columns,
             i_key_kinds => i_key_kinds);

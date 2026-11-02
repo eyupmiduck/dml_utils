@@ -12,11 +12,11 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.migration_run_boundary_key(
 AS
 $$
 DECLARE
-    l_chunk_by               dml_utils_data.chunking_strategy;
-    l_schema_name            text;
-    l_table_name             text;
-    l_ordered_key_columns    name[];
-    l_ordered_key_kinds      text[];
+    l_chunk_by            dml_utils_data.chunking_strategy;
+    l_schema_name         text;
+    l_table_name          text;
+    l_ordered_key_columns name[];
+    l_ordered_key_kinds   text[];
 BEGIN
     SELECT run.chunk_by,
            run.driving_table_schema_name::text,
@@ -24,10 +24,10 @@ BEGIN
            run.ordered_key_columns,
            run.ordered_key_kinds
     INTO l_chunk_by,
-         l_schema_name,
-         l_table_name,
-         l_ordered_key_columns,
-         l_ordered_key_kinds
+        l_schema_name,
+        l_table_name,
+        l_ordered_key_columns,
+        l_ordered_key_kinds
     FROM dml_utils_data.migration_run AS run
     WHERE run.run_id = i_run_id;
 
