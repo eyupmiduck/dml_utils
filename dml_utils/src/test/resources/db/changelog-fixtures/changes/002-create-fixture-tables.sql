@@ -528,6 +528,14 @@ CREATE TABLE dml_utils_fixtures.test_partitioned_range_low
 COMMENT ON TABLE dml_utils_fixtures.test_partitioned_range_low IS
     'Fixture: the low range leaf, created after the other two.';
 
+-- A parent unique index for partition-wise ordered-key runs. PostgreSQL creates
+-- the matching child index on every leaf (and on partitions attached later).
+CREATE UNIQUE INDEX test_partitioned_range_ordered_key_idx
+    ON dml_utils_fixtures.test_partitioned_range (id);
+
+COMMENT ON INDEX dml_utils_fixtures.test_partitioned_range_ordered_key_idx IS
+    'Fixture: the parent unique index for partition-wise ordered-key runs.';
+
 -- A two-level tree: the low range leaf is itself hash-partitioned, so the
 -- enumeration must expand the sub-parent to its leaves.
 CREATE TABLE dml_utils_fixtures.test_partitioned_multi
