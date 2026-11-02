@@ -22,7 +22,6 @@ DECLARE
     -- substitution can be re-scanned by the other.
     l_driving_table_sentinel   constant text := pg_catalog.chr(1);
     l_chunking_clause_sentinel constant text := pg_catalog.chr(2);
-    l_driving_table                     text;
     l_column_count                      integer;
     l_kind                              text;
     l_collation                         text;
@@ -100,30 +99,22 @@ BEGIN
             END IF;
         END LOOP;
 
-    -- The driving table is referenced as "<schema>.<table> <alias>" so the
-    -- template's column references can use the alias.
-    l_driving_table := pg_catalog.format('%I.%I %I',
-                                         i_schema_name, i_table_name, i_table_alias);
-
-    -- A quoted identifier or the caller's template could in principle contain a
-    -- sentinel character; reject that so the substitution below stays unambiguous.
-    IF pg_catalog.strpos(l_driving_table, l_driving_table_sentinel) > 0
-        OR pg_catalog.strpos(l_driving_table, l_chunking_clause_sentinel) > 0
-        OR pg_catalog.strpos(i_sql_text, l_driving_table_sentinel) > 0
+    -- The caller's template could in principle contain a sentinel character;
+    -- reject that so the substitutions stay unambiguous.
+    IF pg_catalog.strpos(i_sql_text, l_driving_table_sentinel) > 0
         OR pg_catalog.strpos(i_sql_text, l_chunking_clause_sentinel) > 0
     THEN
-        RAISE EXCEPTION 'template or identifier contains a reserved substitution character'
+        RAISE EXCEPTION 'template contains a reserved substitution character'
             USING ERRCODE = '22023';
     END IF;
 
-    -- Replace both tokens with sentinels first, then expand the driving-table
-    -- sentinel. The chunking-clause sentinel is left in place for the per-chunk
-    -- render; the substituted driving table is inserted last and is never
-    -- re-scanned, so a value that literally contains <chunking_clause> cannot
-    -- mangle the output.
+    -- Replace both tokens with sentinels. The driving table is deliberately left
+    -- as a sentinel: the prepared context is reused for every chunk of a run, and
+    -- a partition-wise run renders each chunk against its leaf. The caller passes
+    -- the concrete schema, table and alias to render_prepared_chunk_sql, so the
+    -- same context serves the parent or any of its leaves.
     o_template := pg_catalog.replace(i_sql_text, '<driving_table>', l_driving_table_sentinel);
     o_template := pg_catalog.replace(o_template, '<chunking_clause>', l_chunking_clause_sentinel);
-    o_template := pg_catalog.replace(o_template, l_driving_table_sentinel, l_driving_table);
 END;
 $$;
 

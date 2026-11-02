@@ -1,5 +1,8 @@
 CREATE OR REPLACE FUNCTION dml_utils_lib.render_prepared_chunk_sql(
     i_template text,
+    i_schema_name dml_utils_data.non_null_text,
+    i_table_name dml_utils_data.non_null_text,
+    i_table_alias dml_utils_data.non_null_text,
     i_column_names text[],
     i_key_kinds text[],
     i_key_collations text[],
@@ -24,6 +27,7 @@ DECLARE
     l_end_literals                      text[];
     l_boxes                             text[];
     l_box                               text;
+    l_driving_table                     text;
     l_chunking_clause                   text;
     l_rendered                          text;
     l_kind                              text;
@@ -48,9 +52,26 @@ BEGIN
 
     -- The prepared template must carry exactly the clause sentinel, or the
     -- substituted clause would never be placed and the chunk would render with no
-    -- predicate.
+    -- predicate. It must also carry the driving-table sentinel, or the chunk would
+    -- render against whatever table the template hard-coded instead of the caller's.
     IF pg_catalog.strpos(i_template, l_chunking_clause_sentinel) = 0 THEN
         RAISE EXCEPTION 'prepared template is missing the chunking-clause placeholder'
+            USING ERRCODE = '22023';
+    END IF;
+    IF pg_catalog.strpos(i_template, l_driving_table_sentinel) = 0 THEN
+        RAISE EXCEPTION 'prepared template is missing the driving-table placeholder'
+            USING ERRCODE = '22023';
+    END IF;
+
+    -- The table is resolved per render, so a partition-wise run can target one
+    -- leaf at a time while keeping the run-invariant key context. A value that
+    -- cannot be a quoted identifier must not reach the substitution.
+    l_driving_table := pg_catalog.format('%I.%I %I',
+                                         i_schema_name, i_table_name, i_table_alias);
+    IF pg_catalog.strpos(l_driving_table, l_driving_table_sentinel) > 0
+        OR pg_catalog.strpos(l_driving_table, l_chunking_clause_sentinel) > 0
+    THEN
+        RAISE EXCEPTION 'identifier contains a reserved substitution character'
             USING ERRCODE = '22023';
     END IF;
 
@@ -333,7 +354,10 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
 
-    l_rendered := pg_catalog.replace(i_template, l_chunking_clause_sentinel, l_chunking_clause);
+    -- Substitute the driving table first and the clause second. Substituted
+    -- values cannot contain either sentinel, so neither replacement is re-scanned.
+    l_rendered := pg_catalog.replace(i_template, l_driving_table_sentinel, l_driving_table);
+    l_rendered := pg_catalog.replace(l_rendered, l_chunking_clause_sentinel, l_chunking_clause);
     RETURN l_rendered;
 END;
 $$;

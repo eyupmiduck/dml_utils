@@ -95,6 +95,7 @@ class RenderPreparedChunkSqlTest extends PostgresTestBase {
     void rejectsATemplateWithoutTheClausePlaceholder() {
         assertSqlState("22023", () -> Routines.renderPreparedChunkSql(
                 dsl.configuration(), "UPDATE public.src t SET processed = true",
+                "public", "src", "t",
                 new String[]{"t.a"}, new String[]{"bigint"}, new String[]{null},
                 new String[]{"1"}, new String[]{"2"}, false));
     }
@@ -131,6 +132,7 @@ class RenderPreparedChunkSqlTest extends PostgresTestBase {
         return Routines.renderPreparedChunkSql(
                 dsl.configuration(),
                 prepared.getOTemplate(),
+                "public", "src", "t",
                 prepared.getOColumnNames(),
                 kinds,
                 prepared.getOKeyCollations(),

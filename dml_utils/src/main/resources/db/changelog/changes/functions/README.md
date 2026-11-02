@@ -868,9 +868,9 @@ RETURNS record
 `STABLE`, `SECURITY INVOKER`. Validates the chunking template (see
 `assert_chunking_template`) and the key columns and kinds once, and
 returns the run-invariant render context for `render_prepared_chunk_sql`: the
-template with `<driving_table>` already substituted and `<chunking_clause>`
-replaced by an internal sentinel, the alias-qualified quoted column names, and
-each text column's collation (the quoted collation name, `default`, or NULL when
+template with both `<driving_table>` and `<chunking_clause>` replaced by internal
+sentinels, the alias-qualified quoted column names, and each text column's
+collation (the quoted collation name, `default`, or NULL when
 the column is not in the catalog, in which case the per-chunk render compares
 under the default operator). The caller must pass the kind resolved from the
 catalog for each column; the public wrappers derive both together, so a direct
@@ -879,14 +879,18 @@ the collations and rejects an unsupported kind, a NULL/empty column name, a
 malformed columns/kinds array, a template that is not a valid chunking template,
 or an identifier/template containing a reserved substitution character (`22023`).
 Prepare once per run and pass the result to `render_prepared_chunk_sql` for every
-chunk.
+chunk; the driving table is selected per render, so the same context renders the
+parent or any leaf of a partition-wise run.
 
 ###
 
-`dml_utils_lib.render_prepared_chunk_sql(i_template, i_column_names, i_key_kinds, i_key_collations, i_start_values, i_end_values, i_is_final)`
+`dml_utils_lib.render_prepared_chunk_sql(i_template, i_schema_name, i_table_name, i_table_alias, i_column_names, i_key_kinds, i_key_collations, i_start_values, i_end_values, i_is_final)`
 
 ```sql
 i_template       text
+i_schema_name    dml_utils_data.non_null_text
+i_table_name     dml_utils_data.non_null_text
+i_table_alias    dml_utils_data.non_null_text
 i_column_names   text[]
 i_key_kinds      text[]
 i_key_collations text[]
@@ -898,11 +902,13 @@ RETURNS text
 
 `STABLE`, `SECURITY INVOKER`. Renders one chunk from the context returned by
 `prepare_chunk_sql_render`: it validates and casts the start/end boundary values,
-builds the same axis-aligned box disjunction as `render_chunk_sql`, and
-substitutes it for the prepared template's chunking-clause sentinel. It reads no
+builds the same axis-aligned box disjunction as `render_chunk_sql`, substitutes
+the caller's driving table (the parent or one leaf) for the template's
+driving-table sentinel, and substitutes the clause for its sentinel. It reads no
 catalog, so calling it per chunk avoids repeating the template validation and
-quoting that `render_chunk_sql` would redo. A NULL template, a prepared template
-without the clause sentinel, a NULL `i_is_final`, malformed arrays, a NULL or
+quoting that `render_chunk_sql` would redo; a partition-wise run prepares from
+the parent once and passes each boundary's leaf here. A NULL template, a prepared
+template without either sentinel, a NULL `i_is_final`, malformed arrays, a NULL or
 invalid-for-its-kind boundary value, or a reversed/empty non-final range raises
 `22023`.
 
