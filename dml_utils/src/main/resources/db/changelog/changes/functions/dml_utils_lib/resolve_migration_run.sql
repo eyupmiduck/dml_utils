@@ -31,21 +31,21 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.resolve_migration_run(
 AS
 $$
 DECLARE
-    l_completed_at       timestamptz;
-    l_stored_sql_text    text;
-    l_stored_chunk_size  integer;
-    l_stored_chunk_by    dml_utils_data.chunking_strategy;
-    l_stored_threads     integer;
-    l_stored_sleep_ms    integer;
-    l_stored_schema_name text;
-    l_stored_table_name  text;
-    l_stored_alias       text;
-    l_stored_filepath    text;
+    l_completed_at               timestamptz;
+    l_stored_sql_text            text;
+    l_stored_chunk_size          integer;
+    l_stored_chunk_by            dml_utils_data.chunking_strategy;
+    l_stored_threads             integer;
+    l_stored_sleep_ms            integer;
+    l_stored_schema_name         text;
+    l_stored_table_name          text;
+    l_stored_alias               text;
+    l_stored_filepath            text;
     l_stored_ordered_key_index   name;
     l_stored_ordered_key_columns name[];
     l_stored_ordered_key_kinds   text[];
-    l_handle             public.pg_background_handle;
-    l_worker_run_id      bigint;
+    l_handle                     public.pg_background_handle;
+    l_worker_run_id              bigint;
 BEGIN
     IF i_chunk_by IS NULL THEN
         RAISE EXCEPTION 'i_chunk_by must not be NULL'
@@ -145,13 +145,11 @@ BEGIN
             IF dml_utils_lib.ordered_key_columns(
                        i_schema_name => o_effective_schema_name,
                        i_table_name => o_effective_table_name,
-                       i_index_name => l_stored_ordered_key_index)
-                IS DISTINCT FROM l_stored_ordered_key_columns
+                       i_index_name => l_stored_ordered_key_index) IS DISTINCT FROM l_stored_ordered_key_columns
                 OR dml_utils_lib.ordered_key_kinds(
                        i_schema_name => o_effective_schema_name,
                        i_table_name => o_effective_table_name,
-                       i_index_name => l_stored_ordered_key_index)
-                IS DISTINCT FROM l_stored_ordered_key_kinds
+                       i_index_name => l_stored_ordered_key_index) IS DISTINCT FROM l_stored_ordered_key_kinds
             THEN
                 RAISE EXCEPTION 'ordered-key index %.% no longer matches the stored key descriptor',
                     o_effective_schema_name, l_stored_ordered_key_index
