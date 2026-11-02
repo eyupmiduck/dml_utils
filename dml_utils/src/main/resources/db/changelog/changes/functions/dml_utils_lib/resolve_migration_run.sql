@@ -9,6 +9,9 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.resolve_migration_run(
     i_chunk_by dml_utils_data.chunking_strategy DEFAULT 'primary_key',
     -- Initial delay for a new run; a resumed run uses its stored value.
     i_sleep_ms dml_utils_data.non_negative_integer DEFAULT 0,
+    -- The unique index whose order an ordered_key run uses. Required for
+    -- ordered_key and rejected for the other strategies.
+    i_boundary_key_index name DEFAULT NULL,
     OUT o_run_id bigint,
     OUT o_already_completed boolean,
     OUT o_effective_sql_text text,
@@ -18,7 +21,7 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.resolve_migration_run(
     OUT o_effective_threads integer,
     OUT o_effective_sleep_ms integer,
     OUT o_chunk_by dml_utils_data.chunking_strategy,
-    OUT o_primary_key_columns name[],
+    OUT o_key_columns name[],
     OUT o_key_kinds text[]
 )
     RETURNS record
@@ -37,6 +40,7 @@ DECLARE
     l_stored_table_name  text;
     l_stored_alias       text;
     l_stored_filepath    text;
+    l_stored_ordered_key_index name;
     l_handle             public.pg_background_handle;
     l_worker_run_id      bigint;
 BEGIN
@@ -58,10 +62,12 @@ BEGIN
            driving_table_schema_name::text,
            driving_table_name::text,
            driving_table_alias::text,
-           driving_table_relation_filepath
+           driving_table_relation_filepath,
+           ordered_key_index
     INTO o_run_id, l_completed_at, l_stored_sql_text, l_stored_chunk_size,
         l_stored_chunk_by, l_stored_threads, l_stored_sleep_ms, l_stored_schema_name,
-        l_stored_table_name, l_stored_alias, l_stored_filepath
+        l_stored_table_name, l_stored_alias, l_stored_filepath,
+        l_stored_ordered_key_index
     FROM dml_utils_data.migration_run
     WHERE label = i_label
       AND archived_at IS NULL;
@@ -100,6 +106,18 @@ BEGIN
         o_chunk_by := l_stored_chunk_by;
         IF l_stored_chunk_by IS DISTINCT FROM i_chunk_by THEN
             RAISE NOTICE 'run for label % already exists; using the stored chunk_by %',
+                i_label, l_stored_chunk_by;
+        END IF;
+        -- The stored strategy and descriptor win on resume, like the other stored
+        -- inputs. Re-validating the stored index against the catalog is the resume
+        -- safety check (dml-b87.8), not part of reading the effective inputs.
+        IF l_stored_chunk_by = 'ordered_key' THEN
+            IF l_stored_ordered_key_index IS DISTINCT FROM i_boundary_key_index THEN
+                RAISE NOTICE 'run for label % already exists; using the stored ordered_key_index %',
+                    i_label, l_stored_ordered_key_index;
+            END IF;
+        ELSIF i_boundary_key_index IS NOT NULL THEN
+            RAISE NOTICE 'run for label % already exists; ignoring i_boundary_key_index for chunk_by %',
                 i_label, l_stored_chunk_by;
         END IF;
         IF l_stored_alias IS DISTINCT FROM i_driving_table_alias THEN
@@ -143,8 +161,20 @@ BEGIN
         o_effective_alias := i_driving_table_alias;
         o_chunk_by := i_chunk_by;
 
+        -- Match the run-table constraint: an ordered_key run needs the index and
+        -- the other strategies must not carry one. Reject locally so the error
+        -- names the parameter instead of surfacing from the worker.
+        IF i_chunk_by = 'ordered_key' AND i_boundary_key_index IS NULL THEN
+            RAISE EXCEPTION 'i_boundary_key_index is required when i_chunk_by is ordered_key'
+                USING ERRCODE = '22023';
+        END IF;
+        IF i_chunk_by <> 'ordered_key' AND i_boundary_key_index IS NOT NULL THEN
+            RAISE EXCEPTION 'i_boundary_key_index is only valid when i_chunk_by is ordered_key'
+                USING ERRCODE = '22023';
+        END IF;
+
         l_handle := public.pg_background_launch(pg_catalog.format(
-                'SELECT dml_utils_lib.populate_migration_boundaries(%L, %L, %L, %L, %s, %s, %L, %L, %s) AS run_id',
+                'SELECT dml_utils_lib.populate_migration_boundaries(%L, %L, %L, %L, %s, %s, %L, %L, %s, %L) AS run_id',
                 i_driving_table_schema_name,
                 i_driving_table_name,
                 i_label,
@@ -153,7 +183,8 @@ BEGIN
                 i_threads,
                 i_chunk_by::text,
                 i_driving_table_alias,
-                i_sleep_ms));
+                i_sleep_ms,
+                i_boundary_key_index));
         PERFORM public.pg_background_wait(l_handle.pid, l_handle.cookie);
 
         -- result() is one-time consumption and auto-detaches; it re-raises the
@@ -164,14 +195,23 @@ BEGIN
         o_run_id := l_worker_run_id;
     END IF;
 
-    -- Resolve the key the coordinator uses to read boundary values: the real
-    -- primary key for primary_key, or a single bigint (the block number) for
-    -- blocks. The placeholder column name is unused by the block renderer.
+    -- Resolve the key the coordinator uses to read boundary values: the stored
+    -- ordered-key descriptor, the real primary key for primary_key, or a single
+    -- bigint (the block number) for blocks. The placeholder column name is unused
+    -- by the block renderer. Reading the descriptor from the run (rather than
+    -- re-resolving the index) guarantees the coordinator matches the boundaries
+    -- that were computed; re-validating the stored index is the resume check in
+    -- dml-b87.8.
     IF o_chunk_by = 'blocks' THEN
-        o_primary_key_columns := ARRAY ['ctid']::name[];
+        o_key_columns := ARRAY ['ctid']::name[];
         o_key_kinds := ARRAY ['bigint'];
+    ELSIF o_chunk_by = 'ordered_key' THEN
+        SELECT r.ordered_key_columns, r.ordered_key_kinds
+        INTO o_key_columns, o_key_kinds
+        FROM dml_utils_data.migration_run AS r
+        WHERE r.run_id = o_run_id;
     ELSE
-        o_primary_key_columns := dml_utils_lib.primary_key_columns(
+        o_key_columns := dml_utils_lib.primary_key_columns(
                 i_schema_name => o_effective_schema_name,
                 i_table_name => o_effective_table_name);
         o_key_kinds := dml_utils_lib.primary_key_kinds(
@@ -186,7 +226,8 @@ COMMENT ON FUNCTION dml_utils_lib.resolve_migration_run IS
         'coordinator should use: the run id, whether it was already complete, the '
         'effective sql_text/schema/table/alias/threads/sleep_ms and chunking '
         'strategy (stored values for a resumed run), and the boundary key columns '
-        'and kinds (the real primary key for primary_key, or a single bigint block '
-        'number for blocks). A new run is created by populating its boundaries in a '
-        'pg_background worker; a resumed block run fails closed if the driving '
-        'table''s physical filepath changed.';
+        'and kinds (the stored ordered-key descriptor for ordered_key, the real '
+        'primary key for primary_key, or a single bigint block number for blocks). '
+        'A new run is created by populating its boundaries in a pg_background '
+        'worker; a resumed run fails closed if the driving table''s physical '
+        'filepath changed.';
