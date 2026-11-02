@@ -19,7 +19,8 @@ CREATE OR REPLACE FUNCTION dml_utils.run_migration_chunks(
     -- value. 0 disables the delay.
     i_sleep_ms dml_utils_data.non_negative_integer DEFAULT 0,
     -- The unique index whose order an ordered_key run uses. Required for
-    -- ordered_key and rejected for the other strategies.
+    -- ordered_key; rejected for a new run of the other strategies and ignored
+    -- with a notice when resuming an existing run.
     i_boundary_key_index name DEFAULT NULL
 )
     RETURNS void
@@ -469,7 +470,9 @@ COMMENT ON FUNCTION dml_utils.run_migration_chunks IS
         'a time, resuming an active run for the label and recording its completion. '
         'A resumed run uses the stored sql_text, chunk size, strategy, key, threads, '
         'sleep_ms, driving table and alias. i_boundary_key_index is required for '
-        'ordered_key and rejected for the other strategies. After each successfully '
+        'ordered_key and rejected for a new run of the other strategies; a resumed '
+        'run keeps its stored key and ignores a differing index with a notice. '
+        'After each successfully '
         'completed chunk it waits the run''s sleep_ms before launching another '
         '(except after the final chunk); the sleep is cancellation-aware. On a '
         'failed chunk it stops launching, lets the in-flight chunks commit, drains '

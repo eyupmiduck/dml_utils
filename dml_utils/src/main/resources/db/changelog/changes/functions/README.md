@@ -56,7 +56,9 @@ A run chunks the driving table one of three ways, recorded in the run's `chunk_b
   `NOT NULL` columns of type `bigint`, `text`, `uuid` or `timestamptz`, use the
   type's default btree opclass and the column's collation, and be ascending with
   `NULLS LAST`. The resolved descriptor is stored with the run, so resume and
-  explain use the same key. The chunk SQL must not modify the key columns.
+  explain use the same key; a resumed run re-validates the stored index and
+  fails closed if it no longer matches. The chunk SQL must not modify the key
+  columns.
 - **`blocks`**: fixed-block chunks from the physical heap order. The boundaries
   are heap block numbers and a chunk is the half-open ctid range
   `ctid >= '(start,0)' AND ctid < '(end,0)'`, which plans as a TID Range Scan (PostgreSQL 14+). Boundary computation is
@@ -126,8 +128,9 @@ the strategy: `primary_key` (the default) chunks fixed rows in primary-key order
 `ordered_key` chunks fixed rows in the order of `i_boundary_key_index`, a unique
 btree index on the driving table; `blocks` chunks physical heap block ranges and
 requires a quiescent, read-only plain table (see "Chunking strategies" above).
-`i_boundary_key_index` is required for `ordered_key` and rejected for the other
-strategies (`22023`). Each
+`i_boundary_key_index` is required for `ordered_key` and rejected for a new run of
+the other strategies (`22023`); when resuming an existing run the stored strategy
+and index win, and a differing index is ignored with a notice. Each
 worker runs one chunk in its own transaction; the coordinator only schedules
 and holds no locks on the driving table. On a failed chunk the coordinator
 records it, stops launching new chunks, lets the workers already in flight
@@ -637,6 +640,20 @@ should read `ordered_key_attributes` once instead of calling this wrapper and
 then `ordered_key_columns`/`ordered_key_kinds`, which would repeat the catalog
 read and validation.
 
+### `dml_utils_lib.assert_boundary_key_index(i_chunk_by, i_boundary_key_index)`
+
+```sql
+i_chunk_by           dml_utils_data.chunking_strategy
+i_boundary_key_index name
+RETURNS void
+```
+
+`IMMUTABLE`, `SECURITY INVOKER`. Raises `invalid_parameter_value` (`22023`) when
+`i_chunk_by` is NULL, when `ordered_key` is selected without an index, or when an
+index is supplied for `primary_key` or `blocks`. Shared by the new-run and
+explain paths so the strategy/index rule lives in one place; a resumed run keeps
+its stored strategy and index instead of calling this.
+
 ### `dml_utils_lib.migration_key_is_canonical(i_key)`
 
 ```sql
@@ -732,10 +749,13 @@ threads, sleep and chunking strategy (the stored values for a resumed run,
 ignoring differing inputs with a notice), and the boundary key columns and kinds
 (the stored ordered-key descriptor for `ordered_key`, the real primary key for
 `primary_key`, or a single `bigint` block number for `blocks`).
-`i_boundary_key_index` is required for `ordered_key` and rejected for the other
-strategies (`22023`); a resumed run keeps its stored index. A resumed block run
-fails closed if the driving table's physical filepath changed. It validates the
-thread count against `max_worker_processes` before creating a run.
+`i_boundary_key_index` is required for a new `ordered_key` run and rejected for a
+new run of the other strategies (`22023`); a resumed run keeps its stored index,
+and a differing input is ignored with a notice. A resumed ordered-key run
+re-validates the stored index and descriptor and raises `55000` if they no longer
+match. A resumed block run fails closed if the driving table's physical filepath
+changed. It validates the thread count against `max_worker_processes` before
+creating a run.
 
 ### `dml_utils_lib.assert_chunking_template(i_sql_text)`
 

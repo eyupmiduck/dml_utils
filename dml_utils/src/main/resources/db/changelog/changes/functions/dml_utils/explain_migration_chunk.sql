@@ -41,14 +41,9 @@ BEGIN
         RAISE EXCEPTION 'explain_migration_chunk does not explain block chunks; use explain_migration_chunks'
             USING ERRCODE = '0A000';
     END IF;
-    IF i_chunk_by = 'ordered_key' AND i_boundary_key_index IS NULL THEN
-        RAISE EXCEPTION 'i_boundary_key_index is required when i_chunk_by is ordered_key'
-            USING ERRCODE = '22023';
-    END IF;
-    IF i_chunk_by <> 'ordered_key' AND i_boundary_key_index IS NOT NULL THEN
-        RAISE EXCEPTION 'i_boundary_key_index is only valid when i_chunk_by is ordered_key'
-            USING ERRCODE = '22023';
-    END IF;
+    PERFORM dml_utils_lib.assert_boundary_key_index(
+            i_chunk_by => i_chunk_by,
+            i_boundary_key_index => i_boundary_key_index);
 
     IF i_chunk_by = 'ordered_key' THEN
         PERFORM dml_utils_lib.assert_usable_ordered_key(

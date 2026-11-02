@@ -27,22 +27,11 @@ DECLARE
     l_run_id              bigint;
     l_caller              name;
 BEGIN
-    IF i_chunk_by IS NULL THEN
-        RAISE EXCEPTION 'i_chunk_by must not be NULL'
-            USING ERRCODE = '22023';
-    END IF;
-
     -- The index selects the ordered key, so it is required for that strategy and
-    -- must not be supplied for the primary_key/blocks strategies whose runs do not
-    -- store a key descriptor.
-    IF i_chunk_by = 'ordered_key' AND i_boundary_key_index IS NULL THEN
-        RAISE EXCEPTION 'i_boundary_key_index is required when i_chunk_by is ordered_key'
-            USING ERRCODE = '22023';
-    END IF;
-    IF i_chunk_by <> 'ordered_key' AND i_boundary_key_index IS NOT NULL THEN
-        RAISE EXCEPTION 'i_boundary_key_index is only valid when i_chunk_by is ordered_key'
-            USING ERRCODE = '22023';
-    END IF;
+    -- rejected for the others; the shared helper owns that rule.
+    PERFORM dml_utils_lib.assert_boundary_key_index(
+            i_chunk_by => i_chunk_by,
+            i_boundary_key_index => i_boundary_key_index);
 
     PERFORM dml_utils_lib.assert_schema_exists(i_schema_name => i_schema_name);
     PERFORM dml_utils_lib.assert_table_exists(

@@ -130,6 +130,14 @@ GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_usable_ordered_key(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text
     ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_boundary_key_index(
+    dml_utils_data.chunking_strategy,
+    name
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_boundary_key_index(
+    dml_utils_data.chunking_strategy,
+    name
+    ) TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.migration_key_values(
     dml_utils_data.migration_key,
     text[]

@@ -7,6 +7,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.sql.Connection;
+import java.sql.Statement;
 import java.time.OffsetDateTime;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
@@ -247,6 +249,29 @@ class ResolveMigrationRunTest extends PostgresTestBase {
                 "the stored descriptor wins");
         assertArrayEquals(new String[]{"timestamptz", "bigint"}, second.getOKeyKinds());
         assertEquals("test_ordered_key_created_at_id_idx", storedOrderedKeyIndex(second));
+    }
+
+    /**
+     * A resumed ordered_key run fails closed with {@code 55000} when the live
+     * index no longer resolves to the descriptor stored with the run.
+     */
+    @Test
+    void resumeFailsWhenTheStoredDescriptorNoLongerMatchesTheIndex() throws Exception {
+        seedOrderedKey();
+        String label = uniqueLabel("resolve-ordered-changed");
+        ResolveMigrationRun first = resolveOrderedKey(label,
+                "test_ordered_key_created_at_id_idx");
+
+        try (Connection connection = openOwnerConnection();
+             Statement statement = connection.createStatement()) {
+            statement.execute("UPDATE dml_utils_data.migration_run"
+                    + " SET ordered_key_columns = ARRAY['id']::name[],"
+                    + " ordered_key_kinds = ARRAY['bigint']::text[]"
+                    + " WHERE run_id = " + first.getORunId());
+        }
+
+        assertSqlState("55000", () -> resolveOrderedKey(label,
+                "test_ordered_key_created_at_id_idx"));
     }
 
     /**

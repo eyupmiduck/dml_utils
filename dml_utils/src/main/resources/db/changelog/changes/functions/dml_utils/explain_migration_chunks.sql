@@ -32,14 +32,9 @@ BEGIN
             i_schema_name => i_driving_table_schema_name,
             i_table_name => i_driving_table_name);
 
-    IF i_chunk_by = 'ordered_key' AND i_boundary_key_index IS NULL THEN
-        RAISE EXCEPTION 'i_boundary_key_index is required when i_chunk_by is ordered_key'
-            USING ERRCODE = '22023';
-    END IF;
-    IF i_chunk_by <> 'ordered_key' AND i_boundary_key_index IS NOT NULL THEN
-        RAISE EXCEPTION 'i_boundary_key_index is only valid when i_chunk_by is ordered_key'
-            USING ERRCODE = '22023';
-    END IF;
+    PERFORM dml_utils_lib.assert_boundary_key_index(
+            i_chunk_by => i_chunk_by,
+            i_boundary_key_index => i_boundary_key_index);
 
     IF i_chunk_by = 'blocks' THEN
         PERFORM dml_utils_lib.assert_plain_heap(

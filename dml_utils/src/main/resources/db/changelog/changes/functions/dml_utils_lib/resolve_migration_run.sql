@@ -9,8 +9,9 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.resolve_migration_run(
     i_chunk_by dml_utils_data.chunking_strategy DEFAULT 'primary_key',
     -- Initial delay for a new run; a resumed run uses its stored value.
     i_sleep_ms dml_utils_data.non_negative_integer DEFAULT 0,
-    -- The unique index whose order an ordered_key run uses. Required for
-    -- ordered_key and rejected for the other strategies.
+    -- The unique index whose order an ordered_key run uses. Required for a new
+    -- ordered_key run; ignored with a notice when resuming an existing run, where
+    -- the stored strategy and index win.
     i_boundary_key_index name DEFAULT NULL,
     OUT o_run_id bigint,
     OUT o_already_completed boolean,
@@ -40,7 +41,9 @@ DECLARE
     l_stored_table_name  text;
     l_stored_alias       text;
     l_stored_filepath    text;
-    l_stored_ordered_key_index name;
+    l_stored_ordered_key_index   name;
+    l_stored_ordered_key_columns name[];
+    l_stored_ordered_key_kinds   text[];
     l_handle             public.pg_background_handle;
     l_worker_run_id      bigint;
 BEGIN
@@ -63,11 +66,14 @@ BEGIN
            driving_table_name::text,
            driving_table_alias::text,
            driving_table_relation_filepath,
-           ordered_key_index
+           ordered_key_index,
+           ordered_key_columns,
+           ordered_key_kinds
     INTO o_run_id, l_completed_at, l_stored_sql_text, l_stored_chunk_size,
         l_stored_chunk_by, l_stored_threads, l_stored_sleep_ms, l_stored_schema_name,
         l_stored_table_name, l_stored_alias, l_stored_filepath,
-        l_stored_ordered_key_index
+        l_stored_ordered_key_index, l_stored_ordered_key_columns,
+        l_stored_ordered_key_kinds
     FROM dml_utils_data.migration_run
     WHERE label = i_label
       AND archived_at IS NULL;
@@ -109,13 +115,39 @@ BEGIN
                 i_label, l_stored_chunk_by;
         END IF;
         -- The stored strategy and descriptor win on resume, like the other stored
-        -- inputs. Re-validating the stored index against the catalog is the resume
-        -- safety check (dml-b87.8), not part of reading the effective inputs.
+        -- inputs. The boundaries were built from the stored index, so fail closed
+        -- if it is no longer usable or resolves to a different descriptor: a
+        -- dropped, invalid, partial, reordered or differently-typed index would
+        -- otherwise let the run continue over a key it no longer matches.
         IF l_stored_chunk_by = 'ordered_key' THEN
             IF l_stored_ordered_key_index IS DISTINCT FROM i_boundary_key_index THEN
                 RAISE NOTICE 'run for label % already exists; using the stored ordered_key_index %',
                     i_label, l_stored_ordered_key_index;
             END IF;
+
+            PERFORM dml_utils_lib.assert_usable_ordered_key(
+                    i_schema_name => o_effective_schema_name,
+                    i_table_name => o_effective_table_name,
+                    i_index_name => l_stored_ordered_key_index);
+
+            IF dml_utils_lib.ordered_key_columns(
+                       i_schema_name => o_effective_schema_name,
+                       i_table_name => o_effective_table_name,
+                       i_index_name => l_stored_ordered_key_index)
+                IS DISTINCT FROM l_stored_ordered_key_columns
+                OR dml_utils_lib.ordered_key_kinds(
+                       i_schema_name => o_effective_schema_name,
+                       i_table_name => o_effective_table_name,
+                       i_index_name => l_stored_ordered_key_index)
+                IS DISTINCT FROM l_stored_ordered_key_kinds
+            THEN
+                RAISE EXCEPTION 'ordered-key index %.% no longer matches the stored key descriptor',
+                    o_effective_schema_name, l_stored_ordered_key_index
+                    USING ERRCODE = '55000';
+            END IF;
+
+            o_key_columns := l_stored_ordered_key_columns;
+            o_key_kinds := l_stored_ordered_key_kinds;
         ELSIF i_boundary_key_index IS NOT NULL THEN
             RAISE NOTICE 'run for label % already exists; ignoring i_boundary_key_index for chunk_by %',
                 i_label, l_stored_chunk_by;
@@ -164,14 +196,9 @@ BEGIN
         -- Match the run-table constraint: an ordered_key run needs the index and
         -- the other strategies must not carry one. Reject locally so the error
         -- names the parameter instead of surfacing from the worker.
-        IF i_chunk_by = 'ordered_key' AND i_boundary_key_index IS NULL THEN
-            RAISE EXCEPTION 'i_boundary_key_index is required when i_chunk_by is ordered_key'
-                USING ERRCODE = '22023';
-        END IF;
-        IF i_chunk_by <> 'ordered_key' AND i_boundary_key_index IS NOT NULL THEN
-            RAISE EXCEPTION 'i_boundary_key_index is only valid when i_chunk_by is ordered_key'
-                USING ERRCODE = '22023';
-        END IF;
+        PERFORM dml_utils_lib.assert_boundary_key_index(
+                i_chunk_by => i_chunk_by,
+                i_boundary_key_index => i_boundary_key_index);
 
         l_handle := public.pg_background_launch(pg_catalog.format(
                 'SELECT dml_utils_lib.populate_migration_boundaries(%L, %L, %L, %L, %s, %s, %L, %L, %s, %L) AS run_id',
@@ -193,24 +220,32 @@ BEGIN
         INTO l_worker_run_id
         FROM public.pg_background_result(l_handle.pid, l_handle.cookie) AS (run_id bigint);
         o_run_id := l_worker_run_id;
+
+        -- Read the descriptor the worker stored, so the coordinator uses exactly
+        -- the key the boundaries were built from. The run-row constraint normally
+        -- guarantees it; fail closed if the row vanished or is malformed.
+        IF o_chunk_by = 'ordered_key' THEN
+            SELECT r.ordered_key_columns, r.ordered_key_kinds
+            INTO o_key_columns, o_key_kinds
+            FROM dml_utils_data.migration_run AS r
+            WHERE r.run_id = o_run_id;
+
+            IF NOT FOUND OR o_key_columns IS NULL OR o_key_kinds IS NULL THEN
+                RAISE EXCEPTION 'run % has no stored ordered-key descriptor', o_run_id
+                    USING ERRCODE = '55000';
+            END IF;
+        END IF;
     END IF;
 
-    -- Resolve the key the coordinator uses to read boundary values: the stored
-    -- ordered-key descriptor, the real primary key for primary_key, or a single
-    -- bigint (the block number) for blocks. The placeholder column name is unused
-    -- by the block renderer. Reading the descriptor from the run (rather than
-    -- re-resolving the index) guarantees the coordinator matches the boundaries
-    -- that were computed; re-validating the stored index is the resume check in
-    -- dml-b87.8.
+    -- Resolve the key the coordinator uses to read boundary values. A new
+    -- ordered_key run read its descriptor from the run above, and a resumed one
+    -- validated and reused the stored descriptor, so only blocks and primary_key
+    -- need resolving here. The placeholder column name is unused by the block
+    -- renderer.
     IF o_chunk_by = 'blocks' THEN
         o_key_columns := ARRAY ['ctid']::name[];
         o_key_kinds := ARRAY ['bigint'];
-    ELSIF o_chunk_by = 'ordered_key' THEN
-        SELECT r.ordered_key_columns, r.ordered_key_kinds
-        INTO o_key_columns, o_key_kinds
-        FROM dml_utils_data.migration_run AS r
-        WHERE r.run_id = o_run_id;
-    ELSE
+    ELSIF o_chunk_by <> 'ordered_key' THEN
         o_key_columns := dml_utils_lib.primary_key_columns(
                 i_schema_name => o_effective_schema_name,
                 i_table_name => o_effective_table_name);
@@ -230,4 +265,6 @@ COMMENT ON FUNCTION dml_utils_lib.resolve_migration_run IS
         'primary key for primary_key, or a single bigint block number for blocks). '
         'A new run is created by populating its boundaries in a pg_background '
         'worker; a resumed run fails closed if the driving table''s physical '
-        'filepath changed.';
+        'filepath changed, and a resumed ordered-key run re-validates its stored '
+        'index and descriptor, raising object_not_in_prerequisite_state (55000) if '
+        'the index no longer matches.';
