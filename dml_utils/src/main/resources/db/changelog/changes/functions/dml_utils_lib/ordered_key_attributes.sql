@@ -21,6 +21,7 @@ DECLARE
     l_btree    oid;
     l_key      record;
     l_key_kind text;
+    l_hint     text;
 BEGIN
     -- The single catalog reader for an ordered key: resolve the named unique
     -- index on the driving table and validate every property the range renderer
@@ -38,7 +39,6 @@ BEGIN
            i.indisvalid,
            i.indisready,
            i.indislive,
-           i.indisexclusion,
            i.indpred,
            i.indexprs,
            i.indkey,
@@ -58,9 +58,28 @@ BEGIN
       AND ic.relname = i_index_name;
 
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'index %.% does not exist on table %.%',
-            i_schema_name, i_index_name, i_schema_name, i_table_name
-            USING ERRCODE = '42704';
+        -- Index names are unique within a schema, so a miss usually means the
+        -- index belongs to another table or the name is misspelled. Resolve the
+        -- actual table for a hint, only on the failure path.
+        SELECT pg_catalog.format('index %I.%I exists on table %I.%I',
+                                 n.nspname, ic.relname, n.nspname, c.relname)
+        INTO l_hint
+        FROM pg_catalog.pg_class AS ic
+                 JOIN pg_catalog.pg_namespace AS n ON n.oid = ic.relnamespace
+                 JOIN pg_catalog.pg_index AS i ON i.indexrelid = ic.oid
+                 JOIN pg_catalog.pg_class AS c ON c.oid = i.indrelid
+        WHERE n.nspname = i_schema_name
+          AND ic.relname = i_index_name;
+
+        IF l_hint IS NULL THEN
+            RAISE EXCEPTION 'index %.% does not exist on table %.%',
+                i_schema_name, i_index_name, i_schema_name, i_table_name
+                USING ERRCODE = '42704';
+        ELSE
+            RAISE EXCEPTION 'index %.% does not exist on table %.%',
+                i_schema_name, i_index_name, i_schema_name, i_table_name
+                USING ERRCODE = '42704', HINT = l_hint;
+        END IF;
     END IF;
 
     -- A partitioned parent has no single heap or row order of its own; the
@@ -71,15 +90,11 @@ BEGIN
             USING ERRCODE = '0A000';
     END IF;
 
+    -- An exclusion constraint can only be backed by gist/spgist, never btree,
+    -- so this also rejects one (with the same 0A000).
     IF l_index.amname <> 'btree' THEN
         RAISE EXCEPTION 'ordered-key index %.% must be a btree index, not %',
             i_schema_name, i_index_name, l_index.amname
-            USING ERRCODE = '0A000';
-    END IF;
-
-    IF l_index.indisexclusion THEN
-        RAISE EXCEPTION 'ordered-key index %.% must not back an exclusion constraint',
-            i_schema_name, i_index_name
             USING ERRCODE = '0A000';
     END IF;
 

@@ -84,7 +84,7 @@ The index must satisfy all of:
 
 | Check | Rule |
 |---|---|
-| Kind | btree, not an exclusion constraint |
+| Kind | btree (exclusion constraints use gist/spgist, so the btree check rejects them) |
 | Uniqueness | `indisunique` |
 | Health | `indisvalid`, `indisready`, `indislive` |
 | Shape | `indpred IS NULL`, `indexprs IS NULL`, `indnkeyatts BETWEEN 1 AND 3` |

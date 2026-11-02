@@ -569,13 +569,15 @@ type and collapsed boundary kind (`bigint`, `text`, `uuid` or `timestamptz`).
 |---|---|
 | Missing index on the table | `42704` |
 | Missing schema / table | `3F000` / `42P01` |
-| Non-plain (partitioned) table, non-btree, exclusion, non-unique, partial, expression, DESC / NULLS FIRST, non-default opclass, collation mismatch, nullable key column | `0A000` |
+| Non-plain (partitioned) table, non-btree, non-unique, partial, expression, DESC / NULLS FIRST, non-default opclass, collation mismatch, nullable key column | `0A000` |
 | Index not valid/ready/live | `55000` |
 | Wrong arity (more than three key columns) or unsupported key type | `22023` |
 
 The index must be a valid, live, unique btree index on one to three simple
 `NOT NULL` columns using the type's default btree operator class and the
-column's own collation.
+column's own collation. An exclusion-constraint index is rejected by the
+non-btree check, because PostgreSQL backs exclusion constraints only with
+gist/spgist.
 
 ### `dml_utils_lib.ordered_key_columns(i_schema_name, i_table_name, i_index_name)`
 
@@ -613,7 +615,10 @@ RETURNS void
 
 `STABLE`, `SECURITY INVOKER`. Raises the `ordered_key_attributes` error when the
 index cannot serve as an ordered key, and returns normally when it can. Used by
-the run path and by resume validation.
+the run path and by resume validation. A caller that also needs the descriptor
+should read `ordered_key_attributes` once instead of calling this wrapper and
+then `ordered_key_columns`/`ordered_key_kinds`, which would repeat the catalog
+read and validation.
 
 ### `dml_utils_lib.migration_key_is_canonical(i_key)`
 

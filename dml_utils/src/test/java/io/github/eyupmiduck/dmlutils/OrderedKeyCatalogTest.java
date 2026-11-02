@@ -2,6 +2,7 @@ package io.github.eyupmiduck.dmlutils;
 
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.tables.records.OrderedKeyAttributesRecord;
+import org.jooq.exception.DataAccessException;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -9,12 +10,18 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Verifies the ordered-key catalog resolution: a unique btree index on one to
  * three simple NOT NULL columns of a supported type resolves to its key columns
  * and kinds in index order, while every unsafe index or table shape is rejected
  * with a documented SQLSTATE.
+ *
+ * <p>The not-valid/not-ready/not-live branch ({@code 55000}) is deliberately not
+ * exercised: it needs catalog surgery the test role cannot perform, and exists
+ * as a fail-closed guard for a failed concurrent build.
  */
 class OrderedKeyCatalogTest extends PostgresTestBase {
 
@@ -119,6 +126,21 @@ class OrderedKeyCatalogTest extends PostgresTestBase {
     void rejectsAMissingIndexOnTheTable() {
         assertRejected("42704", "no_such_index");
         assertRejected("42704", "test_bigint_pkey");
+    }
+
+    /**
+     * When the name resolves to an index on another table, the error's hint
+     * names that table instead of leaving the caller with a dead end.
+     */
+    @Test
+    void hintsAtAnIndexOnAnotherTable() {
+        DataAccessException error = assertThrows(DataAccessException.class,
+                () -> attributes("test_bigint_pkey"));
+
+        assertTrue(error.getMessage().contains("exists on table"),
+                () -> "unexpected message: " + error.getMessage());
+        assertTrue(error.getMessage().contains("test_bigint"),
+                () -> "unexpected message: " + error.getMessage());
     }
 
     /**
