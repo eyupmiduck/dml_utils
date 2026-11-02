@@ -77,22 +77,28 @@ class RunFunctionOverTableTest extends PostgresTestBase {
     void appliesAFunctionOverATimestamptzPrimaryKey() {
         dsl.execute("CREATE OR REPLACE FUNCTION public.mark_timestamptz(ts timestamptz)"
                 + " RETURNS void LANGUAGE sql AS $$"
-                + " UPDATE dml_utils_fixtures.test_timestamptz_pk SET payload = 'done'"
+                + " UPDATE dml_utils_fixtures.test_timestamptz_pk"
+                + " SET payload = coalesce(payload, '') || 'done'"
                 + " WHERE created_at = ts $$");
         for (int i = 1; i <= 5; i++) {
             dsl.insertInto(TEST_TIMESTAMPTZ_PK, TEST_TIMESTAMPTZ_PK.CREATED_AT)
                     .values(timestamp(i))
                     .execute();
         }
+        String label = uniqueLabel("fn-timestamptz");
 
         Routines.runFunctionOverTable(dsl.configuration(),
                 schema(TEST_TIMESTAMPTZ_PK), name(TEST_TIMESTAMPTZ_PK),
                 FN_SCHEMA, "mark_timestamptz", 2, 1,
-                uniqueLabel("fn-timestamptz"), null,
-                ChunkingStrategy.primary_key, 1, 0);
+                label, null, ChunkingStrategy.primary_key, 1, 0);
 
+        assertTrue(runCompleted(label), "the run should be marked complete");
         assertEquals(5, dsl.fetchCount(TEST_TIMESTAMPTZ_PK,
-                TEST_TIMESTAMPTZ_PK.PAYLOAD.eq("done")), "every row is processed");
+                TEST_TIMESTAMPTZ_PK.PAYLOAD.eq("done")), "every row is processed exactly once");
+        assertEquals(0, dsl.fetchCount(TEST_TIMESTAMPTZ_PK,
+                        TEST_TIMESTAMPTZ_PK.PAYLOAD.ne("done")
+                                .or(TEST_TIMESTAMPTZ_PK.PAYLOAD.isNull())),
+                "a double-processed row would hold the value twice");
     }
 
     /**

@@ -661,12 +661,7 @@ class PopulateMigrationBoundariesTest extends PostgresTestBase {
         assertEquals(expected.length, actual.size(), "boundary count");
         for (int i = 0; i < expected.length; i++) {
             assertEquals(i, actual.get(i).getBoundaryNo().intValue(), "boundary_no " + i);
-            assertEquals(timestamp(expected[i][0]).toInstant(),
-                    actual.get(i).getBoundaryId().getTimestamptzValues()[0].toInstant(),
-                    "timestamptz position " + i);
-            assertEquals(expected[i][1],
-                    actual.get(i).getBoundaryId().getBigintValues()[1].intValue(),
-                    "bigint position " + i);
+            assertTimestamptzBigint(actual.get(i), expected[i][0], expected[i][1]);
         }
     }
 
