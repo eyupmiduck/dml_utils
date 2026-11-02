@@ -132,6 +132,9 @@ COMMENT ON FUNCTION dml_utils_lib.prepare_chunk_sql_render IS
         'returns the run-invariant render context: the template with <driving_table> '
         'already substituted and <chunking_clause> replaced by an internal sentinel, '
         'the alias-qualified quoted column names, and each text column''s collation '
-        '(NULL when the column is not in the catalog). render_prepared_chunk_sql '
-        'consumes it per chunk, so the per-chunk call only builds the range predicate '
-        'and substitutes the chunking clause.';
+        '(NULL when the column is not in the catalog). The caller must pass the '
+        'kind resolved from the catalog for each column; the public wrappers derive '
+        'the columns and kinds together, so a direct lib caller is responsible for '
+        'keeping them consistent. render_prepared_chunk_sql consumes the context per '
+        'chunk, so the per-chunk call only builds the range predicate and substitutes '
+        'the chunking clause.';

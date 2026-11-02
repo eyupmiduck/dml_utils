@@ -5,7 +5,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -173,14 +172,6 @@ class RenderChunkSqlTest extends PostgresTestBase {
                 "the final chunk includes the end row without a gap");
     }
 
-    private static OffsetDateTime timestamp(int second) {
-        return OffsetDateTime.parse(String.format("2026-01-01T00:00:%02dZ", second));
-    }
-
-    private static UUID uuid(int n) {
-        return UUID.fromString("00000000-0000-0000-0000-" + String.format("%012d", n));
-    }
-
     private void seedOrderedKey() {
         for (int i = 1; i <= 5; i++) {
             dsl.insertInto(TEST_ORDERED_KEY,
@@ -257,17 +248,22 @@ class RenderChunkSqlTest extends PostgresTestBase {
 
     /**
      * A timestamptz key is rendered as a quoted literal cast to timestamptz, so
-     * it compares by instant rather than as text.
+     * it compares by instant rather than as text. The column and kind come from a
+     * real catalog fixture, so the declaration matches its type.
      */
     @Test
     void rendersTimestamptzKeyWithAnExplicitCast() {
-        String rendered = render(false, "timestamptz",
-                "2026-01-01T00:00:00+00", "2026-01-02T00:00:00+00");
+        String rendered = Routines.renderChunkSql(dsl.configuration(),
+                "UPDATE <driving_table> SET payload = 'x' WHERE <chunking_clause>",
+                TEST_ORDERED_KEY.getSchema().getName(), TEST_ORDERED_KEY.getName(), "t",
+                new String[]{"created_at"}, new String[]{"timestamptz"},
+                new String[]{"2026-01-01T00:00:00+00"},
+                new String[]{"2026-01-02T00:00:00+00"}, false);
 
         assertEquals(
-                "UPDATE public.src t SET processed = true"
-                        + " WHERE (t.id >= '2026-01-01T00:00:00+00'::timestamptz"
-                        + " AND t.id < '2026-01-02T00:00:00+00'::timestamptz)",
+                "UPDATE dml_utils_fixtures.test_ordered_key t SET payload = 'x'"
+                        + " WHERE (t.created_at >= '2026-01-01T00:00:00+00'::timestamptz"
+                        + " AND t.created_at < '2026-01-02T00:00:00+00'::timestamptz)",
                 rendered);
     }
 

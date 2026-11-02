@@ -793,11 +793,14 @@ template with `<driving_table>` already substituted and `<chunking_clause>`
 replaced by an internal sentinel, the alias-qualified quoted column names, and
 each text column's collation (the quoted collation name, `default`, or NULL when
 the column is not in the catalog, in which case the per-chunk render compares
-under the default operator). It reads the catalog for the collations and rejects
-an unsupported kind, a NULL/empty column name, a malformed columns/kinds array, a
-template that is not a valid chunking template, or an identifier/template
-containing a reserved substitution character (`22023`). Prepare once per run and
-pass the result to `render_prepared_chunk_sql` for every chunk.
+under the default operator). The caller must pass the kind resolved from the
+catalog for each column; the public wrappers derive both together, so a direct
+lib caller is responsible for keeping them consistent. It reads the catalog for
+the collations and rejects an unsupported kind, a NULL/empty column name, a
+malformed columns/kinds array, a template that is not a valid chunking template,
+or an identifier/template containing a reserved substitution character (`22023`).
+Prepare once per run and pass the result to `render_prepared_chunk_sql` for every
+chunk.
 
 ###
 
