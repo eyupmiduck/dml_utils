@@ -190,6 +190,8 @@ REVOKE EXECUTE ON FUNCTION dml_utils_lib.ordered_key_attributes_for_index(
     text,
     text
     ) FROM public;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.ordered_key_leaf_indexes(oid) FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.ordered_key_leaf_indexes(oid) TO dml_utils_caller;
 GRANT EXECUTE ON FUNCTION dml_utils_lib.ordered_key_attributes_for_index(
     oid,
     text,

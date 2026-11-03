@@ -7,6 +7,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRunLeaf.MIGRATION_RUN_LEAF;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestPartitionedMulti.TEST_PARTITIONED_MULTI;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestPartitionedRange.TEST_PARTITIONED_RANGE;
 import static org.junit.jupiter.api.Assertions.*;
@@ -195,28 +196,31 @@ class PartitionWiseValidationTest extends PartitionTestBase {
         String index = "test_partitioned_range_ordered_key_idx";
         long runId = populateOrdered(label, index);
 
-        dsl.insertInto(io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRunLeaf
-                        .MIGRATION_RUN_LEAF)
-                .columns(io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRunLeaf
-                                .MIGRATION_RUN_LEAF.RUN_ID,
-                        io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRunLeaf
-                                .MIGRATION_RUN_LEAF.LEAF_ORDINAL,
-                        io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRunLeaf
-                                .MIGRATION_RUN_LEAF.LEAF_SCHEMA_NAME,
-                        io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRunLeaf
-                                .MIGRATION_RUN_LEAF.LEAF_NAME,
-                        io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRunLeaf
-                                .MIGRATION_RUN_LEAF.LEAF_OID,
-                        io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRunLeaf
-                                .MIGRATION_RUN_LEAF.LEAF_BOUND,
-                        io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRunLeaf
-                                .MIGRATION_RUN_LEAF.STATE)
+        dsl.insertInto(MIGRATION_RUN_LEAF)
+                .columns(MIGRATION_RUN_LEAF.RUN_ID, MIGRATION_RUN_LEAF.LEAF_ORDINAL,
+                        MIGRATION_RUN_LEAF.LEAF_SCHEMA_NAME, MIGRATION_RUN_LEAF.LEAF_NAME,
+                        MIGRATION_RUN_LEAF.LEAF_OID, MIGRATION_RUN_LEAF.LEAF_BOUND,
+                        MIGRATION_RUN_LEAF.STATE)
                 .values(runId, 99, PARTITION_SCHEMA, "no_such_leaf", 1L,
                         "FOR VALUES FROM (1000) TO (2000)", "pending")
                 .execute();
 
         assertSqlState("0A000", () -> Routines.assertPartitionedOrderedKeyLeaves(
                 dsl.configuration(), runId, index));
+    }
+
+    /**
+     * The leaf validator rejects a run that is not a partition-wise ordered-key
+     * run.
+     */
+    @Test
+    void leafValidationRejectsANonPartitionedRun() {
+        long runId = Routines.populateMigrationBoundaries(dsl.configuration(), PARTITION_SCHEMA,
+                "test_bigint", uniqueLabel("validation-plain-leaf"), "SELECT 1", 1, 1,
+                ChunkingStrategy.primary_key, "t", 0, null, false);
+
+        assertSqlState("22023", () -> Routines.assertPartitionedOrderedKeyLeaves(
+                dsl.configuration(), runId, "ignored"));
     }
 
     /**
@@ -253,7 +257,7 @@ class PartitionWiseValidationTest extends PartitionTestBase {
         assertEquals(0L, dsl.fetchCount(TEST_PARTITIONED_MULTI,
                         TEST_PARTITIONED_MULTI.PAYLOAD.eq("done")),
                 "a mismatched resume must not process a chunk");
-        assertNotNull(runId);
+        assertTrue(runId > 0, "populateMigrationBoundaries should return the new run id");
     }
 
     private void insertRangeRows(Long... ids) {

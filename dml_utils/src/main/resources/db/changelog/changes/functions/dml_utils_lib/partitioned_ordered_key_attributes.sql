@@ -48,36 +48,30 @@ BEGIN
             USING ERRCODE = '0A000';
     END IF;
 
-    -- Walk the index inheritance tree once and pair each storage leaf with its
-    -- descendant child index. The index tree mirrors the table tree, so a
-    -- multi-level partition's leaf index is not a direct child of the parent.
-    -- Checking the leaves before the parent keeps a missing child index (0A000)
-    -- distinct from an invalid parent index (55000).
+    -- Validate the parent index before the leaves, so ON ONLY reports the parent
+    -- 55000 rather than a misleading missing-child 0A000.
+    PERFORM 1
+    FROM dml_utils_lib.ordered_key_attributes_for_index(
+            i_index_oid => l_index_oid,
+            i_schema_name => i_schema_name,
+            i_table_name => i_table_name,
+            i_index_name => i_index_name) AS a;
+
+    -- Pair each storage leaf with its descendant child index in one walk (the
+    -- index tree mirrors the table tree, so a multi-level leaf's index is not a
+    -- direct child of the root).
     FOR l_leaf IN
-        WITH RECURSIVE
-            index_tree AS (SELECT inh.inhrelid
-                           FROM pg_catalog.pg_inherits AS inh
-                           WHERE inh.inhparent = l_index_oid
-                           UNION ALL
-                           SELECT inh.inhrelid
-                           FROM pg_catalog.pg_inherits AS inh
-                                    JOIN index_tree AS tree ON inh.inhparent = tree.inhrelid),
-            child_indexes AS (SELECT ci.indrelid      AS leaf_oid,
-                                     tree.inhrelid    AS child_index_oid,
-                                     ic.relname::text AS child_index_name
-                              FROM index_tree AS tree
-                                       JOIN pg_catalog.pg_index AS ci ON ci.indexrelid = tree.inhrelid
-                                       JOIN pg_catalog.pg_class AS ic ON ic.oid = tree.inhrelid)
         SELECT live.leaf_ordinal,
                live.leaf_schema_name,
                live.leaf_name,
                child.child_index_oid,
                child.child_index_name
         FROM dml_utils_lib.leaf_partitions(
-                     i_schema_name => i_schema_name,
-                     i_table_name => i_table_name,
-                     i_chunk_by => 'ordered_key') AS live
-                 LEFT JOIN child_indexes AS child ON child.leaf_oid = live.leaf_oid
+                i_schema_name => i_schema_name,
+                i_table_name => i_table_name,
+                i_chunk_by => 'ordered_key') AS live
+                 LEFT JOIN dml_utils_lib.ordered_key_leaf_indexes(l_index_oid) AS child
+                           ON child.leaf_oid = live.leaf_oid
         ORDER BY live.leaf_ordinal
         LOOP
             IF l_leaf.child_index_oid IS NULL THEN
@@ -97,8 +91,6 @@ BEGIN
                          i_index_name => l_leaf.child_index_name) AS a;
         END LOOP;
 
-    -- The RETURN QUERY below validates the parent index shape after the leaf
-    -- loop (an index built with ON ONLY is invalid and is rejected there).
     RETURN QUERY
         SELECT a.*
         FROM dml_utils_lib.ordered_key_attributes_for_index(

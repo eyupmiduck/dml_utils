@@ -9,13 +9,16 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.assert_partitioned_ordered_key_leaves(
 AS
 $$
 DECLARE
-    l_schema_name  text;
-    l_table_name   text;
-    l_parent_index oid;
-    l_leaf         record;
+    l_partition_wise boolean;
+    l_chunk_by       dml_utils_data.chunking_strategy;
+    l_schema_name    text;
+    l_table_name     text;
+    l_parent_index   oid;
+    l_leaf           record;
 BEGIN
-    SELECT run.driving_table_schema_name::text, run.driving_table_name::text
-    INTO l_schema_name, l_table_name
+    SELECT run.partition_wise, run.chunk_by,
+           run.driving_table_schema_name::text, run.driving_table_name::text
+    INTO l_partition_wise, l_chunk_by, l_schema_name, l_table_name
     FROM dml_utils_data.migration_run AS run
     WHERE run.run_id = i_run_id;
 
@@ -23,40 +26,40 @@ BEGIN
         RAISE EXCEPTION 'migration run % does not exist', i_run_id
             USING ERRCODE = 'P0002';
     END IF;
+    IF NOT l_partition_wise OR l_chunk_by <> 'ordered_key' THEN
+        RAISE EXCEPTION 'run % is not a partition-wise ordered-key run', i_run_id
+            USING ERRCODE = '22023';
+    END IF;
 
-    l_parent_index := pg_catalog.to_regclass(
-            pg_catalog.format('%I.%I', l_schema_name, i_index_name));
-    IF l_parent_index IS NULL THEN
+    -- Resolve the index on the run's driving table, not merely by name, so a
+    -- same-schema relation with that name cannot be validated by mistake.
+    SELECT ic.oid
+    INTO l_parent_index
+    FROM pg_catalog.pg_index AS i
+             JOIN pg_catalog.pg_class AS ic ON ic.oid = i.indexrelid
+             JOIN pg_catalog.pg_class AS c ON c.oid = i.indrelid
+             JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
+    WHERE n.nspname = l_schema_name
+      AND c.relname = l_table_name
+      AND ic.relname = i_index_name;
+
+    IF NOT FOUND THEN
         RAISE EXCEPTION 'index %.% does not exist on table %.%',
             l_schema_name, i_index_name, l_schema_name, l_table_name
             USING ERRCODE = '42704';
     END IF;
 
-    -- Walk the index inheritance tree once and pair it with the manifest rows,
-    -- so the set validated is exactly the set stored for the run (a leaf attached
-    -- after the manifest insert is not silently accepted).
+    -- Pair the manifest rows with the descendant child indexes in one walk, so
+    -- the set validated is exactly the set stored for the run.
     FOR l_leaf IN
-        WITH RECURSIVE
-            index_tree AS (SELECT inh.inhrelid
-                           FROM pg_catalog.pg_inherits AS inh
-                           WHERE inh.inhparent = l_parent_index
-                           UNION ALL
-                           SELECT inh.inhrelid
-                           FROM pg_catalog.pg_inherits AS inh
-                                    JOIN index_tree AS tree ON inh.inhparent = tree.inhrelid),
-            child_indexes AS (SELECT ci.indrelid      AS leaf_oid,
-                                     tree.inhrelid    AS child_index_oid,
-                                     ic.relname::text AS child_index_name
-                              FROM index_tree AS tree
-                                       JOIN pg_catalog.pg_index AS ci ON ci.indexrelid = tree.inhrelid
-                                       JOIN pg_catalog.pg_class AS ic ON ic.oid = tree.inhrelid)
         SELECT leaf.leaf_ordinal,
                leaf.leaf_schema_name,
                leaf.leaf_name,
                child.child_index_oid,
                child.child_index_name
         FROM dml_utils_data.migration_run_leaf AS leaf
-                 LEFT JOIN child_indexes AS child ON child.leaf_oid = leaf.leaf_oid
+                 LEFT JOIN dml_utils_lib.ordered_key_leaf_indexes(l_parent_index) AS child
+                           ON child.leaf_oid = leaf.leaf_oid
         WHERE leaf.run_id = i_run_id
         ORDER BY leaf.leaf_ordinal
         LOOP

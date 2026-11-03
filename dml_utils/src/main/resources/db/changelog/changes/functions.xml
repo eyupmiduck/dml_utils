@@ -144,6 +144,16 @@
         </rollback>
     </changeSet>
 
+    <changeSet id="function-dml_utils_lib.ordered_key_leaf_indexes" author="lee.horner"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils_lib/ordered_key_leaf_indexes.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils_lib/ordered_key_leaf_indexes-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
     <changeSet id="function-dml_utils_lib.ordered_key_attributes_for_index" author="lee.horner"
                dbms="postgresql" runOnChange="true">
         <createProcedure path="functions/dml_utils_lib/ordered_key_attributes_for_index.sql"
@@ -194,7 +204,6 @@
         </rollback>
     </changeSet>
 
-
     <changeSet id="function-dml_utils_lib.ordered_key_attributes" author="lee.horner"
                dbms="postgresql" runOnChange="true">
         <createProcedure path="functions/dml_utils_lib/ordered_key_attributes.sql"
@@ -204,7 +213,6 @@
                      relativeToChangelogFile="true"/>
         </rollback>
     </changeSet>
-
 
     <changeSet id="function-dml_utils_lib.ordered_key_columns" author="lee.horner"
                dbms="postgresql" runOnChange="true">

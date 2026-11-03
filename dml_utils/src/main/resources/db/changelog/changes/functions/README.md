@@ -691,6 +691,19 @@ should read `ordered_key_attributes` once instead of calling this wrapper and
 then `ordered_key_columns`/`ordered_key_kinds`, which would repeat the catalog
 read and validation.
 
+### `dml_utils_lib.ordered_key_leaf_indexes(i_parent_index_oid)`
+
+```sql
+i_parent_index_oid oid
+RETURNS TABLE (leaf_oid oid, child_index_oid oid, child_index_name text)
+```
+
+`STABLE`, `SECURITY INVOKER`. Walks a partitioned index's inheritance tree once
+and returns one row per storage leaf with its matching descendant index. Index
+inheritance mirrors the table tree, so a multi-level partition's leaf index is
+not a direct child of the root; both partition-wise ordered-key validators use
+this helper.
+
 ### `dml_utils_lib.ordered_key_attributes_for_index(i_index_oid, i_schema_name, i_table_name, i_index_name)`
 
 ```sql
