@@ -8,15 +8,15 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.calculate_migration_run_boundaries(
 AS
 $$
 DECLARE
-    l_partition_wise     boolean;
-    l_cancelled_at       timestamptz;
-    l_calculated_at      timestamptz;
-    l_lock_key           bigint;
-    l_handle             public.pg_background_handle;
-    l_ordinal            integer;
-    l_leaf_ordinal       integer;
-    l_error_sqlstate     text;
-    l_error_message      text;
+    l_partition_wise boolean;
+    l_cancelled_at   timestamptz;
+    l_calculated_at  timestamptz;
+    l_lock_key       bigint;
+    l_handle         public.pg_background_handle;
+    l_ordinal        integer;
+    l_leaf_ordinal   integer;
+    l_error_sqlstate text;
+    l_error_message  text;
 BEGIN
     IF i_run_id IS NULL THEN
         RAISE EXCEPTION 'run id must not be NULL'

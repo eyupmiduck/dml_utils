@@ -48,14 +48,15 @@ BEGIN
     FOR l_live IN
         SELECT live.*
         FROM dml_utils_lib.leaf_partitions(
-                i_schema_name => l_schema_name,
-                i_table_name => l_table_name,
-                i_chunk_by => l_chunk_by) AS live
+                     i_schema_name => l_schema_name,
+                     i_table_name => l_table_name,
+                     i_chunk_by => l_chunk_by) AS live
         ORDER BY live.leaf_ordinal
         LOOP
             l_live_count := l_live_count + 1;
 
-            SELECT * INTO l_manifest
+            SELECT *
+            INTO l_manifest
             FROM dml_utils_data.migration_run_leaf AS leaf
             WHERE leaf.run_id = i_run_id
               AND leaf.leaf_ordinal = l_live.leaf_ordinal;

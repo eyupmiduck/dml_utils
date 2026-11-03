@@ -141,12 +141,12 @@ BEGIN
         FOR l_leaf IN
             SELECT leaf.*
             FROM dml_utils_lib.leaf_partitions(
-                    i_schema_name => i_schema_name,
-                    i_table_name => i_table_name,
-                    i_chunk_by => i_chunk_by) AS leaf
+                         i_schema_name => i_schema_name,
+                         i_table_name => i_table_name,
+                         i_chunk_by => i_chunk_by) AS leaf
             LOOP
-                -- leaf_partitions checked the definer's privilege; the caller is
-                -- the one whose access matters, so check it explicitly here.
+            -- leaf_partitions checked the definer's privilege; the caller is
+            -- the one whose access matters, so check it explicitly here.
                 IF NOT pg_catalog.has_table_privilege(
                         l_caller,
                         pg_catalog.format('%I.%I', l_leaf.leaf_schema_name, l_leaf.leaf_name),
@@ -158,8 +158,8 @@ BEGIN
                 END IF;
 
                 INSERT INTO dml_utils_data.migration_run_leaf
-                    (run_id, leaf_ordinal, leaf_schema_name, leaf_name, leaf_oid,
-                     leaf_bound, relation_filepath, state)
+                (run_id, leaf_ordinal, leaf_schema_name, leaf_name, leaf_oid,
+                 leaf_bound, relation_filepath, state)
                 VALUES (l_run_id, l_leaf.leaf_ordinal, l_leaf.leaf_schema_name,
                         l_leaf.leaf_name, l_leaf.leaf_oid, l_leaf.leaf_bound,
                         l_leaf.relation_filepath, 'pending');

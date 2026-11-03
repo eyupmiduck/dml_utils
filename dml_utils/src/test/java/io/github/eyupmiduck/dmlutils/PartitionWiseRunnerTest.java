@@ -1,10 +1,10 @@
 package io.github.eyupmiduck.dmlutils;
 
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.enums.ChunkingStrategy;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.records.MigrationBoundaryRecord;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.records.MigrationRunLeafRecord;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.records.MigrationRunRecord;
-import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -211,7 +211,7 @@ class PartitionWiseRunnerTest extends PostgresTestBase {
         }
 
         assertEquals(0L, dsl.fetchCount(TEST_PARTITIONED_RANGE,
-                TEST_PARTITIONED_RANGE.PAYLOAD.eq("done")),
+                        TEST_PARTITIONED_RANGE.PAYLOAD.eq("done")),
                 "no chunk should run against a changed tree");
     }
 

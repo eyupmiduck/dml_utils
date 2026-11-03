@@ -34,53 +34,53 @@ CREATE OR REPLACE FUNCTION dml_utils.run_migration_chunks(
 AS
 $$
 DECLARE
-    l_key_columns           name[];
-    l_key_kinds             text[];
-    l_chunk_by              dml_utils_data.chunking_strategy;
-    l_partition_wise        boolean;
+    l_key_columns              name[];
+    l_key_kinds                text[];
+    l_chunk_by                 dml_utils_data.chunking_strategy;
+    l_partition_wise           boolean;
     l_boundaries_calculated_at timestamptz;
-    l_run_id                bigint;
-    l_already_completed     boolean;
-    l_effective_sql_text    text;
-    l_effective_threads     integer;
-    l_effective_sleep_ms    integer;
-    l_effective_schema_name text;
-    l_effective_table_name  text;
-    l_effective_alias       text;
-    l_boundary_no           bigint;
-    l_start_leaf_ordinal    integer;
-    l_end_leaf_ordinal      integer;
-    l_chunk_schema          text;
-    l_chunk_table           text;
-    l_terminal_key          dml_utils_data.migration_key;
-    l_start_values          text[];
-    l_end_values            text[];
-    l_is_final              boolean;
-    l_chunk_sql             text;
+    l_run_id                   bigint;
+    l_already_completed        boolean;
+    l_effective_sql_text       text;
+    l_effective_threads        integer;
+    l_effective_sleep_ms       integer;
+    l_effective_schema_name    text;
+    l_effective_table_name     text;
+    l_effective_alias          text;
+    l_boundary_no              bigint;
+    l_start_leaf_ordinal       integer;
+    l_end_leaf_ordinal         integer;
+    l_chunk_schema             text;
+    l_chunk_table              text;
+    l_terminal_key             dml_utils_data.migration_key;
+    l_start_values             text[];
+    l_end_values               text[];
+    l_is_final                 boolean;
+    l_chunk_sql                text;
     -- Run-invariant chunk-render context, prepared once before the loop so the
     -- per-chunk render does not repeat the template validation and quoting.
-    l_render_prepared       record;
+    l_render_prepared          record;
     -- The workers kept in flight, and the boundary each one was launched for
     -- (parallel arrays, aligned by position).
-    l_in_flight             public.pg_background_handle[] := ARRAY []::public.pg_background_handle[];
-    l_in_flight_boundaries  bigint[]                      := ARRAY []::bigint[];
-    l_worker_index          integer;
-    l_aborting              boolean                       := false;
+    l_in_flight                public.pg_background_handle[] := ARRAY []::public.pg_background_handle[];
+    l_in_flight_boundaries     bigint[]                      := ARRAY []::bigint[];
+    l_worker_index             integer;
+    l_aborting                 boolean                       := false;
     -- Cancellation state: the run's cancelled_at, polled at most every 100ms.
-    l_cancelled_at          timestamptz;
-    l_last_cancel_check     timestamptz;
-    l_error_sqlstate        text;
-    l_error_message         text;
-    l_error_boundary_no     bigint;
+    l_cancelled_at             timestamptz;
+    l_last_cancel_check        timestamptz;
+    l_error_sqlstate           text;
+    l_error_message            text;
+    l_error_boundary_no        bigint;
     -- Per-chunk throttle state. The sleep is sliced so cancellation is noticed
     -- promptly; sleep_ms itself is not re-read (restart-only adjustment).
-    l_sleep_remaining_ms    integer;
-    l_sleep_slice_ms        integer;
+    l_sleep_remaining_ms       integer;
+    l_sleep_slice_ms           integer;
     -- pg_background is installed in the public schema. Qualify its types and
     -- functions explicitly so this routine resolves them regardless of the
     -- caller's (or Liquibase's) search_path.
-    l_handle                public.pg_background_handle;
-    l_outcome               public.pg_background_outcome;
+    l_handle                   public.pg_background_handle;
+    l_outcome                  public.pg_background_outcome;
 BEGIN
     -- Validate the template up front so a bad call fails before any run or
     -- worker exists.
@@ -249,7 +249,7 @@ BEGIN
                                pair.o_end_values,
                                next.boundary_no = last.boundary_no
                         INTO l_boundary_no, l_start_leaf_ordinal, l_end_leaf_ordinal,
-                             l_start_values, l_end_values, l_is_final
+                            l_start_values, l_end_values, l_is_final
                         FROM dml_utils_data.migration_boundary AS b
                                  JOIN dml_utils_data.migration_boundary AS next
                                       ON next.run_id = b.run_id
