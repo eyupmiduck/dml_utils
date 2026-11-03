@@ -175,7 +175,7 @@ class PartitionWiseValidationTest extends PartitionTestBase {
         }
 
         assertEquals(0L, dsl.fetchCount(TEST_PARTITIONED_RANGE,
-                TEST_PARTITIONED_RANGE.PAYLOAD.eq("done")),
+                        TEST_PARTITIONED_RANGE.PAYLOAD.eq("done")),
                 "a failed resume must not process a chunk");
 
         run(PARTITIONED_RANGE, label, 2, ChunkingStrategy.ordered_key, parentIndex);
@@ -251,7 +251,7 @@ class PartitionWiseValidationTest extends PartitionTestBase {
 
         assertNull(run(label).getCompletedAt());
         assertEquals(0L, dsl.fetchCount(TEST_PARTITIONED_MULTI,
-                TEST_PARTITIONED_MULTI.PAYLOAD.eq("done")),
+                        TEST_PARTITIONED_MULTI.PAYLOAD.eq("done")),
                 "a mismatched resume must not process a chunk");
         assertNotNull(runId);
     }

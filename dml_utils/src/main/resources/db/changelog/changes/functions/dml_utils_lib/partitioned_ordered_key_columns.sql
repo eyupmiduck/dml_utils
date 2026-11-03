@@ -11,9 +11,9 @@ AS
 $$
 SELECT pg_catalog.array_agg(a.column_name ORDER BY a.ordinality)
 FROM dml_utils_lib.partitioned_ordered_key_attributes(
-        i_schema_name => i_schema_name,
-        i_table_name => i_table_name,
-        i_index_name => i_index_name) AS a;
+             i_schema_name => i_schema_name,
+             i_table_name => i_table_name,
+             i_index_name => i_index_name) AS a;
 $$;
 
 COMMENT ON FUNCTION dml_utils_lib.partitioned_ordered_key_columns(

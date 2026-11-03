@@ -54,32 +54,29 @@ BEGIN
     -- Checking the leaves before the parent keeps a missing child index (0A000)
     -- distinct from an invalid parent index (55000).
     FOR l_leaf IN
-        WITH RECURSIVE index_tree AS (
-            SELECT inh.inhrelid
-            FROM pg_catalog.pg_inherits AS inh
-            WHERE inh.inhparent = l_index_oid
-            UNION ALL
-            SELECT inh.inhrelid
-            FROM pg_catalog.pg_inherits AS inh
-                     JOIN index_tree AS tree ON inh.inhparent = tree.inhrelid
-        ),
-        child_indexes AS (
-            SELECT ci.indrelid      AS leaf_oid,
-                   tree.inhrelid    AS child_index_oid,
-                   ic.relname::text AS child_index_name
-            FROM index_tree AS tree
-                     JOIN pg_catalog.pg_index AS ci ON ci.indexrelid = tree.inhrelid
-                     JOIN pg_catalog.pg_class AS ic ON ic.oid = tree.inhrelid
-        )
+        WITH RECURSIVE
+            index_tree AS (SELECT inh.inhrelid
+                           FROM pg_catalog.pg_inherits AS inh
+                           WHERE inh.inhparent = l_index_oid
+                           UNION ALL
+                           SELECT inh.inhrelid
+                           FROM pg_catalog.pg_inherits AS inh
+                                    JOIN index_tree AS tree ON inh.inhparent = tree.inhrelid),
+            child_indexes AS (SELECT ci.indrelid      AS leaf_oid,
+                                     tree.inhrelid    AS child_index_oid,
+                                     ic.relname::text AS child_index_name
+                              FROM index_tree AS tree
+                                       JOIN pg_catalog.pg_index AS ci ON ci.indexrelid = tree.inhrelid
+                                       JOIN pg_catalog.pg_class AS ic ON ic.oid = tree.inhrelid)
         SELECT live.leaf_ordinal,
                live.leaf_schema_name,
                live.leaf_name,
                child.child_index_oid,
                child.child_index_name
         FROM dml_utils_lib.leaf_partitions(
-                i_schema_name => i_schema_name,
-                i_table_name => i_table_name,
-                i_chunk_by => 'ordered_key') AS live
+                     i_schema_name => i_schema_name,
+                     i_table_name => i_table_name,
+                     i_chunk_by => 'ordered_key') AS live
                  LEFT JOIN child_indexes AS child ON child.leaf_oid = live.leaf_oid
         ORDER BY live.leaf_ordinal
         LOOP
@@ -94,10 +91,10 @@ BEGIN
             -- run row exists.
             PERFORM 1
             FROM dml_utils_lib.ordered_key_attributes_for_index(
-                    i_index_oid => l_leaf.child_index_oid,
-                    i_schema_name => l_leaf.leaf_schema_name,
-                    i_table_name => l_leaf.leaf_name,
-                    i_index_name => l_leaf.child_index_name) AS a;
+                         i_index_oid => l_leaf.child_index_oid,
+                         i_schema_name => l_leaf.leaf_schema_name,
+                         i_table_name => l_leaf.leaf_name,
+                         i_index_name => l_leaf.child_index_name) AS a;
         END LOOP;
 
     -- The RETURN QUERY below validates the parent index shape after the leaf
@@ -105,10 +102,10 @@ BEGIN
     RETURN QUERY
         SELECT a.*
         FROM dml_utils_lib.ordered_key_attributes_for_index(
-                i_index_oid => l_index_oid,
-                i_schema_name => i_schema_name,
-                i_table_name => i_table_name,
-                i_index_name => i_index_name) AS a;
+                     i_index_oid => l_index_oid,
+                     i_schema_name => i_schema_name,
+                     i_table_name => i_table_name,
+                     i_index_name => i_index_name) AS a;
 END;
 $$;
 

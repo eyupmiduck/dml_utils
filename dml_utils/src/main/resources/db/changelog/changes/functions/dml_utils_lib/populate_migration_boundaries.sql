@@ -107,10 +107,10 @@ BEGIN
                    pg_catalog.array_agg(a.key_kind ORDER BY a.ordinality)
             INTO l_key_columns, l_key_kinds
             FROM dml_utils_lib.ordered_key_attributes_for_index(
-                    i_index_oid => l_parent_index,
-                    i_schema_name => i_schema_name,
-                    i_table_name => i_table_name,
-                    i_index_name => i_boundary_key_index) AS a;
+                         i_index_oid => l_parent_index,
+                         i_schema_name => i_schema_name,
+                         i_table_name => i_table_name,
+                         i_index_name => i_boundary_key_index) AS a;
         ELSE
             PERFORM dml_utils_lib.assert_usable_ordered_key(
                     i_schema_name => i_schema_name,

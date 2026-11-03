@@ -17,8 +17,8 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.ordered_key_attributes(
 AS
 $$
 DECLARE
-    l_index    record;
-    l_hint     text;
+    l_index record;
+    l_hint  text;
 BEGIN
     -- Resolve the named index on the driving table and reject a partitioned or
     -- otherwise non-plain table here; the shape and per-column contract checks are

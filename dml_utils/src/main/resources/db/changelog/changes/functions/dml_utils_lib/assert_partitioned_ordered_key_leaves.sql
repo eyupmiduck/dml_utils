@@ -36,23 +36,20 @@ BEGIN
     -- so the set validated is exactly the set stored for the run (a leaf attached
     -- after the manifest insert is not silently accepted).
     FOR l_leaf IN
-        WITH RECURSIVE index_tree AS (
-            SELECT inh.inhrelid
-            FROM pg_catalog.pg_inherits AS inh
-            WHERE inh.inhparent = l_parent_index
-            UNION ALL
-            SELECT inh.inhrelid
-            FROM pg_catalog.pg_inherits AS inh
-                     JOIN index_tree AS tree ON inh.inhparent = tree.inhrelid
-        ),
-        child_indexes AS (
-            SELECT ci.indrelid      AS leaf_oid,
-                   tree.inhrelid    AS child_index_oid,
-                   ic.relname::text AS child_index_name
-            FROM index_tree AS tree
-                     JOIN pg_catalog.pg_index AS ci ON ci.indexrelid = tree.inhrelid
-                     JOIN pg_catalog.pg_class AS ic ON ic.oid = tree.inhrelid
-        )
+        WITH RECURSIVE
+            index_tree AS (SELECT inh.inhrelid
+                           FROM pg_catalog.pg_inherits AS inh
+                           WHERE inh.inhparent = l_parent_index
+                           UNION ALL
+                           SELECT inh.inhrelid
+                           FROM pg_catalog.pg_inherits AS inh
+                                    JOIN index_tree AS tree ON inh.inhparent = tree.inhrelid),
+            child_indexes AS (SELECT ci.indrelid      AS leaf_oid,
+                                     tree.inhrelid    AS child_index_oid,
+                                     ic.relname::text AS child_index_name
+                              FROM index_tree AS tree
+                                       JOIN pg_catalog.pg_index AS ci ON ci.indexrelid = tree.inhrelid
+                                       JOIN pg_catalog.pg_class AS ic ON ic.oid = tree.inhrelid)
         SELECT leaf.leaf_ordinal,
                leaf.leaf_schema_name,
                leaf.leaf_name,
@@ -71,10 +68,10 @@ BEGIN
 
             PERFORM 1
             FROM dml_utils_lib.ordered_key_attributes_for_index(
-                    i_index_oid => l_leaf.child_index_oid,
-                    i_schema_name => l_leaf.leaf_schema_name,
-                    i_table_name => l_leaf.leaf_name,
-                    i_index_name => l_leaf.child_index_name) AS a;
+                         i_index_oid => l_leaf.child_index_oid,
+                         i_schema_name => l_leaf.leaf_schema_name,
+                         i_table_name => l_leaf.leaf_name,
+                         i_index_name => l_leaf.child_index_name) AS a;
         END LOOP;
 END;
 $$;

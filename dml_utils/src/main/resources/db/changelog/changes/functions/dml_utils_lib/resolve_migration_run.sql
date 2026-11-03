@@ -148,9 +148,9 @@ BEGIN
                            pg_catalog.array_agg(a.key_kind ORDER BY a.ordinality)
                     INTO l_live_columns, l_live_kinds
                     FROM dml_utils_lib.partitioned_ordered_key_attributes(
-                            i_schema_name => o_effective_schema_name,
-                            i_table_name => o_effective_table_name,
-                            i_index_name => l_stored_ordered_key_index) AS a;
+                                 i_schema_name => o_effective_schema_name,
+                                 i_table_name => o_effective_table_name,
+                                 i_index_name => l_stored_ordered_key_index) AS a;
                 ELSE
                     l_live_columns := dml_utils_lib.ordered_key_columns(
                             i_schema_name => o_effective_schema_name,
