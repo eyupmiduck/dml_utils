@@ -20,22 +20,27 @@ import static org.junit.jupiter.api.Assertions.*;
 class RenderLeafChunkSqlTest extends PostgresTestBase {
 
     private static final String SCHEMA = "dml_utils_fixtures";
-    private static final String LEAF = "test_partitioned_range_low";
     private static final String TEMPLATE =
             "UPDATE <driving_table> SET payload = 'x' WHERE <chunking_clause>";
     private static final String[] KEY_COLUMNS = {"id"};
     private static final String[] KEY_KINDS = {"bigint"};
+    /**
+     * Block chunks render a ctid range; the renderer and explain path ignore the
+     * kind array, but the entry point still takes one.
+     */
+    private static final String[] BLOCK_KEY_KINDS = {"bigint"};
 
     /**
      * A key chunk renders against the leaf relation, not the parent.
      */
     @Test
     void rendersAKeyChunkAgainstTheLeaf() {
+        String leaf = rangeLeaves().getFirst();
         String sql = Routines.renderChunkSql(
-                dsl.configuration(), TEMPLATE, SCHEMA, LEAF, "t",
+                dsl.configuration(), TEMPLATE, SCHEMA, leaf, "t",
                 KEY_COLUMNS, KEY_KINDS, new String[]{"1"}, new String[]{"2"}, false);
 
-        assertTrue(sql.startsWith("UPDATE " + SCHEMA + "." + LEAF + " t "),
+        assertTrue(sql.startsWith("UPDATE " + SCHEMA + "." + leaf + " t "),
                 "the chunk should update the leaf: " + sql);
         assertFalse(sql.contains(SCHEMA + ".test_partitioned_range t"),
                 "the parent must not be the driving table");
@@ -47,10 +52,11 @@ class RenderLeafChunkSqlTest extends PostgresTestBase {
      */
     @Test
     void rendersABlockChunkAgainstTheLeaf() {
+        String leaf = rangeLeaves().getFirst();
         String sql = Routines.renderBlockChunkSql(
-                dsl.configuration(), TEMPLATE, SCHEMA, LEAF, "t", 0L, 1L);
+                dsl.configuration(), TEMPLATE, SCHEMA, leaf, "t", 0L, 1L);
 
-        assertTrue(sql.startsWith("UPDATE " + SCHEMA + "." + LEAF + " t "),
+        assertTrue(sql.startsWith("UPDATE " + SCHEMA + "." + leaf + " t "),
                 "the block chunk should update the leaf: " + sql);
         assertTrue(sql.contains("ctid"), "the block predicate should be rendered");
     }
@@ -65,11 +71,13 @@ class RenderLeafChunkSqlTest extends PostgresTestBase {
                 dsl.configuration(), TEMPLATE, SCHEMA, "test_partitioned_range", "t",
                 KEY_COLUMNS, KEY_KINDS);
 
-        String low = renderLeaf(prepared, "test_partitioned_range_low");
-        String high = renderLeaf(prepared, "test_partitioned_range_high");
+        List<String> leaves = rangeLeaves();
+        assertTrue(leaves.size() >= 2, "the fixture should have at least two leaves");
+        String low = renderLeaf(prepared, leaves.getFirst());
+        String high = renderLeaf(prepared, leaves.getLast());
 
-        assertTrue(low.startsWith("UPDATE " + SCHEMA + ".test_partitioned_range_low t "), low);
-        assertTrue(high.startsWith("UPDATE " + SCHEMA + ".test_partitioned_range_high t "), high);
+        assertTrue(low.startsWith("UPDATE " + SCHEMA + "." + leaves.getFirst() + " t "), low);
+        assertTrue(high.startsWith("UPDATE " + SCHEMA + "." + leaves.getLast() + " t "), high);
     }
 
     /**
@@ -110,14 +118,15 @@ class RenderLeafChunkSqlTest extends PostgresTestBase {
      */
     @Test
     void explainsALeafKeyChunk() {
+        String leaf = rangeLeaves().getFirst();
         ExplainChunkPlanRecord plan = Routines.explainChunkPlan(
-                dsl.configuration(), TEMPLATE, SCHEMA, LEAF, "t",
+                dsl.configuration(), TEMPLATE, SCHEMA, leaf, "t",
                 KEY_COLUMNS, KEY_KINDS, new String[]{"1"}, new String[]{"2"}, false).getFirst();
 
-        assertTrue(plan.getOSqlText().contains(SCHEMA + "." + LEAF + " t"),
+        assertTrue(plan.getOSqlText().contains(SCHEMA + "." + leaf + " t"),
                 "the explained SQL should target the leaf");
         assertEquals("ModifyTable", planNodeType(plan.getOPlan()));
-        assertTrue(plan.getOPlan().data().contains(LEAF),
+        assertTrue(plan.getOPlan().data().contains(leaf),
                 "the plan should name the leaf: " + plan.getOPlan().data());
     }
 
@@ -126,15 +135,28 @@ class RenderLeafChunkSqlTest extends PostgresTestBase {
      */
     @Test
     void explainsLeafBlockChunks() {
+        String leaf = rangeLeaves().getFirst();
         List<ExplainChunkPlansRecord> plans = Routines.explainChunkPlans(
-                dsl.configuration(), TEMPLATE, SCHEMA, LEAF, "t",
-                new String[]{"ctid"}, KEY_KINDS, 10L, ChunkingStrategy.blocks);
+                dsl.configuration(), TEMPLATE, SCHEMA, leaf, "t",
+                new String[]{"ctid"}, BLOCK_KEY_KINDS, 10L, ChunkingStrategy.blocks);
 
         assertEquals(3, plans.size());
         for (ExplainChunkPlansRecord plan : plans) {
-            assertTrue(plan.getOSqlText().contains(SCHEMA + "." + LEAF),
+            assertTrue(plan.getOSqlText().contains(SCHEMA + "." + leaf),
                     "every plan should target the leaf: " + plan.getOSqlText());
         }
+    }
+
+    /**
+     * The range fixture's leaf names, read from the catalog so these tests stay
+     * coupled to the relations they render.
+     */
+    private List<String> rangeLeaves() {
+        return Routines.leafPartitions(dsl.configuration(), SCHEMA, "test_partitioned_range",
+                        ChunkingStrategy.primary_key)
+                .stream()
+                .map(LeafPartitionsRecord::getLeafName)
+                .toList();
     }
 
     private String renderLeaf(PrepareChunkSqlRender prepared, String leaf) {

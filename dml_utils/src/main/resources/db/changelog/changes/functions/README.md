@@ -877,7 +877,9 @@ catalog for each column; the public wrappers derive both together, so a direct
 lib caller is responsible for keeping them consistent. It reads the catalog for
 the collations and rejects an unsupported kind, a NULL/empty column name, a
 malformed columns/kinds array, a template that is not a valid chunking template,
-or an identifier/template containing a reserved substitution character (`22023`).
+or a template containing a reserved substitution character (`22023`). The
+schema/table/alias identifiers are validated per render by
+`render_prepared_chunk_sql`, which rejects one containing a reserved character.
 Prepare once per run and pass the result to `render_prepared_chunk_sql` for every
 chunk; the driving table is selected per render, so the same context renders the
 parent or any leaf of a partition-wise run.

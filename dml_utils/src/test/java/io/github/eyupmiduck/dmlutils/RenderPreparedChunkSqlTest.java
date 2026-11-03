@@ -14,6 +14,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 class RenderPreparedChunkSqlTest extends PostgresTestBase {
 
+    /** Sentinel that prepare_chunk_sql_render leaves for <driving_table>. */
+    private static final char DRIVING_TABLE_SENTINEL = 1;
+    /** Sentinel that prepare_chunk_sql_render leaves for <chunking_clause>. */
+    private static final char CLAUSE_SENTINEL = 2;
     private static final String TEMPLATE =
             "UPDATE <driving_table> SET processed = true WHERE <chunking_clause>";
 
@@ -109,7 +113,7 @@ class RenderPreparedChunkSqlTest extends PostgresTestBase {
     void rejectsATemplateWithoutTheDrivingTablePlaceholder() {
         assertSqlState("22023", () -> Routines.renderPreparedChunkSql(
                 dsl.configuration(),
-                "UPDATE public.src t SET processed = true WHERE " + (char) 2,
+                "UPDATE public.src t SET processed = true WHERE " + CLAUSE_SENTINEL,
                 "public", "src", "t",
                 new String[]{"t.a"}, new String[]{"bigint"}, new String[]{null},
                 new String[]{"1"}, new String[]{"2"}, false));
@@ -144,7 +148,7 @@ class RenderPreparedChunkSqlTest extends PostgresTestBase {
 
         assertSqlState("22023", () -> Routines.renderPreparedChunkSql(
                 dsl.configuration(), prepared.getOTemplate(), "public",
-                "src" + (char) 1, "t",
+                "src" + DRIVING_TABLE_SENTINEL, "t",
                 prepared.getOColumnNames(), new String[]{"bigint"},
                 prepared.getOKeyCollations(), new String[]{"1"}, new String[]{"2"}, false));
     }

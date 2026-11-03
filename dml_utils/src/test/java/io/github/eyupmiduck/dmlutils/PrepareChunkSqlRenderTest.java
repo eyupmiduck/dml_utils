@@ -17,6 +17,10 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class PrepareChunkSqlRenderTest extends PostgresTestBase {
 
+    /** Sentinel that prepare_chunk_sql_render leaves for <driving_table>. */
+    private static final char DRIVING_TABLE_SENTINEL = 1;
+    /** Sentinel that prepare_chunk_sql_render leaves for <chunking_clause>. */
+    private static final char CLAUSE_SENTINEL = 2;
     private static final String TEMPLATE =
             "UPDATE <driving_table> SET processed = true WHERE <chunking_clause>";
 
@@ -31,7 +35,8 @@ class PrepareChunkSqlRenderTest extends PostgresTestBase {
                 dsl.configuration(), TEMPLATE, "public", "src", "t",
                 new String[]{"a", "b"}, new String[]{"bigint", "text"});
 
-        assertEquals("UPDATE " + (char) 1 + " SET processed = true WHERE " + (char) 2,
+        assertEquals("UPDATE " + DRIVING_TABLE_SENTINEL + " SET processed = true WHERE "
+                        + CLAUSE_SENTINEL,
                 prepared.getOTemplate(),
                 "the driving table and chunking clause should be left as sentinels");
         assertFalse(prepared.getOTemplate().contains("<driving_table>"),
@@ -92,7 +97,7 @@ class PrepareChunkSqlRenderTest extends PostgresTestBase {
      */
     @Test
     void rejectsATemplateWithASentinelCharacter() {
-        String template = "UPDATE <driving_table> SET processed = '" + (char) 1
+        String template = "UPDATE <driving_table> SET processed = '" + DRIVING_TABLE_SENTINEL
                 + "' WHERE <chunking_clause>";
         assertSqlState("22023", () -> Routines.prepareChunkSqlRender(
                 dsl.configuration(), template, "public", "src", "t",
