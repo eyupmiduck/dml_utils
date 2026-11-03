@@ -17,15 +17,6 @@ COMMENT ON DOMAIN dml_utils_data.non_negative_integer IS
 -- (for example NBSP U+00A0) is treated as ordinary text, so a value of only such
 -- characters is accepted. Extend the set only if the application treats that
 -- character as blank.
--- A boolean flag that must be supplied: without this, a NULL would take the
--- SQL three-valued path instead of being rejected when the caller omits it.
-CREATE DOMAIN dml_utils_data.non_null_boolean AS boolean
-    CONSTRAINT non_null_boolean_check CHECK (value IS NOT NULL);
-
-COMMENT ON DOMAIN dml_utils_data.non_null_boolean IS
-    'boolean that is NOT NULL, so a flag cannot be silently omitted and fall '
-        'through three-valued logic.';
-
 CREATE DOMAIN dml_utils_data.non_null_text AS text
     CONSTRAINT non_null_text_check CHECK (
         value IS NOT NULL AND pg_catalog.btrim(value, E' \t\n\r\f\013') <> ''
@@ -35,6 +26,16 @@ COMMENT ON DOMAIN dml_utils_data.non_null_text IS
     'text that is NOT NULL and not blank. Blank means empty after trimming the '
         'ASCII whitespace characters (space, tab, LF, CR, FF, vertical tab); '
         'non-ASCII whitespace such as NBSP is not trimmed.';
+
+-- A boolean whose explicit NULL is rejected. Function signatures may still give
+-- it a DEFAULT, so omitting the argument is fine; passing NULL is not, and it
+-- cannot silently fall through SQL three-valued logic.
+CREATE DOMAIN dml_utils_data.non_null_boolean AS boolean
+    CONSTRAINT non_null_boolean_check CHECK (value IS NOT NULL);
+
+COMMENT ON DOMAIN dml_utils_data.non_null_boolean IS
+    'boolean that is NOT NULL, so an explicitly passed NULL is rejected instead '
+        'of falling through three-valued logic.';
 
 -- Packs the primary-key value of a chunk boundary, for a primary key of one to
 -- three columns. One array per supported kind, each position-aligned to the

@@ -1044,11 +1044,29 @@ RETURNS void
 leaf per `pg_background` transaction until every leaf is calculated, then
 finalizes the run in its own worker transaction (terminal boundary and totals).
 The run-keyed transaction-scoped advisory lock makes a concurrent calculation
-fail closed with `55000`. The live tree is compared with the manifest before each
-leaf; a cancelled run stops without finalizing and keeps its pending leaves. A
-leaf worker's failure is re-raised with its original SQLSTATE, leaving the leaves
-already committed in place so a later call resumes at the first pending/failed
-leaf. A single-relation run is rejected (`22023`).
+fail closed with `55000`. The live tree is compared with the manifest before the
+loop and before finalization, and each claimed leaf is re-checked. A failing leaf
+is marked failed on the manifest with its SQLSTATE and message in a separate
+worker transaction before the original error is re-raised, so a later call
+resumes at that leaf. A cancelled run stops without finalizing and keeps its
+pending leaves. A single-relation run is rejected (`22023`).
+
+### `dml_utils_lib.record_migration_leaf_error(i_run_id, i_leaf_ordinal, i_sqlstate, i_error_message)`
+
+```sql
+i_run_id       bigint
+i_leaf_ordinal integer
+i_sqlstate     dml_utils_data.non_null_text
+i_error_message dml_utils_data.non_null_text
+RETURNS void
+```
+
+`VOLATILE`, `SECURITY DEFINER` (pinned `search_path`). Marks one manifest leaf
+`failed`, resets its count/timestamp and records the SQLSTATE and message. A
+calculated leaf is never downgraded and a missing leaf is a no-op. The
+coordinator calls it in an autonomous `pg_background` transaction after a leaf
+worker fails, so the failure survives the re-raise and an operator can see which
+leaf failed.
 
 ###
 

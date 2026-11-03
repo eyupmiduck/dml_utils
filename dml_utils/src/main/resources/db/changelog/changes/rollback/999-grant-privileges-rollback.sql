@@ -9,6 +9,8 @@ GRANT USAGE ON DOMAIN dml_utils_data.positive_integer TO public;
 REVOKE USAGE ON DOMAIN dml_utils_data.positive_integer FROM dml_utils_caller;
 GRANT USAGE ON DOMAIN dml_utils_data.non_negative_integer TO public;
 REVOKE USAGE ON DOMAIN dml_utils_data.non_negative_integer FROM dml_utils_caller;
+GRANT USAGE ON DOMAIN dml_utils_data.non_null_boolean TO public;
+REVOKE USAGE ON DOMAIN dml_utils_data.non_null_boolean FROM dml_utils_caller;
 GRANT USAGE ON TYPE dml_utils_data.migration_key TO public;
 REVOKE USAGE ON TYPE dml_utils_data.migration_key FROM dml_utils_caller;
 GRANT USAGE ON TYPE dml_utils_data.chunking_strategy TO public;
@@ -329,6 +331,18 @@ REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_migration_tree_unchanged(bigint)
 GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_migration_tree_unchanged(bigint) TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.calculate_migration_run_boundaries(bigint) FROM dml_utils_caller;
 GRANT EXECUTE ON FUNCTION dml_utils_lib.calculate_migration_run_boundaries(bigint) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.record_migration_leaf_error(
+    bigint,
+    integer,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.record_migration_leaf_error(
+    bigint,
+    integer,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text
+    ) TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.process_migration_chunk(
     bigint,
     bigint,

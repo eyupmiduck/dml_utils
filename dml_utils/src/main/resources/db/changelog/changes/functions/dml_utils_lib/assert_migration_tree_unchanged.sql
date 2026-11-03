@@ -40,23 +40,11 @@ BEGIN
     FROM dml_utils_data.migration_run_leaf AS leaf
     WHERE leaf.run_id = i_run_id;
 
-    SELECT pg_catalog.count(*)::bigint
-    INTO l_live_count
-    FROM dml_utils_lib.leaf_partitions(
-            i_schema_name => l_schema_name,
-            i_table_name => l_table_name,
-            i_chunk_by => l_chunk_by);
-
-    IF l_live_count IS DISTINCT FROM l_manifest_count THEN
-        RAISE EXCEPTION 'partition tree changed for run %: % leaves now, % in the manifest',
-            i_run_id, l_live_count, l_manifest_count
-            USING ERRCODE = '55000';
-    END IF;
-
-    -- Compare leaf by leaf in the deterministic manifest order. The live
-    -- enumeration is the same function that built the manifest, so an unchanged
-    -- tree matches position by position; any difference makes the stored ranges
-    -- stale.
+    -- Compare leaf by leaf in the deterministic manifest order, counting in the
+    -- same pass. The live enumeration is the same function that built the
+    -- manifest, so an unchanged tree matches position by position; any difference
+    -- makes the stored ranges stale.
+    l_live_count := 0;
     FOR l_live IN
         SELECT live.*
         FROM dml_utils_lib.leaf_partitions(
@@ -65,6 +53,8 @@ BEGIN
                 i_chunk_by => l_chunk_by) AS live
         ORDER BY live.leaf_ordinal
         LOOP
+            l_live_count := l_live_count + 1;
+
             SELECT * INTO l_manifest
             FROM dml_utils_data.migration_run_leaf AS leaf
             WHERE leaf.run_id = i_run_id
@@ -88,6 +78,12 @@ BEGIN
                     USING ERRCODE = '55000';
             END IF;
         END LOOP;
+
+    IF l_live_count IS DISTINCT FROM l_manifest_count THEN
+        RAISE EXCEPTION 'partition tree changed for run %: % leaves now, % in the manifest',
+            i_run_id, l_live_count, l_manifest_count
+            USING ERRCODE = '55000';
+    END IF;
 END;
 $$;
 

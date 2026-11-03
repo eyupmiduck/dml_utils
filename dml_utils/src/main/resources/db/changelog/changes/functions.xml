@@ -474,6 +474,16 @@
         </rollback>
     </changeSet>
 
+    <changeSet id="function-dml_utils_lib.record_migration_leaf_error" author="lee.horner"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils_lib/record_migration_leaf_error.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils_lib/record_migration_leaf_error-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
     <changeSet id="function-dml_utils_lib.explain_chunk_plans" author="lee.horner"
                dbms="postgresql" runOnChange="true">
         <createProcedure path="functions/dml_utils_lib/explain_chunk_plans.sql"

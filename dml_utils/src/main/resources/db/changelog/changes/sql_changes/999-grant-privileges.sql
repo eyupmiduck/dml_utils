@@ -362,6 +362,18 @@ REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_migration_tree_unchanged(bigint)
 GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_migration_tree_unchanged(bigint) TO dml_utils_caller;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.calculate_migration_run_boundaries(bigint) FROM public;
 GRANT EXECUTE ON FUNCTION dml_utils_lib.calculate_migration_run_boundaries(bigint) TO dml_utils_caller;
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.record_migration_leaf_error(
+    bigint,
+    integer,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text
+    ) FROM public;
+GRANT EXECUTE ON FUNCTION dml_utils_lib.record_migration_leaf_error(
+    bigint,
+    integer,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text
+    ) TO dml_utils_caller;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.process_migration_chunk(
     bigint,
     bigint,

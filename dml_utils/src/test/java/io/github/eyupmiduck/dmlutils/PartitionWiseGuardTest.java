@@ -111,6 +111,61 @@ class PartitionWiseGuardTest extends PostgresTestBase {
     }
 
     /**
+     * A failing leaf worker is recorded on the manifest with its SQLSTATE and
+     * message, and the calculation re-raises the error without finalizing.
+     */
+    @Test
+    void failingLeafIsRecordedOnTheManifest() throws Exception {
+        dsl.insertInto(TEST_PARTITIONED_RANGE,
+                        TEST_PARTITIONED_RANGE.ID, TEST_PARTITIONED_RANGE.PAYLOAD)
+                .values(0L, "pending")
+                .execute();
+        long runId = populate(TABLE, uniqueLabel("guard-failed-leaf"), 1,
+                ChunkingStrategy.primary_key, true);
+
+        // The run exists, but without a parent primary key the leaf calculation
+        // cannot resolve the key and fails before appending a boundary.
+        executeAsOwner("ALTER TABLE " + SCHEMA + "." + TABLE
+                + " DROP CONSTRAINT test_partitioned_range_pkey");
+        try {
+            assertSqlState("22023", () -> io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib
+                    .Routines.calculateMigrationRunBoundaries(dsl.configuration(), runId));
+        } finally {
+            executeAsOwner("ALTER TABLE " + SCHEMA + "." + TABLE + " ADD PRIMARY KEY (id)");
+        }
+
+        MigrationRunLeafRecord failed = leaves(runId).getFirst();
+        assertEquals("failed", failed.getState());
+        assertEquals("22023", failed.getErrorSqlstate());
+        assertNotNull(failed.getErrorMessage());
+        assertNull(failed.getCalculatedAt());
+        assertEquals(0L, failed.getBoundaryCount());
+        assertNull(run(runId).getBoundariesCalculatedAt());
+        assertTrue(runBoundaries(runId).isEmpty());
+    }
+
+    /**
+     * The calculation stops without finalizing when the run is already cancelled.
+     */
+    @Test
+    void calculationStopsForACancelledRun() {
+        long runId = populate(TABLE, uniqueLabel("guard-cancelled"), 2,
+                ChunkingStrategy.primary_key, true);
+        io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines.cancelMigrationRun(
+                dsl.configuration(), run(runId).getLabel());
+
+        io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines
+                .calculateMigrationRunBoundaries(dsl.configuration(), runId);
+
+        assertNotNull(run(runId).getCancelledAt());
+        assertNull(run(runId).getBoundariesCalculatedAt());
+        assertTrue(runBoundaries(runId).isEmpty());
+        for (MigrationRunLeafRecord leaf : leaves(runId)) {
+            assertEquals("pending", leaf.getState());
+        }
+    }
+
+    /**
      * A blocks leaf rewritten on disk is detected by the per-leaf filepath
      * comparison.
      */

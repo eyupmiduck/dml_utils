@@ -141,8 +141,6 @@ BEGIN
     -- manifest before calculating and again before processing, so a detach,
     -- attach, rename or heap rewrite fails closed instead of misdirecting chunks.
     IF l_partition_wise THEN
-        PERFORM dml_utils_lib.assert_migration_tree_unchanged(i_run_id => l_run_id);
-
         SELECT run.boundaries_calculated_at
         INTO l_boundaries_calculated_at
         FROM dml_utils_data.migration_run AS run
@@ -157,6 +155,17 @@ BEGIN
             WHERE run.run_id = l_run_id;
 
             IF l_cancelled_at IS NOT NULL THEN
+                -- A leaf worker that committed after the canceller ran leaves its
+                -- boundaries pending; mark them cancelled in an autonomous worker,
+                -- exactly as the processing-phase cancellation handler does.
+                BEGIN
+                    PERFORM public.pg_background_run(pg_catalog.format(
+                            'SELECT dml_utils_lib.mark_migration_run_cancelled(%s)',
+                            l_run_id));
+                EXCEPTION
+                    WHEN OTHERS THEN
+                        NULL;
+                END;
                 RAISE NOTICE 'run for label % was cancelled during boundary calculation', i_label;
                 RETURN;
             END IF;
