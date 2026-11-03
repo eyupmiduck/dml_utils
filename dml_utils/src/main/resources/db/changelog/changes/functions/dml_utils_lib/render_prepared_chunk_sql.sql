@@ -20,8 +20,8 @@ DECLARE
     -- The sentinels prepare_chunk_sql_render left in the prepared template (and
     -- rejects in a substituted value). Both are checked on the chunking clause so
     -- no substituted value can reintroduce a token.
-    l_driving_table_sentinel   constant text    := pg_catalog.chr(1);
-    l_chunking_clause_sentinel constant text    := pg_catalog.chr(2);
+    l_driving_table_sentinel   constant text := pg_catalog.chr(1);
+    l_chunking_clause_sentinel constant text := pg_catalog.chr(2);
     l_column_count                      integer;
     l_start_literals                    text[];
     l_end_literals                      text[];

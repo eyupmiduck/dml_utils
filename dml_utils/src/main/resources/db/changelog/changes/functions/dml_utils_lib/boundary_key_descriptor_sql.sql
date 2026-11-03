@@ -46,9 +46,9 @@ BEGIN
     l_order_by_desc := '';
     FOR l_position IN 1..pg_catalog.array_length(i_key_kinds, 1)
         LOOP
-            -- A NULL or empty column name would render a degenerate %I token;
-            -- reject it before building the statement. The kind itself is
-            -- validated by boundary_key_pack_expression below.
+        -- A NULL or empty column name would render a degenerate %I token;
+        -- reject it before building the statement. The kind itself is
+        -- validated by boundary_key_pack_expression below.
             IF i_key_columns[l_position] IS NULL
                 OR i_key_columns[l_position] = ''
             THEN

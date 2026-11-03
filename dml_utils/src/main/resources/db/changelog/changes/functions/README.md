@@ -747,7 +747,7 @@ read and validation.
 ```sql
 i_parent_index_oid oid
 RETURNS TABLE
-(leaf_oid oid, child_index_oid oid, child_index_name text)
+    (leaf_oid oid, child_index_oid oid, child_index_name text)
 ```
 
 `STABLE`, `SECURITY INVOKER`. Walks a partitioned index's inheritance tree once
@@ -1558,12 +1558,13 @@ RETURNS record
 ```
 
 `STABLE`, `SECURITY INVOKER`. Validates the key columns and kinds once, returns the
-alias-qualified quoted column names and the collation to use for each text column
-(the quoted column collation, `"default"`, or NULL when the column is not in the
+alias-qualified quoted column names and the collation to use for each text column (the quoted column collation,
+`"default"`, or NULL when the column is not in the
 catalog). `prepare_chunk_sql_render` uses it to build the run-invariant render
 context.
 
-### `dml_utils_lib.build_chunk_boundary_literals(i_column_names, i_key_kinds, i_key_collations, i_start_values, i_end_values)`
+###
+`dml_utils_lib.build_chunk_boundary_literals(i_column_names, i_key_kinds, i_key_collations, i_start_values, i_end_values)`
 
 ```sql
 i_column_names   text[]
@@ -1582,7 +1583,8 @@ direction (zero when all values are equal). A NULL value, an invalid literal for
 its kind or a malformed array raises `22023`. Shared by
 `render_prepared_chunk_sql`.
 
-### `dml_utils_lib.build_chunk_range_boxes(i_column_names, i_start_literals, i_end_literals, i_first_difference_position, i_is_final)`
+###
+`dml_utils_lib.build_chunk_range_boxes(i_column_names, i_start_literals, i_end_literals, i_first_difference_position, i_is_final)`
 
 ```sql
 i_column_names             text[]
@@ -1610,7 +1612,8 @@ one-to-three-column boundary key, placing each kind's `idN` term in its
 position-aligned array. Unsupported or NULL kinds and a malformed array raise
 `22023`. Shared by `boundary_key_descriptor_sql`.
 
-### `dml_utils_lib.format_boundary_population_sql(i_select_list, i_order_by, i_schema_name, i_table_name, i_id_list, i_pack_expression, i_order_by_desc, i_run_id, i_chunk_size)`
+###
+`dml_utils_lib.format_boundary_population_sql(i_select_list, i_order_by, i_schema_name, i_table_name, i_id_list, i_pack_expression, i_order_by_desc, i_run_id, i_chunk_size)`
 
 ```sql
 i_select_list     text
