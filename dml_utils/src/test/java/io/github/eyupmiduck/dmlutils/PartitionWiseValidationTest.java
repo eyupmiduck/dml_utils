@@ -75,9 +75,7 @@ class PartitionWiseValidationTest extends PartitionTestBase {
                 Routines.partitionedOrderedKeyKinds(dsl.configuration(),
                         PARTITION_SCHEMA, "test_partitioned_multi", index));
 
-        io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines.runMigrationChunks(dsl.configuration(), TEMPLATE, PARTITION_SCHEMA,
-                "test_partitioned_multi", label, 2, 1, "t",
-                ChunkingStrategy.ordered_key, 1, 0, index, true);
+        run("test_partitioned_multi", label, 2, ChunkingStrategy.ordered_key, index);
 
         assertNotNull(run(label).getCompletedAt());
         assertEquals(0L, dsl.fetchCount(TEST_PARTITIONED_MULTI,
@@ -85,8 +83,11 @@ class PartitionWiseValidationTest extends PartitionTestBase {
     }
 
     /**
-     * An index created with ON ONLY has no child indexes and is invalid, so the
-     * parent-index validation fails before a run row is written.
+     * An index created with ON ONLY has no child indexes: the leaf walk reaches
+     * the fail-closed "no matching child index" branch and raises 0A000 before a
+     * run row is written. (PostgreSQL will not let a child index be dropped from
+     * an otherwise valid partitioned index, so this is the reachable form of that
+     * branch.)
      */
     @Test
     void rejectsAnIndexWithNoChildIndexes() throws Exception {
@@ -96,7 +97,7 @@ class PartitionWiseValidationTest extends PartitionTestBase {
         executeAsOwner("CREATE UNIQUE INDEX " + index + " ON ONLY "
                 + PARTITION_SCHEMA + "." + PARTITIONED_RANGE + " (id)");
         try {
-            assertSqlState("55000", () -> run(PARTITIONED_RANGE, label, 2,
+            assertSqlState("0A000", () -> run(PARTITIONED_RANGE, label, 2,
                     ChunkingStrategy.ordered_key, index));
         } finally {
             executeAsOwner("DROP INDEX IF EXISTS " + PARTITION_SCHEMA + "." + index);
@@ -155,6 +156,36 @@ class PartitionWiseValidationTest extends PartitionTestBase {
                 TEST_PARTITIONED_RANGE.PAYLOAD.ne("done")));
     }
 
+    /**
+     * A resumed partition-wise ordered run fails closed when the stored parent
+     * index disappears, and completes after it is recreated.
+     */
+    @Test
+    void resumeFailsClosedWhenTheParentIndexIsDropped() throws Exception {
+        insertRangeRows(0L, 100L, 200L);
+        String label = uniqueLabel("validation-resume-index");
+        String parentIndex = "test_partitioned_range_ordered_key_idx";
+        long runId = populateOrdered(label, parentIndex);
+        Routines.calculateMigrationRunBoundaries(dsl.configuration(), runId);
+
+        executeAsOwner("DROP INDEX " + PARTITION_SCHEMA + "." + parentIndex);
+        try {
+            assertSqlState("55000", () -> run(PARTITIONED_RANGE, label, 2,
+                    ChunkingStrategy.ordered_key, parentIndex));
+        } finally {
+            executeAsOwner("CREATE UNIQUE INDEX " + parentIndex + " ON "
+                    + PARTITION_SCHEMA + "." + PARTITIONED_RANGE + " (id)");
+        }
+
+        assertEquals(0L, dsl.fetchCount(TEST_PARTITIONED_RANGE,
+                TEST_PARTITIONED_RANGE.PAYLOAD.eq("done")),
+                "a failed resume must not process a chunk");
+
+        run(PARTITIONED_RANGE, label, 2, ChunkingStrategy.ordered_key, parentIndex);
+        assertEquals(0L, dsl.fetchCount(TEST_PARTITIONED_RANGE,
+                TEST_PARTITIONED_RANGE.PAYLOAD.ne("done")));
+    }
+
     private void insertRangeRows(Long... ids) {
         for (Long id : ids) {
             dsl.insertInto(TEST_PARTITIONED_RANGE,
@@ -162,6 +193,12 @@ class PartitionWiseValidationTest extends PartitionTestBase {
                     .values(id, "pending")
                     .execute();
         }
+    }
+
+    private long populateOrdered(String label, String index) {
+        return Routines.populateMigrationBoundaries(dsl.configuration(), PARTITION_SCHEMA,
+                PARTITIONED_RANGE, label, TEMPLATE, 2, 1, ChunkingStrategy.ordered_key,
+                "t", 0, index, true);
     }
 
     private long populate(String table, String label, int chunkSize, ChunkingStrategy chunkBy) {

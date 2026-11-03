@@ -721,13 +721,14 @@ RETURNS TABLE
     column_type regtype, key_kind text)
 ```
 
-`STABLE`, `SECURITY INVOKER`. Validates a partition-wise ordered key: the driving
-table must be declarative partitioned, the parent index must satisfy the
-ordered-key contract, and every storage leaf must have the matching descendant
-child index (walking multi-level index inheritance) that is itself usable.
+`VOLATILE`, `SECURITY INVOKER`. Validates a partition-wise ordered key: the
+driving table must be declarative partitioned, every storage leaf must have the
+matching descendant child index (walking multi-level index inheritance) that is
+itself usable, and the parent index must satisfy the ordered-key contract.
 Returns the parent index's key columns and kinds. Raises `42704` for a missing
 index, `0A000` for a non-partitioned parent or a leaf without a matching child
-index, and `0A000`/`55000` for an unusable parent or child index.
+index, and `0A000`/`55000` for an unusable parent or child index. It is
+`VOLATILE` because `leaf_partitions` calls the volatile `pg_partition_tree`.
 
 ### `dml_utils_lib.partitioned_ordered_key_columns(i_schema_name, i_table_name, i_index_name)`
 

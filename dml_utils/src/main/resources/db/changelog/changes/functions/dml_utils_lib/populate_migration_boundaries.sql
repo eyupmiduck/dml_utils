@@ -92,19 +92,14 @@ BEGIN
     ELSIF i_chunk_by = 'ordered_key' THEN
         IF i_partition_wise::boolean THEN
             -- A partitioned parent resolves the key through the parent index and
-            -- every leaf's matching child index.
-            PERFORM dml_utils_lib.assert_usable_partitioned_ordered_key(
+            -- every leaf's child index; one traversal yields both arrays.
+            SELECT pg_catalog.array_agg(a.column_name ORDER BY a.ordinality),
+                   pg_catalog.array_agg(a.key_kind ORDER BY a.ordinality)
+            INTO l_key_columns, l_key_kinds
+            FROM dml_utils_lib.partitioned_ordered_key_attributes(
                     i_schema_name => i_schema_name,
                     i_table_name => i_table_name,
-                    i_index_name => i_boundary_key_index);
-            l_key_columns := dml_utils_lib.partitioned_ordered_key_columns(
-                    i_schema_name => i_schema_name,
-                    i_table_name => i_table_name,
-                    i_index_name => i_boundary_key_index);
-            l_key_kinds := dml_utils_lib.partitioned_ordered_key_kinds(
-                    i_schema_name => i_schema_name,
-                    i_table_name => i_table_name,
-                    i_index_name => i_boundary_key_index);
+                    i_index_name => i_boundary_key_index) AS a;
         ELSE
             PERFORM dml_utils_lib.assert_usable_ordered_key(
                     i_schema_name => i_schema_name,

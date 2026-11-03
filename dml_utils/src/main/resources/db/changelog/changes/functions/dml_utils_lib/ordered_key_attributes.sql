@@ -20,37 +20,20 @@ DECLARE
     l_index    record;
     l_hint     text;
 BEGIN
-    -- The single catalog reader for an ordered key: resolve the named unique
-    -- index on the driving table and validate every property the range renderer
-    -- depends on. The checks run from the outside in (existence, table shape,
-    -- access method, uniqueness/health, index shape, then the per-column
-    -- contract) so the caller gets the most specific error.
+    -- Resolve the named index on the driving table and reject a partitioned or
+    -- otherwise non-plain table here; the shape and per-column contract checks are
+    -- shared with the partition-wise path in ordered_key_attributes_for_index.
     PERFORM dml_utils_lib.assert_schema_exists(i_schema_name => i_schema_name);
     PERFORM dml_utils_lib.assert_table_exists(
             i_schema_name => i_schema_name,
             i_table_name => i_table_name);
 
-    SELECT i.indexrelid,
-           i.indrelid,
-           i.indnkeyatts,
-           i.indisunique,
-           i.indisvalid,
-           i.indisready,
-           i.indislive,
-           i.indpred,
-           i.indexprs,
-           i.indkey,
-           i.indoption,
-           i.indclass,
-           i.indcollation,
-           c.relkind,
-           am.amname
+    SELECT i.indexrelid, c.relkind
     INTO l_index
     FROM pg_catalog.pg_index AS i
              JOIN pg_catalog.pg_class AS ic ON ic.oid = i.indexrelid
              JOIN pg_catalog.pg_class AS c ON c.oid = i.indrelid
              JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
-             JOIN pg_catalog.pg_am AS am ON am.oid = ic.relam
     WHERE n.nspname = i_schema_name
       AND c.relname = i_table_name
       AND ic.relname = i_index_name;

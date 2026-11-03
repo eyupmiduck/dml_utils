@@ -47,6 +47,16 @@ BEGIN
             USING ERRCODE = '42704';
     END IF;
 
+    -- The OID and the names must describe the same relation, so a caller cannot
+    -- validate one index while the error messages name another table.
+    IF l_index.indrelid IS DISTINCT FROM pg_catalog.to_regclass(
+            pg_catalog.format('%I.%I', i_schema_name, i_table_name))
+    THEN
+        RAISE EXCEPTION 'index %.% does not belong to table %.%',
+            i_schema_name, i_index_name, i_schema_name, i_table_name
+            USING ERRCODE = '42704';
+    END IF;
+
     -- An exclusion constraint can only be backed by gist/spgist, never btree,
     -- so this also rejects one (with the same 0A000).
     IF l_index.amname <> 'btree' THEN

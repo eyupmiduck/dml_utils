@@ -17,11 +17,9 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.partitioned_ordered_key_attributes(
 AS
 $$
 DECLARE
-    l_index_oid        oid;
-    l_relkind          text;
-    l_leaf             record;
-    l_child_index      oid;
-    l_child_index_name text;
+    l_index_oid oid;
+    l_relkind   text;
+    l_leaf      record;
 BEGIN
     PERFORM dml_utils_lib.assert_schema_exists(i_schema_name => i_schema_name);
     PERFORM dml_utils_lib.assert_table_exists(
@@ -50,57 +48,65 @@ BEGIN
             USING ERRCODE = '0A000';
     END IF;
 
-    -- Validate the parent index shape; an index built with ON ONLY is invalid,
-    -- so this also rejects a parent index with no usable child indexes.
+    -- Walk the index inheritance tree once and pair each storage leaf with its
+    -- descendant child index. The index tree mirrors the table tree, so a
+    -- multi-level partition's leaf index is not a direct child of the parent.
+    -- Checking the leaves before the parent keeps a missing child index (0A000)
+    -- distinct from an invalid parent index (55000).
+    FOR l_leaf IN
+        WITH RECURSIVE index_tree AS (
+            SELECT inh.inhrelid
+            FROM pg_catalog.pg_inherits AS inh
+            WHERE inh.inhparent = l_index_oid
+            UNION ALL
+            SELECT inh.inhrelid
+            FROM pg_catalog.pg_inherits AS inh
+                     JOIN index_tree AS tree ON inh.inhparent = tree.inhrelid
+        ),
+        child_indexes AS (
+            SELECT ci.indrelid      AS leaf_oid,
+                   tree.inhrelid    AS child_index_oid,
+                   ic.relname::text AS child_index_name
+            FROM index_tree AS tree
+                     JOIN pg_catalog.pg_index AS ci ON ci.indexrelid = tree.inhrelid
+                     JOIN pg_catalog.pg_class AS ic ON ic.oid = tree.inhrelid
+        )
+        SELECT live.leaf_ordinal,
+               live.leaf_schema_name,
+               live.leaf_name,
+               child.child_index_oid,
+               child.child_index_name
+        FROM dml_utils_lib.leaf_partitions(
+                i_schema_name => i_schema_name,
+                i_table_name => i_table_name,
+                i_chunk_by => 'ordered_key') AS live
+                 LEFT JOIN child_indexes AS child ON child.leaf_oid = live.leaf_oid
+        ORDER BY live.leaf_ordinal
+        LOOP
+            IF l_leaf.child_index_oid IS NULL THEN
+                RAISE EXCEPTION 'leaf %.% has no matching child index for ordered key %.%',
+                    l_leaf.leaf_schema_name, l_leaf.leaf_name, i_schema_name, i_index_name
+                    USING ERRCODE = '0A000';
+            END IF;
+
+            -- Each child index must itself be usable (valid/ready/live and the same
+            -- shape contract), so a broken or redefined leaf index fails before a
+            -- run row exists.
+            PERFORM 1
+            FROM dml_utils_lib.ordered_key_attributes_for_index(
+                    i_index_oid => l_leaf.child_index_oid,
+                    i_schema_name => l_leaf.leaf_schema_name,
+                    i_table_name => l_leaf.leaf_name,
+                    i_index_name => l_leaf.child_index_name) AS a;
+        END LOOP;
+
+    -- Validate the parent index shape; an index built with ON ONLY is invalid.
     PERFORM 1
     FROM dml_utils_lib.ordered_key_attributes_for_index(
             i_index_oid => l_index_oid,
             i_schema_name => i_schema_name,
             i_table_name => i_table_name,
             i_index_name => i_index_name) AS a;
-
-    -- Every storage leaf must have the matching descendant index. The index
-    -- inheritance tree mirrors the table tree, so walk it rather than assuming
-    -- the leaf index is a direct child of the parent.
-    FOR l_leaf IN
-        SELECT leaf.*
-        FROM dml_utils_lib.leaf_partitions(
-                i_schema_name => i_schema_name,
-                i_table_name => i_table_name,
-                i_chunk_by => 'ordered_key') AS leaf
-        LOOP
-            WITH RECURSIVE index_tree AS (
-                SELECT inh.inhrelid
-                FROM pg_catalog.pg_inherits AS inh
-                WHERE inh.inhparent = l_index_oid
-                UNION ALL
-                SELECT inh.inhrelid
-                FROM pg_catalog.pg_inherits AS inh
-                         JOIN index_tree AS tree ON inh.inhparent = tree.inhrelid
-            )
-            SELECT tree.inhrelid, ic.relname::text
-            INTO l_child_index, l_child_index_name
-            FROM index_tree AS tree
-                     JOIN pg_catalog.pg_index AS ci ON ci.indexrelid = tree.inhrelid
-                     JOIN pg_catalog.pg_class AS ic ON ic.oid = tree.inhrelid
-            WHERE ci.indrelid = l_leaf.leaf_oid;
-
-            IF NOT FOUND THEN
-                RAISE EXCEPTION 'leaf %.% has no matching child index for ordered key %.%',
-                    l_leaf.leaf_schema_name, l_leaf.leaf_name, i_schema_name, i_index_name
-                    USING ERRCODE = '0A000';
-            END IF;
-
-            -- The child index must itself be usable (valid/ready/live and the same
-            -- shape contract), so a broken or redefined leaf index fails before a
-            -- run row exists.
-            PERFORM 1
-            FROM dml_utils_lib.ordered_key_attributes_for_index(
-                    i_index_oid => l_child_index,
-                    i_schema_name => l_leaf.leaf_schema_name,
-                    i_table_name => l_leaf.leaf_name,
-                    i_index_name => l_child_index_name) AS a;
-        END LOOP;
 
     RETURN QUERY
         SELECT a.*
@@ -118,8 +124,10 @@ COMMENT ON FUNCTION dml_utils_lib.partitioned_ordered_key_attributes(
     dml_utils_data.non_null_text
     ) IS
     'Validates a partition-wise ordered key: the parent must be declarative '
-        'partitioned, the parent index must satisfy the ordered-key contract, and '
-        'every storage leaf must have the matching descendant child index, itself '
-        'usable. Returns the parent index''s key columns and kinds. Rejects a missing '
-        'index (42704), a non-partitioned parent (0A000), an unusable parent or child '
-        'index (0A000/55000) and a leaf without a matching child index (0A000).';
+        'partitioned, every storage leaf must have its matching descendant child '
+        'index (validated in one index-tree walk), and the parent index must '
+        'satisfy the ordered-key contract. Returns the parent index''s key columns '
+        'and kinds. Rejects a missing index (42704), a non-partitioned parent '
+        '(0A000), a leaf without a matching child index (0A000), and an unusable '
+        'parent or child index (0A000/55000). VOLATILE because leaf_partitions '
+        'calls the volatile pg_partition_tree.';
