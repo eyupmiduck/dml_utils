@@ -226,14 +226,12 @@ GRANT EXECUTE ON FUNCTION dml_utils_lib.partitioned_ordered_key_kinds(
     dml_utils_data.non_null_text,
     dml_utils_data.non_null_text
     ) TO dml_utils_caller;
-REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_usable_partitioned_ordered_key(
-    dml_utils_data.non_null_text,
-    dml_utils_data.non_null_text,
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_partitioned_ordered_key_leaves(
+    bigint,
     dml_utils_data.non_null_text
     ) FROM public;
-GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_usable_partitioned_ordered_key(
-    dml_utils_data.non_null_text,
-    dml_utils_data.non_null_text,
+GRANT EXECUTE ON FUNCTION dml_utils_lib.assert_partitioned_ordered_key_leaves(
+    bigint,
     dml_utils_data.non_null_text
     ) TO dml_utils_caller;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.assert_boundary_key_index(

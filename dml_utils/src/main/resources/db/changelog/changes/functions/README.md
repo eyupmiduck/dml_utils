@@ -755,19 +755,21 @@ RETURNS text[]
 kinds in key order, delegating validation to
 `partitioned_ordered_key_attributes`.
 
-### `dml_utils_lib.assert_usable_partitioned_ordered_key(i_schema_name, i_table_name, i_index_name)`
+### `dml_utils_lib.assert_partitioned_ordered_key_leaves(i_run_id, i_index_name)`
 
 ```sql
-i_schema_name dml_utils_data.non_null_text
-i_table_name  dml_utils_data.non_null_text
-i_index_name  dml_utils_data.non_null_text
+i_run_id     bigint
+i_index_name dml_utils_data.non_null_text
 RETURNS void
 ```
 
-`VOLATILE`, `SECURITY INVOKER`. Raises the
-`partitioned_ordered_key_attributes` error when the partitioned parent index or
-any leaf child index cannot serve as an ordered key; returns normally when every
-leaf is eligible.
+`VOLATILE`, `SECURITY INVOKER`. Validates the ordered-key child index of every
+leaf already snapshotted in a partition-wise run's manifest, walking the
+multi-level index inheritance tree once. Because it uses the manifest rather
+than a fresh enumeration, a leaf attached between the descriptor read and the
+manifest insert cannot be stored without its child index being validated. Raises
+`42704` for a missing parent index, `0A000` for a leaf without a matching child
+index, and `0A000`/`55000` for an unusable child index.
 
 ### `dml_utils_lib.assert_boundary_key_index(i_chunk_by, i_boundary_key_index)`
 

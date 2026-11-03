@@ -152,13 +152,14 @@ BEGIN
                             i_table_name => o_effective_table_name,
                             i_index_name => l_stored_ordered_key_index) AS a;
                 ELSE
-                    SELECT pg_catalog.array_agg(a.column_name ORDER BY a.ordinality),
-                           pg_catalog.array_agg(a.key_kind ORDER BY a.ordinality)
-                    INTO l_live_columns, l_live_kinds
-                    FROM dml_utils_lib.ordered_key_attributes(
+                    l_live_columns := dml_utils_lib.ordered_key_columns(
                             i_schema_name => o_effective_schema_name,
                             i_table_name => o_effective_table_name,
-                            i_index_name => l_stored_ordered_key_index) AS a;
+                            i_index_name => l_stored_ordered_key_index);
+                    l_live_kinds := dml_utils_lib.ordered_key_kinds(
+                            i_schema_name => o_effective_schema_name,
+                            i_table_name => o_effective_table_name,
+                            i_index_name => l_stored_ordered_key_index);
                 END IF;
 
                 IF l_live_columns IS DISTINCT FROM l_stored_ordered_key_columns

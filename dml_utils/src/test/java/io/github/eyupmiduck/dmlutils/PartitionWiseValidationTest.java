@@ -83,11 +83,8 @@ class PartitionWiseValidationTest extends PartitionTestBase {
     }
 
     /**
-     * An index created with ON ONLY has no child indexes: the leaf walk reaches
-     * the fail-closed "no matching child index" branch and raises 0A000 before a
-     * run row is written. (PostgreSQL will not let a child index be dropped from
-     * an otherwise valid partitioned index, so this is the reachable form of that
-     * branch.)
+     * An index created with ON ONLY is invalid, so the parent-index validation
+     * fails with 55000 before a run row is written.
      */
     @Test
     void rejectsAnIndexWithNoChildIndexes() throws Exception {
@@ -97,7 +94,7 @@ class PartitionWiseValidationTest extends PartitionTestBase {
         executeAsOwner("CREATE UNIQUE INDEX " + index + " ON ONLY "
                 + PARTITION_SCHEMA + "." + PARTITIONED_RANGE + " (id)");
         try {
-            assertSqlState("0A000", () -> run(PARTITIONED_RANGE, label, 2,
+            assertSqlState("55000", () -> run(PARTITIONED_RANGE, label, 2,
                     ChunkingStrategy.ordered_key, index));
         } finally {
             executeAsOwner("DROP INDEX IF EXISTS " + PARTITION_SCHEMA + "." + index);
@@ -184,6 +181,79 @@ class PartitionWiseValidationTest extends PartitionTestBase {
         run(PARTITIONED_RANGE, label, 2, ChunkingStrategy.ordered_key, parentIndex);
         assertEquals(0L, dsl.fetchCount(TEST_PARTITIONED_RANGE,
                 TEST_PARTITIONED_RANGE.PAYLOAD.ne("done")));
+    }
+
+    /**
+     * A manifest leaf that has no matching child index is rejected with 0A000.
+     * PostgreSQL keeps the live tree and its indexes consistent, so this guard is
+     * exercised with a synthetic manifest row.
+     */
+    @Test
+    void leafValidationRejectsAManifestLeafWithoutAChildIndex() {
+        insertRangeRows(0L);
+        String label = uniqueLabel("validation-synthetic-leaf");
+        String index = "test_partitioned_range_ordered_key_idx";
+        long runId = populateOrdered(label, index);
+
+        dsl.insertInto(io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRunLeaf
+                        .MIGRATION_RUN_LEAF)
+                .columns(io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRunLeaf
+                                .MIGRATION_RUN_LEAF.RUN_ID,
+                        io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRunLeaf
+                                .MIGRATION_RUN_LEAF.LEAF_ORDINAL,
+                        io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRunLeaf
+                                .MIGRATION_RUN_LEAF.LEAF_SCHEMA_NAME,
+                        io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRunLeaf
+                                .MIGRATION_RUN_LEAF.LEAF_NAME,
+                        io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRunLeaf
+                                .MIGRATION_RUN_LEAF.LEAF_OID,
+                        io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRunLeaf
+                                .MIGRATION_RUN_LEAF.LEAF_BOUND,
+                        io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRunLeaf
+                                .MIGRATION_RUN_LEAF.STATE)
+                .values(runId, 99, PARTITION_SCHEMA, "no_such_leaf", 1L,
+                        "FOR VALUES FROM (1000) TO (2000)", "pending")
+                .execute();
+
+        assertSqlState("0A000", () -> Routines.assertPartitionedOrderedKeyLeaves(
+                dsl.configuration(), runId, index));
+    }
+
+    /**
+     * A resumed partition-wise ordered run fails closed with 55000 when the parent
+     * index is recreated with a different key descriptor.
+     */
+    @Test
+    void resumeFailsWhenTheStoredDescriptorChanges() throws Exception {
+        dsl.insertInto(TEST_PARTITIONED_MULTI,
+                        TEST_PARTITIONED_MULTI.ID, TEST_PARTITIONED_MULTI.BUCKET,
+                        TEST_PARTITIONED_MULTI.PAYLOAD)
+                .values(0L, 0, "pending")
+                .execute();
+        String label = uniqueLabel("validation-descriptor-change");
+        String index = "test_partitioned_multi_ordered_key_idx";
+        long runId = Routines.populateMigrationBoundaries(dsl.configuration(), PARTITION_SCHEMA,
+                "test_partitioned_multi", label, TEMPLATE, 2, 1,
+                ChunkingStrategy.ordered_key, "t", 0, index, true);
+        assertNotNull(run(label));
+
+        executeAsOwner("DROP INDEX " + PARTITION_SCHEMA + "." + index);
+        executeAsOwner("CREATE UNIQUE INDEX " + index + " ON "
+                + PARTITION_SCHEMA + ".test_partitioned_multi (bucket, id)");
+        try {
+            assertSqlState("55000", () -> run("test_partitioned_multi", label, 2,
+                    ChunkingStrategy.ordered_key, index));
+        } finally {
+            executeAsOwner("DROP INDEX " + PARTITION_SCHEMA + "." + index);
+            executeAsOwner("CREATE UNIQUE INDEX " + index + " ON "
+                    + PARTITION_SCHEMA + ".test_partitioned_multi (id, bucket)");
+        }
+
+        assertNull(run(label).getCompletedAt());
+        assertEquals(0L, dsl.fetchCount(TEST_PARTITIONED_MULTI,
+                TEST_PARTITIONED_MULTI.PAYLOAD.eq("done")),
+                "a mismatched resume must not process a chunk");
+        assertNotNull(runId);
     }
 
     private void insertRangeRows(Long... ids) {

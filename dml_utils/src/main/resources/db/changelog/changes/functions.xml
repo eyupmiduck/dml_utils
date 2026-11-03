@@ -184,15 +184,16 @@
         </rollback>
     </changeSet>
 
-    <changeSet id="function-dml_utils_lib.assert_usable_partitioned_ordered_key" author="lee.horner"
+    <changeSet id="function-dml_utils_lib.assert_partitioned_ordered_key_leaves" author="lee.horner"
                dbms="postgresql" runOnChange="true">
-        <createProcedure path="functions/dml_utils_lib/assert_usable_partitioned_ordered_key.sql"
+        <createProcedure path="functions/dml_utils_lib/assert_partitioned_ordered_key_leaves.sql"
                          relativeToChangelogFile="true"/>
         <rollback>
-            <sqlFile path="functions-rollback/dml_utils_lib/assert_usable_partitioned_ordered_key-rollback.sql"
+            <sqlFile path="functions-rollback/dml_utils_lib/assert_partitioned_ordered_key_leaves-rollback.sql"
                      relativeToChangelogFile="true"/>
         </rollback>
     </changeSet>
+
 
     <changeSet id="function-dml_utils_lib.ordered_key_attributes" author="lee.horner"
                dbms="postgresql" runOnChange="true">

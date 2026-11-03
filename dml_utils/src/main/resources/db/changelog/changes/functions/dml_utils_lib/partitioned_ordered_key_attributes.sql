@@ -100,14 +100,8 @@ BEGIN
                     i_index_name => l_leaf.child_index_name) AS a;
         END LOOP;
 
-    -- Validate the parent index shape; an index built with ON ONLY is invalid.
-    PERFORM 1
-    FROM dml_utils_lib.ordered_key_attributes_for_index(
-            i_index_oid => l_index_oid,
-            i_schema_name => i_schema_name,
-            i_table_name => i_table_name,
-            i_index_name => i_index_name) AS a;
-
+    -- The RETURN QUERY below validates the parent index shape after the leaf
+    -- loop (an index built with ON ONLY is invalid and is rejected there).
     RETURN QUERY
         SELECT a.*
         FROM dml_utils_lib.ordered_key_attributes_for_index(
