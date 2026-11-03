@@ -90,18 +90,35 @@ BEGIN
                     i_table_name => i_table_name);
         END IF;
     ELSIF i_chunk_by = 'ordered_key' THEN
-        PERFORM dml_utils_lib.assert_usable_ordered_key(
-                i_schema_name => i_schema_name,
-                i_table_name => i_table_name,
-                i_index_name => i_boundary_key_index);
-        l_key_columns := dml_utils_lib.ordered_key_columns(
-                i_schema_name => i_schema_name,
-                i_table_name => i_table_name,
-                i_index_name => i_boundary_key_index);
-        l_key_kinds := dml_utils_lib.ordered_key_kinds(
-                i_schema_name => i_schema_name,
-                i_table_name => i_table_name,
-                i_index_name => i_boundary_key_index);
+        IF i_partition_wise::boolean THEN
+            -- A partitioned parent resolves the key through the parent index and
+            -- every leaf's matching child index.
+            PERFORM dml_utils_lib.assert_usable_partitioned_ordered_key(
+                    i_schema_name => i_schema_name,
+                    i_table_name => i_table_name,
+                    i_index_name => i_boundary_key_index);
+            l_key_columns := dml_utils_lib.partitioned_ordered_key_columns(
+                    i_schema_name => i_schema_name,
+                    i_table_name => i_table_name,
+                    i_index_name => i_boundary_key_index);
+            l_key_kinds := dml_utils_lib.partitioned_ordered_key_kinds(
+                    i_schema_name => i_schema_name,
+                    i_table_name => i_table_name,
+                    i_index_name => i_boundary_key_index);
+        ELSE
+            PERFORM dml_utils_lib.assert_usable_ordered_key(
+                    i_schema_name => i_schema_name,
+                    i_table_name => i_table_name,
+                    i_index_name => i_boundary_key_index);
+            l_key_columns := dml_utils_lib.ordered_key_columns(
+                    i_schema_name => i_schema_name,
+                    i_table_name => i_table_name,
+                    i_index_name => i_boundary_key_index);
+            l_key_kinds := dml_utils_lib.ordered_key_kinds(
+                    i_schema_name => i_schema_name,
+                    i_table_name => i_table_name,
+                    i_index_name => i_boundary_key_index);
+        END IF;
     ELSE
         l_key_columns := dml_utils_lib.primary_key_columns(
                 i_schema_name => i_schema_name,

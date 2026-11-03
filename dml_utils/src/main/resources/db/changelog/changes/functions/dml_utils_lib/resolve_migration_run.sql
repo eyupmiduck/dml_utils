@@ -138,10 +138,46 @@ BEGIN
             END IF;
 
             BEGIN
-                PERFORM dml_utils_lib.assert_usable_ordered_key(
-                        i_schema_name => o_effective_schema_name,
-                        i_table_name => o_effective_table_name,
-                        i_index_name => l_stored_ordered_key_index);
+                IF l_stored_partition_wise THEN
+                    -- The parent index and every leaf child index must still be
+                    -- usable, and the parent descriptor must be unchanged.
+                    IF dml_utils_lib.partitioned_ordered_key_columns(
+                               i_schema_name => o_effective_schema_name,
+                               i_table_name => o_effective_table_name,
+                               i_index_name => l_stored_ordered_key_index)
+                           IS DISTINCT FROM l_stored_ordered_key_columns
+                        OR dml_utils_lib.partitioned_ordered_key_kinds(
+                               i_schema_name => o_effective_schema_name,
+                               i_table_name => o_effective_table_name,
+                               i_index_name => l_stored_ordered_key_index)
+                           IS DISTINCT FROM l_stored_ordered_key_kinds
+                    THEN
+                        RAISE EXCEPTION 'ordered-key index %.% no longer matches the stored key descriptor',
+                            o_effective_schema_name, l_stored_ordered_key_index
+                            USING ERRCODE = '55000';
+                    END IF;
+                ELSE
+                    PERFORM dml_utils_lib.assert_usable_ordered_key(
+                            i_schema_name => o_effective_schema_name,
+                            i_table_name => o_effective_table_name,
+                            i_index_name => l_stored_ordered_key_index);
+
+                    IF dml_utils_lib.ordered_key_columns(
+                               i_schema_name => o_effective_schema_name,
+                               i_table_name => o_effective_table_name,
+                               i_index_name => l_stored_ordered_key_index)
+                           IS DISTINCT FROM l_stored_ordered_key_columns
+                        OR dml_utils_lib.ordered_key_kinds(
+                               i_schema_name => o_effective_schema_name,
+                               i_table_name => o_effective_table_name,
+                               i_index_name => l_stored_ordered_key_index)
+                           IS DISTINCT FROM l_stored_ordered_key_kinds
+                    THEN
+                        RAISE EXCEPTION 'ordered-key index %.% no longer matches the stored key descriptor',
+                            o_effective_schema_name, l_stored_ordered_key_index
+                            USING ERRCODE = '55000';
+                    END IF;
+                END IF;
             EXCEPTION
                 WHEN undefined_object
                     OR feature_not_supported
@@ -155,20 +191,6 @@ BEGIN
                         o_effective_schema_name, l_stored_ordered_key_index, o_run_id, SQLERRM
                         USING ERRCODE = '55000';
             END;
-
-            IF dml_utils_lib.ordered_key_columns(
-                       i_schema_name => o_effective_schema_name,
-                       i_table_name => o_effective_table_name,
-                       i_index_name => l_stored_ordered_key_index) IS DISTINCT FROM l_stored_ordered_key_columns
-                OR dml_utils_lib.ordered_key_kinds(
-                       i_schema_name => o_effective_schema_name,
-                       i_table_name => o_effective_table_name,
-                       i_index_name => l_stored_ordered_key_index) IS DISTINCT FROM l_stored_ordered_key_kinds
-            THEN
-                RAISE EXCEPTION 'ordered-key index %.% no longer matches the stored key descriptor',
-                    o_effective_schema_name, l_stored_ordered_key_index
-                    USING ERRCODE = '55000';
-            END IF;
 
             o_key_columns := l_stored_ordered_key_columns;
             o_key_kinds := l_stored_ordered_key_kinds;
