@@ -84,6 +84,76 @@ class PartitionWiseRunnerTest extends PostgresTestBase {
     }
 
     /**
+     * A leaf whose tail was deleted after calculation is processed against its
+     * stored high-water snapshot, so an empty/regressed leaf does not abort the
+     * run.
+     */
+    @Test
+    void terminalSnapshotSurvivesTailDeletion() {
+        insertRows(0L, 1L, 2L, 100L, 101L, 200L, 201L, 202L);
+        String label = uniqueLabel("partition-wise-delete-tail");
+        long runId = populate(TABLE, label, 2, ChunkingStrategy.primary_key, null, true);
+        io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines
+                .calculateMigrationRunBoundaries(dsl.configuration(), runId);
+
+        // The low leaf's rows disappear between calculation and processing.
+        dsl.deleteFrom(TEST_PARTITIONED_RANGE)
+                .where(TEST_PARTITIONED_RANGE.ID.lt(100L))
+                .execute();
+
+        run(TABLE, label, 2, true);
+
+        assertNotNull(run(label).getCompletedAt());
+        assertEquals(0L, dsl.fetchCount(TEST_PARTITIONED_RANGE,
+                TEST_PARTITIONED_RANGE.PAYLOAD.ne("done")));
+        assertEquals(5, dsl.fetchCount(TEST_PARTITIONED_RANGE));
+    }
+
+    /**
+     * A cancellation that lands while a leaf is being calculated stops the run
+     * before processing and cancels the boundaries the leaf just committed.
+     */
+    @Test
+    void cancellationDuringCalculationStopsBeforeProcessing() throws Exception {
+        insertRows(0L, 100L, 200L);
+        String label = uniqueLabel("partition-wise-cancel-during");
+        long runId = populate(TABLE, label, 2, ChunkingStrategy.primary_key, null, true);
+
+        // Fault injection: cancel the run as soon as the first leaf is marked
+        // calculated, which is the window between calculation and processing.
+        executeAsOwner("CREATE OR REPLACE FUNCTION " + SCHEMA + ".cancel_run_after_leaf()"
+                + " RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN"
+                + " UPDATE dml_utils_data.migration_run"
+                + " SET cancelled_at = pg_catalog.clock_timestamp()"
+                + " WHERE run_id = NEW.run_id AND cancelled_at IS NULL;"
+                + " RETURN NEW; END; $$");
+        executeAsOwner("CREATE TRIGGER cancel_run_after_leaf"
+                + " AFTER UPDATE ON dml_utils_data.migration_run_leaf"
+                + " FOR EACH ROW WHEN (NEW.state = 'calculated')"
+                + " EXECUTE FUNCTION " + SCHEMA + ".cancel_run_after_leaf()");
+        try {
+            run(TABLE, label, 2, true);
+        } finally {
+            executeAsOwner("DROP TRIGGER IF EXISTS cancel_run_after_leaf"
+                    + " ON dml_utils_data.migration_run_leaf");
+            executeAsOwner("DROP FUNCTION IF EXISTS " + SCHEMA + ".cancel_run_after_leaf()");
+        }
+
+        MigrationRunRecord run = run(label);
+        assertNotNull(run.getCancelledAt());
+        assertNull(run.getBoundariesCalculatedAt(),
+                "a cancelled calculation must not finalize");
+        assertEquals(0L, dsl.fetchCount(TEST_PARTITIONED_RANGE,
+                TEST_PARTITIONED_RANGE.PAYLOAD.eq("done")),
+                "no chunk should run after cancellation");
+        for (MigrationBoundaryRecord boundary : runBoundaries(runId)) {
+            assertNull(boundary.getCompletedAt());
+            assertNotNull(boundary.getCancelledAt(),
+                    "the leaf's committed starts should be cancelled");
+        }
+    }
+
+    /**
      * A partition-wise blocks run records one filepath per leaf, keeps the run-level
      * filepath NULL, and processes each leaf's ctid range.
      */
@@ -205,9 +275,7 @@ class PartitionWiseRunnerTest extends PostgresTestBase {
         try {
             assertSqlState("55000", () -> run(TABLE, label, 2, true));
         } finally {
-            executeAsOwner("ALTER TABLE " + SCHEMA + "." + TABLE
-                    + " ATTACH PARTITION " + SCHEMA + ".test_partitioned_range_mid"
-                    + " FOR VALUES FROM (100) TO (200)");
+            restoreMidPartition();
         }
 
         assertEquals(0L, dsl.fetchCount(TEST_PARTITIONED_RANGE,
@@ -233,9 +301,7 @@ class PartitionWiseRunnerTest extends PostgresTestBase {
         try {
             assertSqlState("55000", () -> run(TABLE, label, 2, true));
         } finally {
-            executeAsOwner("ALTER TABLE " + SCHEMA + "." + TABLE
-                    + " ATTACH PARTITION " + SCHEMA + ".test_partitioned_range_mid"
-                    + " FOR VALUES FROM (100) TO (200)");
+            restoreMidPartition();
         }
 
         assertNull(run(label).getBoundariesCalculatedAt());
@@ -358,6 +424,29 @@ class PartitionWiseRunnerTest extends PostgresTestBase {
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
                 .orderBy(MIGRATION_BOUNDARY.BOUNDARY_NO)
                 .fetch();
+    }
+
+    private void restoreMidPartition() throws SQLException {
+        if (partitionAttached()) {
+            executeAsOwner("ALTER TABLE " + SCHEMA + "." + TABLE
+                    + " DETACH PARTITION " + SCHEMA + ".test_partitioned_range_mid");
+        }
+        executeAsOwner("ALTER TABLE " + SCHEMA + "." + TABLE
+                + " ATTACH PARTITION " + SCHEMA + ".test_partitioned_range_mid"
+                + " FOR VALUES FROM (100) TO (200)");
+        executeAsOwner("GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON "
+                + SCHEMA + ".test_partitioned_range_mid TO "
+                + TEST_USER + ", dml_utils_caller");
+    }
+
+    private boolean partitionAttached() {
+        return Boolean.TRUE.equals(dsl.fetchOne(
+                        "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_inherits AS i"
+                                + " JOIN pg_catalog.pg_class AS c ON c.oid = i.inhrelid"
+                                + " JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace"
+                                + " WHERE n.nspname = ? AND c.relname = ?)",
+                        SCHEMA, "test_partitioned_range_mid")
+                .get(0, Boolean.class));
     }
 
     private void executeAsOwner(String sql) throws SQLException {

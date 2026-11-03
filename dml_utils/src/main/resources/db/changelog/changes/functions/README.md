@@ -138,7 +138,9 @@ and index win, and a differing index is ignored with a notice. With
 and its deterministic leaf manifest are created first, each leaf's boundary
 starts are calculated in a separate committed worker transaction, the single
 terminal boundary is written at finalization, and every chunk is rendered and
-executed against its boundary's leaf. A run whose
+executed against its boundary's leaf. A chunk whose next boundary belongs to a
+different leaf ends at that leaf's calculation-time high-water snapshot, so
+deletes after calculation cannot regress the bound. A run whose
 `boundaries_calculated_at` is still NULL resumes calculation at its first
 pending/failed leaf instead of processing; the live leaf set/identity/bounds (and
 per-leaf block filepaths) are compared with the manifest before calculation and
@@ -1029,9 +1031,10 @@ i_run_id bigint
 RETURNS bigint
 ```
 
-`IMMUTABLE`, `SECURITY INVOKER`. Returns the bigint advisory-lock key that
+`STABLE`, `SECURITY INVOKER`. Returns the bigint advisory-lock key that
 serializes boundary calculation for a run, derived from the run id with a
-`dml_utils.migration_run.calculation.` prefix.
+`dml_utils.migration_run.calculation.` prefix. It is `STABLE` rather than
+`IMMUTABLE` because `pg_catalog.format` is not immutable.
 
 ### `dml_utils_lib.calculate_migration_run_boundaries(i_run_id)`
 
@@ -1296,8 +1299,9 @@ caller's transaction: locks the run row, returns NULL when the run is finalized,
 cancelled or fully calculated, otherwise claims the first `pending`, `failed` or
 stale `calculating` leaf in manifest order, re-checks it with
 `assert_migration_leaf_unchanged`, checks the effective caller's `SELECT` on the
-leaf, appends its chunk starts and marks it `calculated` with its boundary count.
-Returns the ordinal. The run-row lock serializes calculation for the run.
+leaf, appends its chunk starts and marks it `calculated` with its boundary count
+and a snapshot of the leaf's high-water key. Returns the ordinal. The run-row lock
+serializes calculation for the run.
 
 ### `dml_utils_lib.finalize_migration_boundaries(i_run_id)`
 
@@ -1307,9 +1311,9 @@ RETURNS void
 ```
 
 `VOLATILE`, `SECURITY DEFINER` (pinned `search_path`). Writes the run's single
-terminal high-water boundary from the last non-empty leaf, then sets
-`boundaries_calculated_at` and `total_chunks` (`0` when every leaf is empty) in
-one update. Idempotent: a finalized or cancelled run is a no-op, and it raises
+terminal high-water boundary from the last non-empty leaf's calculation-time
+snapshot, then sets `boundaries_calculated_at` and `total_chunks` (`0` when every
+leaf is empty) in one update. Idempotent: a finalized or cancelled run is a no-op, and it raises
 `55000` while any leaf is still uncalculated.
 
 ###

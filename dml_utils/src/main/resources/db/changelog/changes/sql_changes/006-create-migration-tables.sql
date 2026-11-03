@@ -213,6 +213,10 @@ CREATE TABLE dml_utils_data.migration_run_leaf
     relation_filepath text,
     state             text                         NOT NULL DEFAULT 'pending',
     boundary_count    bigint                       NOT NULL DEFAULT 0,
+    -- The leaf's high-water migration_key captured when its starts were
+    -- calculated. The runner ends the leaf's last chunk at this snapshot, so a
+    -- later delete cannot regress the bound and a later insert cannot extend it.
+    terminal_boundary_id dml_utils_data.migration_key,
     calculated_at     timestamptz,
     error_sqlstate    text,
     error_message     text,
@@ -242,6 +246,12 @@ CREATE TABLE dml_utils_data.migration_run_leaf
     -- failed leaves have none.
     CONSTRAINT migration_run_leaf_unstarted_check CHECK (
         state = 'calculated' OR boundary_count = 0
+        ),
+    -- A calculated non-empty leaf has a high-water snapshot; an empty or
+    -- not-yet-calculated leaf does not.
+    CONSTRAINT migration_run_leaf_terminal_check CHECK (
+        (state = 'calculated' AND boundary_count > 0)
+            = (terminal_boundary_id IS DISTINCT FROM NULL)
         )
 );
 
@@ -272,6 +282,10 @@ COMMENT ON COLUMN dml_utils_data.migration_run_leaf.state IS
 COMMENT ON COLUMN dml_utils_data.migration_run_leaf.boundary_count IS
     'Number of chunk-start boundaries committed for this leaf; 0 for an empty '
         'or not-yet-calculated leaf.';
+COMMENT ON COLUMN dml_utils_data.migration_run_leaf.terminal_boundary_id IS
+    'High-water key of the leaf captured when its starts were calculated; the '
+        'runner ends the leaf''s last chunk here. NULL until calculated and for an '
+        'empty leaf. Immutable once set.';
 COMMENT ON COLUMN dml_utils_data.migration_run_leaf.calculated_at IS
     'Actual server time when this leaf''s boundaries were committed; NULL unless '
         'state = calculated.';

@@ -53,6 +53,10 @@ DECLARE
     l_chunk_schema             text;
     l_chunk_table              text;
     l_terminal_key             dml_utils_data.migration_key;
+    l_terminal_bigint          bigint[];
+    l_terminal_text            text[];
+    l_terminal_uuid            uuid[];
+    l_terminal_timestamptz     timestamptz[];
     l_start_values             text[];
     l_end_values               text[];
     l_is_final                 boolean;
@@ -273,20 +277,38 @@ BEGIN
                         EXIT WHEN NOT FOUND;
 
                         IF l_partition_wise THEN
-                            SELECT leaf.leaf_schema_name::text, leaf.leaf_name::text
-                            INTO l_chunk_schema, l_chunk_table
+                            SELECT leaf.leaf_schema_name::text, leaf.leaf_name::text,
+                                   (leaf.terminal_boundary_id).bigint_values,
+                                   (leaf.terminal_boundary_id).text_values,
+                                   (leaf.terminal_boundary_id).uuid_values,
+                                   (leaf.terminal_boundary_id).timestamptz_values
+                            INTO l_chunk_schema, l_chunk_table, l_terminal_bigint,
+                                 l_terminal_text, l_terminal_uuid, l_terminal_timestamptz
                             FROM dml_utils_data.migration_run_leaf AS leaf
                             WHERE leaf.run_id = l_run_id
                               AND leaf.leaf_ordinal = l_start_leaf_ordinal;
 
+                            IF NOT FOUND THEN
+                                RAISE EXCEPTION 'partition tree changed for run %: leaf ordinal % is missing from the manifest',
+                                    l_run_id, l_start_leaf_ordinal
+                                    USING ERRCODE = '55000';
+                            END IF;
+
                             -- The next boundary belongs to a different leaf, so this
                             -- is the last chunk of this leaf and the next leaf's
-                            -- start is not a valid upper bound for it. Use the
-                            -- leaf's own high-water key and make the bound inclusive.
+                            -- start is not a valid upper bound for it. End it at the
+                            -- leaf's calculation-time high-water snapshot and make
+                            -- the bound inclusive, so deletes since calculation
+                            -- cannot regress it.
                             IF l_end_leaf_ordinal IS DISTINCT FROM l_start_leaf_ordinal THEN
-                                l_terminal_key := dml_utils_lib.leaf_terminal_boundary_id(
-                                        i_run_id => l_run_id,
-                                        i_leaf_ordinal => l_start_leaf_ordinal);
+                                l_terminal_key := ROW(l_terminal_bigint, l_terminal_text,
+                                                      l_terminal_uuid,
+                                                      l_terminal_timestamptz)::dml_utils_data.migration_key;
+                                IF l_terminal_key IS NULL THEN
+                                    RAISE EXCEPTION 'leaf ordinal % of run % has no terminal snapshot',
+                                        l_start_leaf_ordinal, l_run_id
+                                        USING ERRCODE = '55000';
+                                END IF;
                                 l_end_values := dml_utils_lib.migration_key_values(
                                         i_key => l_terminal_key,
                                         i_key_kinds => l_key_kinds);

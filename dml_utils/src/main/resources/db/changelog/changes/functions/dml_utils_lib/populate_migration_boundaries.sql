@@ -30,7 +30,8 @@ DECLARE
     l_relation_filepath text;
     l_run_id            bigint;
     l_caller            name;
-    l_leaf              record;
+    l_leaf_schema       text;
+    l_leaf_name         text;
 BEGIN
     -- The index selects the ordered key, so it is required for that strategy and
     -- rejected for the others; the shared helper owns that rule.
@@ -138,32 +139,36 @@ BEGIN
         -- are calculated later, one leaf per committed transaction, so a failure
         -- preserves the leaves already done. Every leaf is inserted, including one
         -- with no rows; emptiness is a calculation result.
-        FOR l_leaf IN
-            SELECT leaf.*
-            FROM dml_utils_lib.leaf_partitions(
-                         i_schema_name => i_schema_name,
-                         i_table_name => i_table_name,
-                         i_chunk_by => i_chunk_by) AS leaf
-            LOOP
-            -- leaf_partitions checked the definer's privilege; the caller is
-            -- the one whose access matters, so check it explicitly here.
-                IF NOT pg_catalog.has_table_privilege(
-                        l_caller,
-                        pg_catalog.format('%I.%I', l_leaf.leaf_schema_name, l_leaf.leaf_name),
-                        'SELECT')
-                THEN
-                    RAISE EXCEPTION 'caller lacks SELECT privilege on leaf %.%',
-                        l_leaf.leaf_schema_name, l_leaf.leaf_name
-                        USING ERRCODE = '42501';
-                END IF;
 
-                INSERT INTO dml_utils_data.migration_run_leaf
-                (run_id, leaf_ordinal, leaf_schema_name, leaf_name, leaf_oid,
-                 leaf_bound, relation_filepath, state)
-                VALUES (l_run_id, l_leaf.leaf_ordinal, l_leaf.leaf_schema_name,
-                        l_leaf.leaf_name, l_leaf.leaf_oid, l_leaf.leaf_bound,
-                        l_leaf.relation_filepath, 'pending');
-            END LOOP;
+        -- leaf_partitions checked the definer's privilege; the caller is the one
+        -- whose access matters, so check every leaf in one set-based pass.
+        SELECT live.leaf_schema_name, live.leaf_name
+        INTO l_leaf_schema, l_leaf_name
+        FROM dml_utils_lib.leaf_partitions(
+                i_schema_name => i_schema_name,
+                i_table_name => i_table_name,
+                i_chunk_by => i_chunk_by) AS live
+        WHERE NOT pg_catalog.has_table_privilege(
+                l_caller,
+                pg_catalog.format('%I.%I', live.leaf_schema_name, live.leaf_name),
+                'SELECT')
+        LIMIT 1;
+
+        IF FOUND THEN
+            RAISE EXCEPTION 'caller lacks SELECT privilege on leaf %.%',
+                l_leaf_schema, l_leaf_name
+                USING ERRCODE = '42501';
+        END IF;
+
+        INSERT INTO dml_utils_data.migration_run_leaf
+            (run_id, leaf_ordinal, leaf_schema_name, leaf_name, leaf_oid,
+             leaf_bound, relation_filepath, state)
+        SELECT l_run_id, live.leaf_ordinal, live.leaf_schema_name, live.leaf_name,
+               live.leaf_oid, live.leaf_bound, live.relation_filepath, 'pending'
+        FROM dml_utils_lib.leaf_partitions(
+                i_schema_name => i_schema_name,
+                i_table_name => i_table_name,
+                i_chunk_by => i_chunk_by) AS live;
 
         RETURN l_run_id;
     END IF;

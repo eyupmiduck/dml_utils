@@ -79,13 +79,16 @@ BEGIN
         LIMIT 1;
         EXIT WHEN NOT FOUND;
 
+        -- One leaf per worker transaction: calculate_migration_leaf claims the
+        -- first pending/failed leaf, appends its starts and marks it calculated.
+        -- A NULL result means there is no leaf left to calculate. The launch itself
+        -- is outside the handler: an infrastructure failure there did not attempt
+        -- the leaf, so it must not mark that leaf failed.
+        l_handle := public.pg_background_launch(pg_catalog.format(
+                'SELECT dml_utils_lib.calculate_migration_leaf(%s) AS ordinal',
+                i_run_id));
+
         BEGIN
-            -- One leaf per worker transaction: calculate_migration_leaf claims the
-            -- first pending/failed leaf, appends its starts and marks it calculated.
-            -- A NULL result means there is no leaf left to calculate.
-            l_handle := public.pg_background_launch(pg_catalog.format(
-                    'SELECT dml_utils_lib.calculate_migration_leaf(%s) AS ordinal',
-                    i_run_id));
             PERFORM public.pg_background_wait(l_handle.pid, l_handle.cookie);
             SELECT ordinal
             INTO l_ordinal

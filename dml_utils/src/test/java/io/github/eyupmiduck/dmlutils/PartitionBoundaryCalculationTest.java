@@ -56,6 +56,9 @@ class PartitionBoundaryCalculationTest extends PostgresTestBase {
         assertEquals(1, calculate(runId));
         assertEquals(List.of(0L, 1L, 2L), runBoundaryNumbers(runId));
         assertEquals(List.of(1, 1, 1), runBoundaryLeaves(runId));
+        assertNotNull(leaf(runId, 1).getTerminalBoundaryId(),
+                "a calculated non-empty leaf snapshots its high-water key");
+        assertNull(leaf(runId, 2).getTerminalBoundaryId());
         assertNull(run(runId).getBoundariesCalculatedAt(),
                 "calculation must not finalize the run");
 
@@ -66,6 +69,8 @@ class PartitionBoundaryCalculationTest extends PostgresTestBase {
                 "the empty leaf must not add a boundary");
 
         assertEquals(3, calculate(runId));
+        assertNull(leaf(runId, 2).getTerminalBoundaryId(),
+                "an empty leaf has no high-water key");
         assertEquals(List.of(0L, 1L, 2L, 3L, 4L), runBoundaryNumbers(runId));
         assertEquals(List.of(1, 1, 1, 3, 3), runBoundaryLeaves(runId));
         assertNull(calculate(runId), "every leaf is calculated");
@@ -115,6 +120,9 @@ class PartitionBoundaryCalculationTest extends PostgresTestBase {
         assertTrue(runBoundaries(runId).isEmpty(), "no chunk means no terminal boundary");
         assertNotNull(run(runId).getBoundariesCalculatedAt());
         assertEquals(0L, run(runId).getTotalChunks());
+        for (int ordinal = 1; ordinal <= 3; ordinal++) {
+            assertNull(leaf(runId, ordinal).getTerminalBoundaryId());
+        }
     }
 
     /**

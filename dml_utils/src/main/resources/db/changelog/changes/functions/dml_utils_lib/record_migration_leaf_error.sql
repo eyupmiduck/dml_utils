@@ -17,11 +17,12 @@ BEGIN
     -- leaf failed and why; a calculated leaf is never downgraded. A missing leaf is
     -- a no-op for the same reason: the coordinator's own error is what matters.
     UPDATE dml_utils_data.migration_run_leaf
-    SET state          = 'failed',
-        boundary_count = 0,
-        calculated_at  = NULL,
-        error_sqlstate = i_sqlstate,
-        error_message  = i_error_message
+    SET state                = 'failed',
+        boundary_count       = 0,
+        terminal_boundary_id = NULL,
+        calculated_at        = NULL,
+        error_sqlstate       = i_sqlstate,
+        error_message        = i_error_message
     WHERE run_id = i_run_id
       AND leaf_ordinal = i_leaf_ordinal
       AND state <> 'calculated';
