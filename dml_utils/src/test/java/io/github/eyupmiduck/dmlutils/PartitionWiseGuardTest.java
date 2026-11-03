@@ -111,6 +111,33 @@ class PartitionWiseGuardTest extends PostgresTestBase {
     }
 
     /**
+     * Recording an error never downgrades a calculated leaf, and an unknown ordinal
+     * is a no-op.
+     */
+    @Test
+    void leafErrorRecordingDoesNotDowngradeACalculatedLeaf() {
+        long runId = populate(TABLE, uniqueLabel("guard-record-error"), 2,
+                ChunkingStrategy.primary_key, true);
+        io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines
+                .calculateMigrationRunBoundaries(dsl.configuration(), runId);
+
+        MigrationRunLeafRecord before = leaves(runId).getFirst();
+        assertEquals("calculated", before.getState());
+        long boundaryCount = before.getBoundaryCount();
+
+        io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.recordMigrationLeafError(
+                dsl.configuration(), runId, before.getLeafOrdinal(), "XX000", "boom");
+        io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.recordMigrationLeafError(
+                dsl.configuration(), runId, 99, "XX000", "boom");
+
+        MigrationRunLeafRecord after = leaves(runId).getFirst();
+        assertEquals("calculated", after.getState());
+        assertEquals(boundaryCount, after.getBoundaryCount());
+        assertNull(after.getErrorSqlstate());
+        assertNull(after.getErrorMessage());
+    }
+
+    /**
      * A failing leaf worker is recorded on the manifest with its SQLSTATE and
      * message, and the calculation re-raises the error without finalizing.
      */
