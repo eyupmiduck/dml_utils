@@ -16,8 +16,10 @@ DECLARE
     l_parent_index   oid;
     l_leaf           record;
 BEGIN
-    SELECT run.partition_wise, run.chunk_by,
-           run.driving_table_schema_name::text, run.driving_table_name::text
+    SELECT run.partition_wise,
+           run.chunk_by,
+           run.driving_table_schema_name::text,
+           run.driving_table_name::text
     INTO l_partition_wise, l_chunk_by, l_schema_name, l_table_name
     FROM dml_utils_data.migration_run AS run
     WHERE run.run_id = i_run_id;

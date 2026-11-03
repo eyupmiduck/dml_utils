@@ -52,10 +52,10 @@ BEGIN
     -- 55000 rather than a misleading missing-child 0A000.
     PERFORM 1
     FROM dml_utils_lib.ordered_key_attributes_for_index(
-            i_index_oid => l_index_oid,
-            i_schema_name => i_schema_name,
-            i_table_name => i_table_name,
-            i_index_name => i_index_name) AS a;
+                 i_index_oid => l_index_oid,
+                 i_schema_name => i_schema_name,
+                 i_table_name => i_table_name,
+                 i_index_name => i_index_name) AS a;
 
     -- Pair each storage leaf with its descendant child index in one walk (the
     -- index tree mirrors the table tree, so a multi-level leaf's index is not a
@@ -67,9 +67,9 @@ BEGIN
                child.child_index_oid,
                child.child_index_name
         FROM dml_utils_lib.leaf_partitions(
-                i_schema_name => i_schema_name,
-                i_table_name => i_table_name,
-                i_chunk_by => 'ordered_key') AS live
+                     i_schema_name => i_schema_name,
+                     i_table_name => i_table_name,
+                     i_chunk_by => 'ordered_key') AS live
                  LEFT JOIN dml_utils_lib.ordered_key_leaf_indexes(l_index_oid) AS child
                            ON child.leaf_oid = live.leaf_oid
         ORDER BY live.leaf_ordinal
