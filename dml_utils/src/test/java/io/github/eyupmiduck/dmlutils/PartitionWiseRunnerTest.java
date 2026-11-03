@@ -84,6 +84,75 @@ class PartitionWiseRunnerTest extends PostgresTestBase {
     }
 
     /**
+     * A partition-wise blocks run records one filepath per leaf, keeps the run-level
+     * filepath NULL, and processes each leaf's ctid range.
+     */
+    @Test
+    void blocksRunProcessesEveryLeaf() {
+        insertRows(0L, 100L, 200L);
+        String label = uniqueLabel("partition-wise-blocks");
+
+        run(TABLE, label, 1, ChunkingStrategy.blocks, null, true);
+
+        MigrationRunRecord run = run(label);
+        assertTrue(run.getPartitionWise());
+        assertNull(run.getDrivingTableRelationFilepath(),
+                "a partition-wise blocks run records filepaths per leaf, not per run");
+        assertNotNull(run.getBoundariesCalculatedAt());
+        assertEquals(3L, run.getTotalChunks());
+        for (MigrationRunLeafRecord leaf : leaves(run.getRunId())) {
+            assertNotNull(leaf.getRelationFilepath(),
+                    "every leaf records its own heap filepath");
+        }
+        assertEquals(0L, dsl.fetchCount(TEST_PARTITIONED_RANGE,
+                TEST_PARTITIONED_RANGE.PAYLOAD.ne("done")));
+    }
+
+    /**
+     * A resumed run uses its stored partition_wise flag even when the caller passes
+     * false, and still finishes the leaf calculation before processing.
+     */
+    @Test
+    void storedPartitionWiseFlagWinsOnResume() {
+        insertRows(0L, 100L, 200L);
+        String label = uniqueLabel("partition-wise-flag");
+        long runId = populate(TABLE, label, 2, ChunkingStrategy.primary_key, null, true);
+
+        run(TABLE, label, 2, false);
+
+        assertTrue(run(label).getPartitionWise(), "the stored flag wins");
+        assertNotNull(run(label).getBoundariesCalculatedAt());
+        assertEquals(3L, run(label).getTotalChunks());
+        assertEquals(0L, dsl.fetchCount(TEST_PARTITIONED_RANGE,
+                TEST_PARTITIONED_RANGE.PAYLOAD.ne("done")));
+        assertEquals(3, leaves(runId).size());
+    }
+
+    /**
+     * Creating a partition-wise run fails before the run row commits when the
+     * caller cannot read a leaf.
+     */
+    @Test
+    void rejectsALeafTheCallerCannotRead() throws Exception {
+        insertRows(0L, 100L, 200L);
+        String label = uniqueLabel("partition-wise-privilege");
+
+        executeAsOwner("REVOKE SELECT ON " + SCHEMA + ".test_partitioned_range_mid"
+                + " FROM " + TEST_USER + ", dml_utils_caller");
+        try {
+            assertSqlState("42501", () -> populate(TABLE, label, 2,
+                    ChunkingStrategy.primary_key, null, true));
+        } finally {
+            executeAsOwner("GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON "
+                    + SCHEMA + ".test_partitioned_range_mid TO "
+                    + TEST_USER + ", dml_utils_caller");
+        }
+
+        assertEquals(0, dsl.fetchCount(MIGRATION_RUN, MIGRATION_RUN.LABEL.eq(label)),
+                "a rejected manifest must not leave a run row");
+    }
+
+    /**
      * A run whose leaves are only partially calculated resumes at the first pending
      * leaf instead of processing, and does not duplicate the committed leaf's
      * boundaries.
@@ -246,8 +315,20 @@ class PartitionWiseRunnerTest extends PostgresTestBase {
     }
 
     private void run(String table, String label, int chunkSize, boolean partitionWise) {
+        run(table, label, chunkSize, ChunkingStrategy.primary_key, null, partitionWise);
+    }
+
+    private void run(String table, String label, int chunkSize, ChunkingStrategy chunkBy,
+                     String boundaryKeyIndex, boolean partitionWise) {
         Routines.runMigrationChunks(dsl.configuration(), TEMPLATE, SCHEMA, table, label,
-                chunkSize, 1, "t", ChunkingStrategy.primary_key, 1, 0, null, partitionWise);
+                chunkSize, 1, "t", chunkBy, 1, 0, boundaryKeyIndex, partitionWise);
+    }
+
+    private long populate(String table, String label, int chunkSize, ChunkingStrategy chunkBy,
+                          String boundaryKeyIndex, boolean partitionWise) {
+        return io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines
+                .populateMigrationBoundaries(dsl.configuration(), SCHEMA, table, label, TEMPLATE,
+                        chunkSize, 1, chunkBy, "t", 0, boundaryKeyIndex, partitionWise);
     }
 
     private void insertRows(Long... ids) {
