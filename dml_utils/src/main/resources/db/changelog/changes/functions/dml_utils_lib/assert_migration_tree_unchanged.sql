@@ -69,6 +69,6 @@ $$;
 COMMENT ON FUNCTION dml_utils_lib.assert_migration_tree_unchanged(bigint) IS
     'Re-enumerates a partition-wise run''s live leaf tree and compares it with the '
         'manifest (leaf count, order, schema/name/OID, partition bound and, for '
-        'blocks, per-leaf filepath). Raises invalid_transaction_initiation (55000) on '
+        'blocks, per-leaf filepath). Raises object_not_in_prerequisite_state (55000) on '
         'any difference so calculation and processing never mix stale and live '
         'leaves. A single-relation run is a no-op.';

@@ -26,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * compared with the manifest, calculation is serialized, and cancellation stops
  * the leaf workers.
  */
-class PartitionWiseRunnerTest extends PostgresTestBase {
+class PartitionWiseRunnerTest extends PartitionTestBase {
 
     private static final String SCHEMA = "dml_utils_fixtures";
     private static final String TABLE = "test_partitioned_range";
@@ -127,6 +127,8 @@ class PartitionWiseRunnerTest extends PostgresTestBase {
                 + " SET cancelled_at = pg_catalog.clock_timestamp()"
                 + " WHERE run_id = NEW.run_id AND cancelled_at IS NULL;"
                 + " RETURN NEW; END; $$");
+        executeAsOwner("DROP TRIGGER IF EXISTS cancel_run_after_leaf"
+                + " ON dml_utils_data.migration_run_leaf");
         executeAsOwner("CREATE TRIGGER cancel_run_after_leaf"
                 + " AFTER UPDATE ON dml_utils_data.migration_run_leaf"
                 + " FOR EACH ROW WHEN (NEW.state = 'calculated')"
@@ -426,33 +428,4 @@ class PartitionWiseRunnerTest extends PostgresTestBase {
                 .fetch();
     }
 
-    private void restoreMidPartition() throws SQLException {
-        if (partitionAttached()) {
-            executeAsOwner("ALTER TABLE " + SCHEMA + "." + TABLE
-                    + " DETACH PARTITION " + SCHEMA + ".test_partitioned_range_mid");
-        }
-        executeAsOwner("ALTER TABLE " + SCHEMA + "." + TABLE
-                + " ATTACH PARTITION " + SCHEMA + ".test_partitioned_range_mid"
-                + " FOR VALUES FROM (100) TO (200)");
-        executeAsOwner("GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON "
-                + SCHEMA + ".test_partitioned_range_mid TO "
-                + TEST_USER + ", dml_utils_caller");
-    }
-
-    private boolean partitionAttached() {
-        return Boolean.TRUE.equals(dsl.fetchOne(
-                        "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_inherits AS i"
-                                + " JOIN pg_catalog.pg_class AS c ON c.oid = i.inhrelid"
-                                + " JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace"
-                                + " WHERE n.nspname = ? AND c.relname = ?)",
-                        SCHEMA, "test_partitioned_range_mid")
-                .get(0, Boolean.class));
-    }
-
-    private void executeAsOwner(String sql) throws SQLException {
-        try (Connection connection = openOwnerConnection();
-             Statement statement = connection.createStatement()) {
-            statement.execute(sql);
-        }
-    }
 }

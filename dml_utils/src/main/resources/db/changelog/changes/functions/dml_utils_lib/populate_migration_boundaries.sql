@@ -32,6 +32,9 @@ DECLARE
     l_caller            name;
     l_leaf_schema       text;
     l_leaf_name         text;
+    l_ordered_key_index name;
+    l_ordered_key_columns name[];
+    l_ordered_key_kinds text[];
 BEGIN
     -- The index selects the ordered key, so it is required for that strategy and
     -- rejected for the others; the shared helper owns that rule.
@@ -108,6 +111,14 @@ BEGIN
                 i_table_name => i_table_name);
     END IF;
 
+    -- The run-row constraint requires the ordered descriptor all-or-nothing; build
+    -- the three values once so the INSERT has no mixed-type CASE expressions.
+    IF i_chunk_by = 'ordered_key' THEN
+        l_ordered_key_index := i_boundary_key_index;
+        l_ordered_key_columns := l_key_columns;
+        l_ordered_key_kinds := l_key_kinds;
+    END IF;
+
     -- started_at is the run's start: the boundary calculation begins here. It is
     -- written in this worker's transaction, so it commits with the run and the
     -- boundaries and survives a later failed chunk-processing attempt.
@@ -127,9 +138,9 @@ BEGIN
             i_schema_name, i_table_name,
             i_driving_table_alias,
             l_relation_filepath,
-            CASE WHEN i_chunk_by = 'ordered_key' THEN i_boundary_key_index END,
-            CASE WHEN i_chunk_by = 'ordered_key' THEN l_key_columns END,
-            CASE WHEN i_chunk_by = 'ordered_key' THEN l_key_kinds END,
+            l_ordered_key_index,
+            l_ordered_key_columns,
+            l_ordered_key_kinds,
             pg_catalog.clock_timestamp())
     RETURNING run_id
         INTO l_run_id;
@@ -140,26 +151,9 @@ BEGIN
         -- preserves the leaves already done. Every leaf is inserted, including one
         -- with no rows; emptiness is a calculation result.
 
-        -- leaf_partitions checked the definer's privilege; the caller is the one
-        -- whose access matters, so check every leaf in one set-based pass.
-        SELECT live.leaf_schema_name, live.leaf_name
-        INTO l_leaf_schema, l_leaf_name
-        FROM dml_utils_lib.leaf_partitions(
-                i_schema_name => i_schema_name,
-                i_table_name => i_table_name,
-                i_chunk_by => i_chunk_by) AS live
-        WHERE NOT pg_catalog.has_table_privilege(
-                l_caller,
-                pg_catalog.format('%I.%I', live.leaf_schema_name, live.leaf_name),
-                'SELECT')
-        LIMIT 1;
-
-        IF FOUND THEN
-            RAISE EXCEPTION 'caller lacks SELECT privilege on leaf %.%',
-                l_leaf_schema, l_leaf_name
-                USING ERRCODE = '42501';
-        END IF;
-
+        -- One live enumeration feeds the snapshot. The caller's privilege is then
+        -- checked against the inserted manifest (not a second enumeration, which
+        -- could see a different tree); a denied leaf rolls the whole create back.
         INSERT INTO dml_utils_data.migration_run_leaf
             (run_id, leaf_ordinal, leaf_schema_name, leaf_name, leaf_oid,
              leaf_bound, relation_filepath, state)
@@ -169,6 +163,22 @@ BEGIN
                 i_schema_name => i_schema_name,
                 i_table_name => i_table_name,
                 i_chunk_by => i_chunk_by) AS live;
+
+        SELECT leaf.leaf_schema_name, leaf.leaf_name
+        INTO l_leaf_schema, l_leaf_name
+        FROM dml_utils_data.migration_run_leaf AS leaf
+        WHERE leaf.run_id = l_run_id
+          AND NOT pg_catalog.has_table_privilege(
+                l_caller,
+                pg_catalog.format('%I.%I', leaf.leaf_schema_name, leaf.leaf_name),
+                'SELECT')
+        LIMIT 1;
+
+        IF FOUND THEN
+            RAISE EXCEPTION 'caller lacks SELECT privilege on leaf %.%',
+                l_leaf_schema, l_leaf_name
+                USING ERRCODE = '42501';
+        END IF;
 
         RETURN l_run_id;
     END IF;

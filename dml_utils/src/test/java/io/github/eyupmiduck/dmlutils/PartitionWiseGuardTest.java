@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * single-relation run and a missing run, plus the calculation's rejection and
  * idempotence behaviour and the run lock key.
  */
-class PartitionWiseGuardTest extends PostgresTestBase {
+class PartitionWiseGuardTest extends PartitionTestBase {
 
     private static final String SCHEMA = "dml_utils_fixtures";
     private static final String TABLE = "test_partitioned_range";
@@ -70,12 +70,13 @@ class PartitionWiseGuardTest extends PostgresTestBase {
         long runId = populate(TABLE, uniqueLabel("guard-bound"), 2,
                 ChunkingStrategy.primary_key, true);
 
-        executeAsOwner("ALTER TABLE " + SCHEMA + "." + TABLE
-                + " DETACH PARTITION " + SCHEMA + ".test_partitioned_range_mid");
-        executeAsOwner("ALTER TABLE " + SCHEMA + "." + TABLE
-                + " ATTACH PARTITION " + SCHEMA + ".test_partitioned_range_mid"
-                + " FOR VALUES FROM (101) TO (200)");
         try {
+            executeAsOwner("ALTER TABLE " + SCHEMA + "." + TABLE
+                    + " DETACH PARTITION " + SCHEMA + ".test_partitioned_range_mid");
+            executeAsOwner("ALTER TABLE " + SCHEMA + "." + TABLE
+                    + " ATTACH PARTITION " + SCHEMA + ".test_partitioned_range_mid"
+                    + " FOR VALUES FROM (101) TO (200)");
+
             assertSqlState("55000", () -> io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib
                     .Routines.assertMigrationTreeUnchanged(dsl.configuration(), runId));
         } finally {
@@ -118,6 +119,10 @@ class PartitionWiseGuardTest extends PostgresTestBase {
      */
     @Test
     void leafErrorRecordingDoesNotDowngradeACalculatedLeaf() {
+        dsl.insertInto(TEST_PARTITIONED_RANGE,
+                        TEST_PARTITIONED_RANGE.ID, TEST_PARTITIONED_RANGE.PAYLOAD)
+                .values(0L, "pending")
+                .execute();
         long runId = populate(TABLE, uniqueLabel("guard-record-error"), 2,
                 ChunkingStrategy.primary_key, true);
         io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines
@@ -318,45 +323,4 @@ class PartitionWiseGuardTest extends PostgresTestBase {
                 .fetch();
     }
 
-    private boolean relationExists(String name) {
-        return Boolean.TRUE.equals(dsl.fetchOne(
-                        "SELECT pg_catalog.to_regclass(?) IS NOT NULL", SCHEMA + "." + name)
-                .get(0, Boolean.class));
-    }
-
-    private boolean partitionAttached() {
-        return Boolean.TRUE.equals(dsl.fetchOne(
-                        "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_inherits AS i"
-                                + " JOIN pg_catalog.pg_class AS c ON c.oid = i.inhrelid"
-                                + " JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace"
-                                + " WHERE n.nspname = ? AND c.relname = ?)",
-                        SCHEMA, "test_partitioned_range_mid")
-                .get(0, Boolean.class));
-    }
-
-    private void restoreMidPartition() throws SQLException {
-        if (partitionAttached()) {
-            executeAsOwner("ALTER TABLE " + SCHEMA + "." + TABLE
-                    + " DETACH PARTITION " + SCHEMA + ".test_partitioned_range_mid");
-        }
-        if (!relationExists("test_partitioned_range_mid")) {
-            executeAsOwner("CREATE TABLE " + SCHEMA + ".test_partitioned_range_mid"
-                    + " PARTITION OF " + SCHEMA + "." + TABLE
-                    + " FOR VALUES FROM (100) TO (200)");
-        } else {
-            executeAsOwner("ALTER TABLE " + SCHEMA + "." + TABLE
-                    + " ATTACH PARTITION " + SCHEMA + ".test_partitioned_range_mid"
-                    + " FOR VALUES FROM (100) TO (200)");
-        }
-        executeAsOwner("GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON "
-                + SCHEMA + ".test_partitioned_range_mid TO "
-                + TEST_USER + ", dml_utils_caller");
-    }
-
-    private void executeAsOwner(String sql) throws SQLException {
-        try (Connection connection = openOwnerConnection();
-             Statement statement = connection.createStatement()) {
-            statement.execute(sql);
-        }
-    }
 }

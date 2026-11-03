@@ -168,7 +168,8 @@ BEGIN
                             l_run_id));
                 EXCEPTION
                     WHEN OTHERS THEN
-                        NULL;
+                        RAISE WARNING 'could not mark the boundaries of cancelled run % cancelled: %',
+                            l_run_id, SQLERRM;
                 END;
                 RAISE NOTICE 'run for label % was cancelled during boundary calculation', i_label;
                 RETURN;
@@ -249,15 +250,29 @@ BEGIN
                         SELECT b.boundary_no,
                                b.leaf_ordinal,
                                next.leaf_ordinal,
+                               leaf.leaf_schema_name::text,
+                               leaf.leaf_name::text,
+                               (leaf.terminal_boundary_id).bigint_values,
+                               (leaf.terminal_boundary_id).text_values,
+                               (leaf.terminal_boundary_id).uuid_values,
+                               (leaf.terminal_boundary_id).timestamptz_values,
                                pair.o_start_values,
                                pair.o_end_values,
                                next.boundary_no = last.boundary_no
                         INTO l_boundary_no, l_start_leaf_ordinal, l_end_leaf_ordinal,
+                            l_chunk_schema, l_chunk_table, l_terminal_bigint,
+                            l_terminal_text, l_terminal_uuid, l_terminal_timestamptz,
                             l_start_values, l_end_values, l_is_final
                         FROM dml_utils_data.migration_boundary AS b
                                  JOIN dml_utils_data.migration_boundary AS next
                                       ON next.run_id = b.run_id
                                           AND next.boundary_no = b.boundary_no + 1
+                                 -- The leaf row is immutable once the run is
+                                 -- finalized, so it rides along with the boundary
+                                 -- instead of a second lookup per launch.
+                                 LEFT JOIN dml_utils_data.migration_run_leaf AS leaf
+                                           ON leaf.run_id = b.run_id
+                                               AND leaf.leaf_ordinal = b.leaf_ordinal
                                  CROSS JOIN LATERAL (
                             SELECT max(boundary_no) AS boundary_no
                             FROM dml_utils_data.migration_boundary
@@ -277,18 +292,7 @@ BEGIN
                         EXIT WHEN NOT FOUND;
 
                         IF l_partition_wise THEN
-                            SELECT leaf.leaf_schema_name::text, leaf.leaf_name::text,
-                                   (leaf.terminal_boundary_id).bigint_values,
-                                   (leaf.terminal_boundary_id).text_values,
-                                   (leaf.terminal_boundary_id).uuid_values,
-                                   (leaf.terminal_boundary_id).timestamptz_values
-                            INTO l_chunk_schema, l_chunk_table, l_terminal_bigint,
-                                 l_terminal_text, l_terminal_uuid, l_terminal_timestamptz
-                            FROM dml_utils_data.migration_run_leaf AS leaf
-                            WHERE leaf.run_id = l_run_id
-                              AND leaf.leaf_ordinal = l_start_leaf_ordinal;
-
-                            IF NOT FOUND THEN
+                            IF l_chunk_schema IS NULL THEN
                                 RAISE EXCEPTION 'partition tree changed for run %: leaf ordinal % is missing from the manifest',
                                     l_run_id, l_start_leaf_ordinal
                                     USING ERRCODE = '55000';
@@ -598,4 +602,4 @@ COMMENT ON FUNCTION dml_utils.run_migration_chunks IS
         'one-leaf-per-transaction boundary calculation, finalizes, then processes '
         'each chunk against its boundary''s leaf. The live tree is compared with the '
         'manifest before calculation and processing, and any change fails closed '
-        'with invalid_transaction_initiation (55000).';
+        'with object_not_in_prerequisite_state (55000).';

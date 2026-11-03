@@ -23,8 +23,8 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
 
-    SELECT run.partition_wise
-    INTO l_partition_wise
+    SELECT run.partition_wise, run.cancelled_at
+    INTO l_partition_wise, l_cancelled_at
     FROM dml_utils_data.migration_run AS run
     WHERE run.run_id = i_run_id;
 
@@ -35,6 +35,10 @@ BEGIN
     IF NOT l_partition_wise THEN
         RAISE EXCEPTION 'run % is not partition-wise', i_run_id
             USING ERRCODE = '22023';
+    END IF;
+    -- A cancelled run is terminal: do not take the lock or compare the tree.
+    IF l_cancelled_at IS NOT NULL THEN
+        RETURN;
     END IF;
 
     SELECT run.boundaries_calculated_at
@@ -67,18 +71,6 @@ BEGIN
 
         EXIT WHEN l_cancelled_at IS NOT NULL OR l_calculated_at IS NOT NULL;
 
-        -- The leaf the next worker will claim, in the same manifest order. It is
-        -- needed to record a failure on the manifest if the worker raises; the
-        -- advisory lock excludes another coordinator changing the pending set.
-        SELECT leaf.leaf_ordinal
-        INTO l_leaf_ordinal
-        FROM dml_utils_data.migration_run_leaf AS leaf
-        WHERE leaf.run_id = i_run_id
-          AND leaf.state <> 'calculated'
-        ORDER BY leaf.leaf_ordinal
-        LIMIT 1;
-        EXIT WHEN NOT FOUND;
-
         -- One leaf per worker transaction: calculate_migration_leaf claims the
         -- first pending/failed leaf, appends its starts and marks it calculated.
         -- A NULL result means there is no leaf left to calculate. The launch itself
@@ -101,14 +93,25 @@ BEGIN
                 -- re-raise the worker's error.
                 l_error_sqlstate := SQLSTATE;
                 l_error_message := SQLERRM;
-                BEGIN
-                    PERFORM public.pg_background_run(pg_catalog.format(
-                            'SELECT dml_utils_lib.record_migration_leaf_error(%s, %s, %L, %L)',
-                            i_run_id, l_leaf_ordinal, l_error_sqlstate, l_error_message));
-                EXCEPTION
-                    WHEN OTHERS THEN
-                        NULL;
-                END;
+                -- Derive the failed leaf now, after the worker transaction rolled
+                -- back: the first non-calculated leaf is the one it claimed.
+                SELECT leaf.leaf_ordinal
+                INTO l_leaf_ordinal
+                FROM dml_utils_data.migration_run_leaf AS leaf
+                WHERE leaf.run_id = i_run_id
+                  AND leaf.state <> 'calculated'
+                ORDER BY leaf.leaf_ordinal
+                LIMIT 1;
+                IF FOUND THEN
+                    BEGIN
+                        PERFORM public.pg_background_run(pg_catalog.format(
+                                'SELECT dml_utils_lib.record_migration_leaf_error(%s, %s, %L, %L)',
+                                i_run_id, l_leaf_ordinal, l_error_sqlstate, l_error_message));
+                    EXCEPTION
+                        WHEN OTHERS THEN
+                            NULL;
+                    END;
+                END IF;
                 RAISE;
         END;
 
@@ -143,7 +146,7 @@ COMMENT ON FUNCTION dml_utils_lib.calculate_migration_run_boundaries(bigint) IS
         'transaction until every leaf is calculated, then finalizes the run in its '
         'own worker transaction. Serialized by a transaction-scoped advisory lock '
         'keyed by the run id, so a concurrent calculation fails closed with '
-        'invalid_transaction_initiation (55000) instead of duplicating boundaries. '
+        'object_not_in_prerequisite_state (55000) instead of duplicating boundaries. '
         'The live tree is compared with the manifest before the loop and before '
         'finalization, and the claimed leaf is re-checked by calculate_migration_leaf. '
         'A failing leaf is recorded on the manifest (state = failed, SQLSTATE and '

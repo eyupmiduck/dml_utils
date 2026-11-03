@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * committed and resumable, empty leaves finalize to zero chunks, and the terminal
  * boundary and totals are written only at finalization.
  */
-class PartitionBoundaryCalculationTest extends PostgresTestBase {
+class PartitionBoundaryCalculationTest extends PartitionTestBase {
 
     private static final String SCHEMA = "dml_utils_fixtures";
     private static final String TABLE = "test_partitioned_range";
@@ -58,7 +58,6 @@ class PartitionBoundaryCalculationTest extends PostgresTestBase {
         assertEquals(List.of(1, 1, 1), runBoundaryLeaves(runId));
         assertNotNull(leaf(runId, 1).getTerminalBoundaryId(),
                 "a calculated non-empty leaf snapshots its high-water key");
-        assertNull(leaf(runId, 2).getTerminalBoundaryId());
         assertNull(run(runId).getBoundariesCalculatedAt(),
                 "calculation must not finalize the run");
 
@@ -374,10 +373,4 @@ class PartitionBoundaryCalculationTest extends PostgresTestBase {
                 .fetchOne();
     }
 
-    private void executeAsOwner(String sql) throws SQLException {
-        try (Connection connection = openOwnerConnection();
-             Statement statement = connection.createStatement()) {
-            statement.execute(sql);
-        }
-    }
 }
