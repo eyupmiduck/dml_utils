@@ -272,8 +272,14 @@ label resumes at the first `pending` or `failed` leaf instead of processing; a
 `calculated` leaf is never recalculated. Inspect progress with:
 
 ```sql
-SELECT leaf_ordinal, leaf_schema_name, leaf_name, state, boundary_count,
-       calculated_at, error_sqlstate, error_message
+SELECT leaf_ordinal,
+       leaf_schema_name,
+       leaf_name,
+       state,
+       boundary_count,
+       calculated_at,
+       error_sqlstate,
+       error_message
 FROM dml_utils_data.migration_run_leaf
 WHERE run_id = 42
 ORDER BY leaf_ordinal;

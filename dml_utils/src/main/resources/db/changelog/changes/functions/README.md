@@ -58,8 +58,8 @@ A run chunks the driving table one of three ways, recorded in the run's `chunk_b
   `NULLS LAST`. The resolved descriptor is stored with the run, so resume and
   explain use the same key; a resumed run re-validates the stored index and
   fails closed if it no longer matches. For a partition-wise run the index is on
-  the partitioned parent and every leaf's matching child index is validated
-  (see below). The chunk SQL must not modify the key
+  the partitioned parent and every leaf's matching child index is validated (see below). The chunk SQL must not modify
+  the key
   columns: this is a caller contract, not detected, because inspecting the
   template for writes to the key is unreliable. A run whose key is mutated
   should be archived and restarted after the data is corrected.
@@ -108,15 +108,14 @@ work inside leaves. `i_partition_wise` is a `non_null_boolean`, so an explicit
 NULL is rejected (`23514`).
 
 - **Supported shapes:** range, list, hash and multi-level (sub-partitioned)
-  trees, found with `pg_partition_tree`. Every leaf must be an ordinary table
-  (`relkind = 'r'`); a foreign-table leaf raises `42809` from
+  trees, found with `pg_partition_tree`. Every leaf must be an ordinary table (`relkind = 'r'`); a foreign-table leaf
+  raises `42809` from
   `leaf_partitions`. The parent itself must be `relkind = 'p'` (`42809`
   otherwise).
 - **Ordered keys:** the named unique btree index is on the parent; the parent
   descriptor is stored and every storage leaf's matching child index is
   validated (walking multi-level index inheritance). A missing, invalid or
-  differently shaped child index fails before the run row is written
-  (`0A000`/`55000`); a missing index is `42704`.
+  differently shaped child index fails before the run row is written (`0A000`/`55000`); a missing index is `42704`.
 - **Manifest:** creating the run commits the run and one
   `dml_utils_data.migration_run_leaf` row per leaf (deterministic ordinal,
   schema/name/OID, partition bound, per-leaf block filepath, state, boundary
@@ -137,8 +136,8 @@ NULL is rejected (`23514`).
 - **Cancellation:** cancelling while leaves are calculating stops launching new
   leaves; calculated leaves keep their boundaries, the rest stay `pending`, and
   the run is terminal. Archive it before reusing the label.
-- **Privileges:** the caller needs `SELECT` on every leaf for calculation
-  (`42501` before a run row) and whatever the template needs (`UPDATE` in the
+- **Privileges:** the caller needs `SELECT` on every leaf for calculation (`42501` before a run row) and whatever the
+  template needs (`UPDATE` in the
   usual case) when its chunks run. A privilege lost after creation surfaces when
   that leaf's chunk runs, with earlier chunks committed; restore it and retry.
 - **Explain:** a rendered chunk targets its leaf; for a primary-key run the leaf
