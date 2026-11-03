@@ -25,16 +25,16 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.populate_migration_boundaries(
 AS
 $$
 DECLARE
-    l_key_columns       name[];
-    l_key_kinds         text[];
-    l_relation_filepath text;
-    l_run_id            bigint;
-    l_caller            name;
-    l_leaf_schema       text;
-    l_leaf_name         text;
-    l_ordered_key_index name;
+    l_key_columns         name[];
+    l_key_kinds           text[];
+    l_relation_filepath   text;
+    l_run_id              bigint;
+    l_caller              name;
+    l_leaf_schema         text;
+    l_leaf_name           text;
+    l_ordered_key_index   name;
     l_ordered_key_columns name[];
-    l_ordered_key_kinds text[];
+    l_ordered_key_kinds   text[];
 BEGIN
     -- The index selects the ordered key, so it is required for that strategy and
     -- rejected for the others; the shared helper owns that rule.
@@ -155,14 +155,20 @@ BEGIN
         -- checked against the inserted manifest (not a second enumeration, which
         -- could see a different tree); a denied leaf rolls the whole create back.
         INSERT INTO dml_utils_data.migration_run_leaf
-            (run_id, leaf_ordinal, leaf_schema_name, leaf_name, leaf_oid,
-             leaf_bound, relation_filepath, state)
-        SELECT l_run_id, live.leaf_ordinal, live.leaf_schema_name, live.leaf_name,
-               live.leaf_oid, live.leaf_bound, live.relation_filepath, 'pending'
+        (run_id, leaf_ordinal, leaf_schema_name, leaf_name, leaf_oid,
+         leaf_bound, relation_filepath, state)
+        SELECT l_run_id,
+               live.leaf_ordinal,
+               live.leaf_schema_name,
+               live.leaf_name,
+               live.leaf_oid,
+               live.leaf_bound,
+               live.relation_filepath,
+               'pending'
         FROM dml_utils_lib.leaf_partitions(
-                i_schema_name => i_schema_name,
-                i_table_name => i_table_name,
-                i_chunk_by => i_chunk_by) AS live;
+                     i_schema_name => i_schema_name,
+                     i_table_name => i_table_name,
+                     i_chunk_by => i_chunk_by) AS live;
 
         SELECT leaf.leaf_schema_name, leaf.leaf_name
         INTO l_leaf_schema, l_leaf_name

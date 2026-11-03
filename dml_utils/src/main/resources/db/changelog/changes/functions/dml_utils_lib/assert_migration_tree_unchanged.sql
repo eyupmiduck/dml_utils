@@ -38,14 +38,12 @@ BEGIN
     SELECT coalesce(live.leaf_ordinal, manifest.leaf_ordinal)
     INTO l_mismatch
     FROM dml_utils_lib.leaf_partitions(
-            i_schema_name => l_schema_name,
-            i_table_name => l_table_name,
-            i_chunk_by => l_chunk_by) AS live
-             FULL OUTER JOIN (
-                 SELECT manifest_row.*
-                 FROM dml_utils_data.migration_run_leaf AS manifest_row
-                 WHERE manifest_row.run_id = i_run_id
-             ) AS manifest
+                 i_schema_name => l_schema_name,
+                 i_table_name => l_table_name,
+                 i_chunk_by => l_chunk_by) AS live
+             FULL OUTER JOIN (SELECT manifest_row.*
+                              FROM dml_utils_data.migration_run_leaf AS manifest_row
+                              WHERE manifest_row.run_id = i_run_id) AS manifest
                              ON manifest.leaf_ordinal = live.leaf_ordinal
     WHERE live.leaf_ordinal IS NULL
        OR manifest.leaf_ordinal IS NULL
@@ -54,7 +52,7 @@ BEGIN
        OR manifest.leaf_oid IS DISTINCT FROM live.leaf_oid
        OR manifest.leaf_bound IS DISTINCT FROM live.leaf_bound
        OR (l_chunk_by = 'blocks'
-           AND manifest.relation_filepath IS DISTINCT FROM live.relation_filepath)
+        AND manifest.relation_filepath IS DISTINCT FROM live.relation_filepath)
     ORDER BY 1
     LIMIT 1;
 

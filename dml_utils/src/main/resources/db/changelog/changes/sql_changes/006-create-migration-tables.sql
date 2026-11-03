@@ -201,27 +201,27 @@ COMMENT ON INDEX dml_utils_data.migration_run_archived_idx IS
 -- resume at the first pending/failed leaf.
 CREATE TABLE dml_utils_data.migration_run_leaf
 (
-    run_id            bigint                       NOT NULL,
-    leaf_ordinal      integer                      NOT NULL,
-    leaf_schema_name  dml_utils_data.non_null_text NOT NULL,
-    leaf_name         dml_utils_data.non_null_text NOT NULL,
+    run_id               bigint                       NOT NULL,
+    leaf_ordinal         integer                      NOT NULL,
+    leaf_schema_name     dml_utils_data.non_null_text NOT NULL,
+    leaf_name            dml_utils_data.non_null_text NOT NULL,
     -- The leaf's relation OID and partition-bound expression are snapshotted so
     -- a dropped/recreated/reattached leaf is detectable on resume.
-    leaf_oid          oid                          NOT NULL,
-    leaf_bound        text                         NOT NULL,
+    leaf_oid             oid                          NOT NULL,
+    leaf_bound           text                         NOT NULL,
     -- The leaf's pg_relation_filepath for chunk_by = blocks; NULL otherwise.
-    relation_filepath text,
-    state             text                         NOT NULL DEFAULT 'pending',
-    boundary_count    bigint                       NOT NULL DEFAULT 0,
+    relation_filepath    text,
+    state                text                         NOT NULL DEFAULT 'pending',
+    boundary_count       bigint                       NOT NULL DEFAULT 0,
     -- The leaf's high-water migration_key captured when its starts were
     -- calculated. The runner ends the leaf's last chunk at this snapshot, so a
     -- later delete cannot regress the bound and a later insert cannot extend it.
     terminal_boundary_id dml_utils_data.migration_key,
-    calculated_at     timestamptz,
-    error_sqlstate    text,
-    error_message     text,
-    created_at        timestamptz                  NOT NULL DEFAULT pg_catalog.now(),
-    updated_at        timestamptz                  NOT NULL DEFAULT pg_catalog.now(),
+    calculated_at        timestamptz,
+    error_sqlstate       text,
+    error_message        text,
+    created_at           timestamptz                  NOT NULL DEFAULT pg_catalog.now(),
+    updated_at           timestamptz                  NOT NULL DEFAULT pg_catalog.now(),
     PRIMARY KEY (run_id, leaf_ordinal),
     CONSTRAINT migration_run_leaf_run_fk
         FOREIGN KEY (run_id)

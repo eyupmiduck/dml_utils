@@ -9,7 +9,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
-import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
 
@@ -146,7 +145,7 @@ class PartitionWiseRunnerTest extends PartitionTestBase {
         assertNull(run.getBoundariesCalculatedAt(),
                 "a cancelled calculation must not finalize");
         assertEquals(0L, dsl.fetchCount(TEST_PARTITIONED_RANGE,
-                TEST_PARTITIONED_RANGE.PAYLOAD.eq("done")),
+                        TEST_PARTITIONED_RANGE.PAYLOAD.eq("done")),
                 "no chunk should run after cancellation");
         for (MigrationBoundaryRecord boundary : runBoundaries(runId)) {
             assertNull(boundary.getCompletedAt());

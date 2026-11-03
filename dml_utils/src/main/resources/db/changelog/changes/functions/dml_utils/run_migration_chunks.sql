@@ -267,9 +267,9 @@ BEGIN
                                  JOIN dml_utils_data.migration_boundary AS next
                                       ON next.run_id = b.run_id
                                           AND next.boundary_no = b.boundary_no + 1
-                                 -- The leaf row is immutable once the run is
-                                 -- finalized, so it rides along with the boundary
-                                 -- instead of a second lookup per launch.
+                            -- The leaf row is immutable once the run is
+                            -- finalized, so it rides along with the boundary
+                            -- instead of a second lookup per launch.
                                  LEFT JOIN dml_utils_data.migration_run_leaf AS leaf
                                            ON leaf.run_id = b.run_id
                                                AND leaf.leaf_ordinal = b.leaf_ordinal
@@ -305,9 +305,9 @@ BEGIN
                             -- the bound inclusive, so deletes since calculation
                             -- cannot regress it.
                             IF l_end_leaf_ordinal IS DISTINCT FROM l_start_leaf_ordinal THEN
-                                l_terminal_key := ROW(l_terminal_bigint, l_terminal_text,
-                                                      l_terminal_uuid,
-                                                      l_terminal_timestamptz)::dml_utils_data.migration_key;
+                                l_terminal_key := ROW (l_terminal_bigint, l_terminal_text,
+                                    l_terminal_uuid,
+                                    l_terminal_timestamptz)::dml_utils_data.migration_key;
                                 IF l_terminal_key IS NULL THEN
                                     RAISE EXCEPTION 'leaf ordinal % of run % has no terminal snapshot',
                                         l_start_leaf_ordinal, l_run_id

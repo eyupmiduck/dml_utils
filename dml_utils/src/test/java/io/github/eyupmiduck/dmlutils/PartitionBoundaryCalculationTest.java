@@ -10,9 +10,6 @@ import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.tables.records.Migration
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.sql.Connection;
-import java.sql.SQLException;
-import java.sql.Statement;
 import java.time.OffsetDateTime;
 import java.util.List;
 
