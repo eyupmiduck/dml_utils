@@ -1,0 +1,106 @@
+CREATE OR REPLACE FUNCTION dml_utils_lib.calculate_migration_run_boundaries(
+    i_run_id bigint
+)
+    RETURNS void
+    LANGUAGE plpgsql
+    VOLATILE
+    SECURITY INVOKER
+AS
+$$
+DECLARE
+    l_partition_wise       boolean;
+    l_cancelled_at         timestamptz;
+    l_calculated_at        timestamptz;
+    l_lock_key             bigint;
+    l_handle               public.pg_background_handle;
+    l_ordinal              integer;
+BEGIN
+    IF i_run_id IS NULL THEN
+        RAISE EXCEPTION 'run id must not be NULL'
+            USING ERRCODE = '22023';
+    END IF;
+
+    SELECT run.partition_wise
+    INTO l_partition_wise
+    FROM dml_utils_data.migration_run AS run
+    WHERE run.run_id = i_run_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'migration run % does not exist', i_run_id
+            USING ERRCODE = 'P0002';
+    END IF;
+    IF NOT l_partition_wise THEN
+        RAISE EXCEPTION 'run % is not partition-wise', i_run_id
+            USING ERRCODE = '22023';
+    END IF;
+
+    SELECT run.boundaries_calculated_at
+    INTO l_calculated_at
+    FROM dml_utils_data.migration_run AS run
+    WHERE run.run_id = i_run_id;
+    IF l_calculated_at IS NOT NULL THEN
+        RETURN;
+    END IF;
+
+    -- Serialize calculation for the run. The transaction-scoped advisory lock
+    -- releases on both success and failure; a second coordinator that cannot take
+    -- it fails closed instead of appending duplicate boundaries.
+    l_lock_key := dml_utils_lib.migration_run_calculation_lock_key(i_run_id => i_run_id);
+    IF NOT pg_catalog.pg_try_advisory_xact_lock(l_lock_key) THEN
+        RAISE EXCEPTION 'boundary calculation for run % is already in progress', i_run_id
+            USING ERRCODE = '55000';
+    END IF;
+
+    LOOP
+        SELECT run.cancelled_at, run.boundaries_calculated_at
+        INTO l_cancelled_at, l_calculated_at
+        FROM dml_utils_data.migration_run AS run
+        WHERE run.run_id = i_run_id;
+
+        EXIT WHEN l_cancelled_at IS NOT NULL OR l_calculated_at IS NOT NULL;
+
+        -- Compare the live tree with the manifest before each leaf, so a detach or
+        -- attach between leaves fails closed rather than mixing trees.
+        PERFORM dml_utils_lib.assert_migration_tree_unchanged(i_run_id => i_run_id);
+
+        -- One leaf per worker transaction: calculate_migration_leaf claims the
+        -- first pending/failed leaf, appends its starts and marks it calculated.
+        -- A NULL result means there is no leaf left to calculate.
+        l_handle := public.pg_background_launch(pg_catalog.format(
+                'SELECT dml_utils_lib.calculate_migration_leaf(%s) AS ordinal',
+                i_run_id));
+        PERFORM public.pg_background_wait(l_handle.pid, l_handle.cookie);
+        SELECT ordinal
+        INTO l_ordinal
+        FROM public.pg_background_result(l_handle.pid, l_handle.cookie) AS (ordinal integer);
+
+        EXIT WHEN l_ordinal IS NULL;
+    END LOOP;
+
+    SELECT run.cancelled_at, run.boundaries_calculated_at
+    INTO l_cancelled_at, l_calculated_at
+    FROM dml_utils_data.migration_run AS run
+    WHERE run.run_id = i_run_id;
+
+    -- Cancellation stops launching leaves: the run is terminal and keeps the
+    -- pending leaves for an operator to archive. A finalized run (for example by
+    -- another coordinator) is done.
+    IF l_cancelled_at IS NOT NULL OR l_calculated_at IS NOT NULL THEN
+        RETURN;
+    END IF;
+
+    -- Every leaf is calculated. Write the single terminal boundary and the run
+    -- totals in their own worker transaction, so they commit autonomously.
+    PERFORM public.pg_background_run(pg_catalog.format(
+            'SELECT dml_utils_lib.finalize_migration_boundaries(%s)', i_run_id));
+END;
+$$;
+
+COMMENT ON FUNCTION dml_utils_lib.calculate_migration_run_boundaries(bigint) IS
+    'Calculates a partition-wise run''s boundaries one leaf per pg_background '
+        'transaction until every leaf is calculated, then finalizes the run in its '
+        'own worker transaction. Serialized by a transaction-scoped advisory lock '
+        'keyed by the run id, so a concurrent calculation fails closed with '
+        'invalid_transaction_initiation (55000) instead of duplicating boundaries. '
+        'The live tree is compared with the manifest before each leaf; a cancelled '
+        'run stops without finalizing, so its pending leaves stay untouched.';
