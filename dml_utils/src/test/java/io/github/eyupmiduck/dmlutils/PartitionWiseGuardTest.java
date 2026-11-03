@@ -60,6 +60,57 @@ class PartitionWiseGuardTest extends PostgresTestBase {
     }
 
     /**
+     * A leaf reattached with a different partition bound is detected by the
+     * per-leaf bound comparison.
+     */
+    @Test
+    void treeGuardRejectsAChangedBound() throws Exception {
+        long runId = populate(TABLE, uniqueLabel("guard-bound"), 2,
+                ChunkingStrategy.primary_key, true);
+
+        executeAsOwner("ALTER TABLE " + SCHEMA + "." + TABLE
+                + " DETACH PARTITION " + SCHEMA + ".test_partitioned_range_mid");
+        executeAsOwner("ALTER TABLE " + SCHEMA + "." + TABLE
+                + " ATTACH PARTITION " + SCHEMA + ".test_partitioned_range_mid"
+                + " FOR VALUES FROM (101) TO (200)");
+        try {
+            assertSqlState("55000", () -> io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib
+                    .Routines.assertMigrationTreeUnchanged(dsl.configuration(), runId));
+        } finally {
+            executeAsOwner("ALTER TABLE " + SCHEMA + "." + TABLE
+                    + " DETACH PARTITION " + SCHEMA + ".test_partitioned_range_mid");
+            executeAsOwner("ALTER TABLE " + SCHEMA + "." + TABLE
+                    + " ATTACH PARTITION " + SCHEMA + ".test_partitioned_range_mid"
+                    + " FOR VALUES FROM (100) TO (200)");
+        }
+    }
+
+    /**
+     * A leaf dropped and recreated with the same name and bound is detected by the
+     * recorded OID.
+     */
+    @Test
+    void treeGuardRejectsAReplacedLeaf() throws Exception {
+        long runId = populate(TABLE, uniqueLabel("guard-replaced"), 2,
+                ChunkingStrategy.primary_key, true);
+
+        executeAsOwner("ALTER TABLE " + SCHEMA + "." + TABLE
+                + " DETACH PARTITION " + SCHEMA + ".test_partitioned_range_mid");
+        executeAsOwner("DROP TABLE " + SCHEMA + ".test_partitioned_range_mid");
+        executeAsOwner("CREATE TABLE " + SCHEMA + ".test_partitioned_range_mid"
+                + " PARTITION OF " + SCHEMA + "." + TABLE
+                + " FOR VALUES FROM (100) TO (200)");
+        // A recreated relation starts with no grants; the guard must then reach
+        // the OID comparison rather than stopping at a missing privilege.
+        executeAsOwner("GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON "
+                + SCHEMA + ".test_partitioned_range_mid TO "
+                + TEST_USER + ", dml_utils_caller");
+
+        assertSqlState("55000", () -> io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib
+                .Routines.assertMigrationTreeUnchanged(dsl.configuration(), runId));
+    }
+
+    /**
      * A blocks leaf rewritten on disk is detected by the per-leaf filepath
      * comparison.
      */
