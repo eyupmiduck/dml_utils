@@ -16,10 +16,10 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.prepare_chunk_sql_render(
 AS
 $$
 DECLARE
-    -- Control-character sentinels that stand in for one token each. The template's
-    -- <driving_table> token is expanded here; <chunking_clause> is left as a
-    -- sentinel for render_prepared_chunk_sql to replace per chunk, so neither
-    -- substitution can be re-scanned by the other.
+    -- Control-character sentinels that stand in for one token each. Both the
+    -- <driving_table> and <chunking_clause> tokens become sentinels here;
+    -- render_prepared_chunk_sql expands the table per chunk and the clause per
+    -- range, so neither substitution can be re-scanned by the other.
     l_driving_table_sentinel   constant text := pg_catalog.chr(1);
     l_chunking_clause_sentinel constant text := pg_catalog.chr(2);
     l_column_count                      integer;
@@ -120,12 +120,15 @@ $$;
 
 COMMENT ON FUNCTION dml_utils_lib.prepare_chunk_sql_render IS
     'Validates a chunking template and its key columns and kinds once, and '
-        'returns the run-invariant render context: the template with <driving_table> '
-        'already substituted and <chunking_clause> replaced by an internal sentinel, '
-        'the alias-qualified quoted column names, and each text column''s collation '
-        '(NULL when the column is not in the catalog). The caller must pass the '
-        'kind resolved from the catalog for each column; the public wrappers derive '
-        'the columns and kinds together, so a direct lib caller is responsible for '
-        'keeping them consistent. render_prepared_chunk_sql consumes the context per '
-        'chunk, so the per-chunk call only builds the range predicate and substitutes '
-        'the chunking clause.';
+        'returns the run-invariant render context: the template with both '
+        '<driving_table> and <chunking_clause> replaced by internal sentinels, the '
+        'alias-qualified quoted column names, and each text column''s collation '
+        '(NULL when the column is not in the catalog). The column names are '
+        'qualified with i_table_alias, so every render from this context must pass '
+        'that same alias; render_prepared_chunk_sql rejects a different one. The '
+        'caller must pass the kind resolved from the catalog for each column; the '
+        'public wrappers derive the columns and kinds together, so a direct lib '
+        'caller is responsible for keeping them consistent. '
+        'render_prepared_chunk_sql consumes the context per chunk, selects the '
+        'concrete driving table (the parent or one leaf), and substitutes the '
+        'chunking clause.';

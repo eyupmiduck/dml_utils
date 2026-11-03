@@ -4,6 +4,7 @@ import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.enums.ChunkingStrategy;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.routines.PrepareChunkSqlRender;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.tables.records.ExplainChunkPlanRecord;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.tables.records.LeafPartitionsRecord;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.tables.records.ExplainChunkPlansRecord;
 import org.junit.jupiter.api.Test;
 
@@ -72,18 +73,35 @@ class RenderLeafChunkSqlTest extends PostgresTestBase {
     }
 
     /**
-     * A leaf name containing a space and a double quote is quoted with %I, so it
-     * cannot break out of the identifier or inject SQL.
+     * A leaf name containing a space and a double quote is enumerated from the
+     * catalog and quoted with %I, so it cannot break out of the identifier. The
+     * explain call parses the rendered identifier, proving it resolves to the real
+     * fixture relation.
      */
     @Test
     void quotesAnUnusualLeafName() {
+        List<LeafPartitionsRecord> leaves = Routines.leafPartitions(
+                dsl.configuration(), SCHEMA, "test_partitioned_quoted",
+                ChunkingStrategy.primary_key);
+        assertEquals(1, leaves.size());
+        String leaf = leaves.getFirst().getLeafName();
+        assertEquals("test partitioned \"odd\"", leaf,
+                "the fixture leaf name should reach the renderer unchanged");
+
         String sql = Routines.renderChunkSql(
-                dsl.configuration(), TEMPLATE, SCHEMA, "test partitioned \"odd\"", "t",
+                dsl.configuration(), TEMPLATE, SCHEMA, leaf, "t",
                 KEY_COLUMNS, KEY_KINDS, new String[]{"1"}, new String[]{"2"}, false);
 
         assertTrue(sql.startsWith(
                         "UPDATE " + SCHEMA + ".\"test partitioned \"\"odd\"\"\" t "),
                 "the odd leaf name should be quoted: " + sql);
+
+        ExplainChunkPlanRecord plan = Routines.explainChunkPlan(
+                dsl.configuration(), TEMPLATE, SCHEMA, leaf, "t",
+                KEY_COLUMNS, KEY_KINDS, new String[]{"1"}, new String[]{"2"}, false).getFirst();
+        assertEquals("ModifyTable", planNodeType(plan.getOPlan()));
+        assertTrue(plan.getOPlan().data().contains("test partitioned"),
+                "the plan should name the odd leaf: " + plan.getOPlan().data());
     }
 
     /**

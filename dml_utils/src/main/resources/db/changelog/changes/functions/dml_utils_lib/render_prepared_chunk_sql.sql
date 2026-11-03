@@ -103,6 +103,23 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
 
+    -- The prepared context qualified its column names with the alias passed to
+    -- prepare_chunk_sql_render. This call supplies the table per chunk, so a
+    -- different alias would render a predicate that no longer binds the driving
+    -- table; reject it rather than emit SQL that fails in the worker.
+    FOR l_position IN 1..pg_catalog.array_length(i_column_names, 1)
+        LOOP
+            IF i_column_names[l_position] IS NULL
+                OR NOT pg_catalog.starts_with(
+                        i_column_names[l_position],
+                        pg_catalog.quote_ident(i_table_alias) || '.')
+            THEN
+                RAISE EXCEPTION 'column name % is not qualified with alias %',
+                    i_column_names[l_position], i_table_alias
+                    USING ERRCODE = '22023';
+            END IF;
+        END LOOP;
+
     -- Validate each boundary value and build its cast literal. The kind selects the
     -- explicit cast and is interpolated into the SQL, so it must be one of the known
     -- kinds; the values are quoted with %L.
@@ -366,8 +383,11 @@ COMMENT ON FUNCTION dml_utils_lib.render_prepared_chunk_sql IS
     'Renders one chunk from the run-invariant context returned by '
         'prepare_chunk_sql_render: it validates and casts the chunk''s start/end '
         'boundary values, builds the axis-aligned box disjunction that exactly tiles '
-        'the lexicographic range, and substitutes it for the prepared template''s '
-        'chunking-clause sentinel. The final chunk uses an inclusive upper bound; a '
-        'reversed range, a NULL value or a value that is not a valid literal for its '
-        'key kind is rejected. A text key is ordered under the precomputed column '
-        'collation, matching the predicate.';
+        'the lexicographic range, substitutes the caller''s driving table (the parent '
+        'or one leaf) for the template''s driving-table sentinel, and substitutes the '
+        'clause for its sentinel. i_table_alias must be the alias the context was '
+        'prepared with, because the column names are already qualified with it; a '
+        'different alias is rejected. The final chunk uses an inclusive upper bound; '
+        'a reversed range, a NULL value or a value that is not a valid literal for '
+        'its key kind is rejected. A text key is ordered under the precomputed '
+        'column collation, matching the predicate.';

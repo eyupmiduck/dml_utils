@@ -101,6 +101,55 @@ class RenderPreparedChunkSqlTest extends PostgresTestBase {
     }
 
     /**
+     * A prepared template with the clause sentinel but no driving-table sentinel is
+     * rejected: the chunk would render against whatever table the template
+     * hard-codes instead of the caller's.
+     */
+    @Test
+    void rejectsATemplateWithoutTheDrivingTablePlaceholder() {
+        assertSqlState("22023", () -> Routines.renderPreparedChunkSql(
+                dsl.configuration(),
+                "UPDATE public.src t SET processed = true WHERE " + (char) 2,
+                "public", "src", "t",
+                new String[]{"t.a"}, new String[]{"bigint"}, new String[]{null},
+                new String[]{"1"}, new String[]{"2"}, false));
+    }
+
+    /**
+     * The column names in the prepared context are qualified with the prepare-time
+     * alias, so rendering with a different alias is rejected rather than producing
+     * a predicate that no longer binds the driving table.
+     */
+    @Test
+    void rejectsADifferentAlias() {
+        PrepareChunkSqlRender prepared = Routines.prepareChunkSqlRender(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{"a"}, new String[]{"bigint"});
+
+        assertSqlState("22023", () -> Routines.renderPreparedChunkSql(
+                dsl.configuration(), prepared.getOTemplate(), "public", "src", "other",
+                prepared.getOColumnNames(), new String[]{"bigint"},
+                prepared.getOKeyCollations(), new String[]{"1"}, new String[]{"2"}, false));
+    }
+
+    /**
+     * A schema, table or alias containing a reserved substitution character is
+     * rejected before the substitution.
+     */
+    @Test
+    void rejectsAnIdentifierWithASentinelCharacter() {
+        PrepareChunkSqlRender prepared = Routines.prepareChunkSqlRender(
+                dsl.configuration(), TEMPLATE, "public", "src", "t",
+                new String[]{"a"}, new String[]{"bigint"});
+
+        assertSqlState("22023", () -> Routines.renderPreparedChunkSql(
+                dsl.configuration(), prepared.getOTemplate(), "public",
+                "src" + (char) 1, "t",
+                prepared.getOColumnNames(), new String[]{"bigint"},
+                prepared.getOKeyCollations(), new String[]{"1"}, new String[]{"2"}, false));
+    }
+
+    /**
      * A reversed range is rejected: the predicate would match no rows while the
      * worker still marks the boundary complete.
      */

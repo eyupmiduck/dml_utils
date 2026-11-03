@@ -31,8 +31,9 @@ class PrepareChunkSqlRenderTest extends PostgresTestBase {
                 dsl.configuration(), TEMPLATE, "public", "src", "t",
                 new String[]{"a", "b"}, new String[]{"bigint", "text"});
 
-        assertTrue(prepared.getOTemplate().contains(String.valueOf((char) 1)),
-                "the driving table should be left as a sentinel");
+        assertEquals("UPDATE " + (char) 1 + " SET processed = true WHERE " + (char) 2,
+                prepared.getOTemplate(),
+                "the driving table and chunking clause should be left as sentinels");
         assertFalse(prepared.getOTemplate().contains("<driving_table>"),
                 "the driving-table token should be gone");
         assertArrayEquals(new String[]{"t.a", "t.b"}, prepared.getOColumnNames(),
