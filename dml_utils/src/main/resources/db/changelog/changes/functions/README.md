@@ -1911,6 +1911,7 @@ RETURNS void
 SELECT the relation, before a definer-backed scan reads it.
 
 ###
+
 `dml_utils_lib.resolve_migration_creation_key(i_schema_name, i_table_name, i_chunk_by, i_boundary_key_index, i_partition_wise)`
 
 ```sql
@@ -1930,6 +1931,7 @@ stores: the primary key, the ordered descriptor, or the single-relation blocks
 filepath. Partition-wise blocks leaves the run-level filepath NULL.
 
 ###
+
 `dml_utils_lib.snapshot_partition_leaf_manifest(i_run_id, i_schema_name, i_table_name, i_chunk_by, i_boundary_key_index)`
 
 ```sql
@@ -1946,6 +1948,7 @@ identity, bound and blocks filepath, validates every ordered-key child index and
 requires the effective caller to SELECT every stored leaf (`42501`).
 
 ###
+
 `dml_utils_lib.populate_single_relation_boundaries(i_run_id, i_schema_name, i_table_name, i_chunk_by, i_key_columns, i_key_kinds, i_chunk_size)`
 
 ```sql
@@ -1975,6 +1978,7 @@ RETURNS SETOF dml_utils_data.migration_run
 or no row.
 
 ###
+
 `dml_utils_lib.resume_migration_run(i_run, i_driving_table_schema_name, i_driving_table_name, i_sql_text, i_chunk_size, i_threads, i_driving_table_alias, i_chunk_by, i_sleep_ms, i_boundary_key_index, i_partition_wise)`
 
 ```sql
@@ -2002,6 +2006,7 @@ ordered-key descriptor (failing closed with `55000`) and asserts the stored
 blocks relation filepath.
 
 ###
+
 `dml_utils_lib.create_migration_run(i_schema_name, i_table_name, i_label, i_sql_text, i_chunk_size, i_threads, i_chunk_by, i_driving_table_alias, i_sleep_ms, i_boundary_key_index, i_partition_wise)`
 
 ```sql
@@ -2036,7 +2041,8 @@ finishes any pending one-leaf-per-transaction calculation, returns false after
 marking a run cancelled during calculation, and compares the live tree with the
 manifest. Returns true when the run is ready.
 
-### `dml_utils_lib.next_migration_chunk(i_run_id, i_partition_wise, i_key_kinds, i_in_flight_boundaries, i_default_schema_name, i_default_table_name)`
+###
+`dml_utils_lib.next_migration_chunk(i_run_id, i_partition_wise, i_key_kinds, i_in_flight_boundaries, i_default_schema_name, i_default_table_name)`
 
 ```sql
 i_run_id                  bigint

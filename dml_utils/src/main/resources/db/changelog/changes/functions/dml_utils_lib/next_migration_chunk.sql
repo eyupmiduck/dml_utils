@@ -19,13 +19,13 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.next_migration_chunk(
 AS
 $$
 DECLARE
-    l_start_leaf_ordinal    integer;
-    l_end_leaf_ordinal      integer;
-    l_terminal_bigint       bigint[];
-    l_terminal_text         text[];
-    l_terminal_uuid         uuid[];
-    l_terminal_timestamptz  timestamptz[];
-    l_terminal_key          dml_utils_data.migration_key;
+    l_start_leaf_ordinal   integer;
+    l_end_leaf_ordinal     integer;
+    l_terminal_bigint      bigint[];
+    l_terminal_text        text[];
+    l_terminal_uuid        uuid[];
+    l_terminal_timestamptz timestamptz[];
+    l_terminal_key         dml_utils_data.migration_key;
 BEGIN
     -- Extract the per-position key values of the start and end boundaries in one
     -- call. Each kind populates a different position-aligned array of

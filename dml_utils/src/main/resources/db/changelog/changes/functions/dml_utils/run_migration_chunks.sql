@@ -34,43 +34,43 @@ CREATE OR REPLACE FUNCTION dml_utils.run_migration_chunks(
 AS
 $$
 DECLARE
-    l_key_columns              name[];
-    l_key_kinds                text[];
-    l_chunk_by                 dml_utils_data.chunking_strategy;
-    l_partition_wise           boolean;
-    l_run_id                   bigint;
-    l_already_completed        boolean;
-    l_effective_sql_text       text;
-    l_effective_threads        integer;
-    l_effective_sleep_ms       integer;
-    l_effective_schema_name    text;
-    l_effective_table_name     text;
-    l_effective_alias          text;
-    l_boundary_no              bigint;
-    l_chunk                    record;
-    l_chunk_sql                text;
+    l_key_columns           name[];
+    l_key_kinds             text[];
+    l_chunk_by              dml_utils_data.chunking_strategy;
+    l_partition_wise        boolean;
+    l_run_id                bigint;
+    l_already_completed     boolean;
+    l_effective_sql_text    text;
+    l_effective_threads     integer;
+    l_effective_sleep_ms    integer;
+    l_effective_schema_name text;
+    l_effective_table_name  text;
+    l_effective_alias       text;
+    l_boundary_no           bigint;
+    l_chunk                 record;
+    l_chunk_sql             text;
     -- Run-invariant chunk-render context, prepared once before the loop so the
     -- per-chunk render does not repeat the template validation and quoting.
-    l_render_prepared          record;
+    l_render_prepared       record;
     -- The workers kept in flight, and the boundary each one was launched for
     -- (parallel arrays, aligned by position).
-    l_in_flight                public.pg_background_handle[] := ARRAY []::public.pg_background_handle[];
-    l_in_flight_boundaries     bigint[]                      := ARRAY []::bigint[];
-    l_worker_index             integer;
-    l_pids                     integer[];
-    l_cookies                  bigint[];
-    l_aborting                 boolean                       := false;
+    l_in_flight             public.pg_background_handle[] := ARRAY []::public.pg_background_handle[];
+    l_in_flight_boundaries  bigint[]                      := ARRAY []::bigint[];
+    l_worker_index          integer;
+    l_pids                  integer[];
+    l_cookies               bigint[];
+    l_aborting              boolean                       := false;
     -- Cancellation state: the run's cancelled_at, polled at most every 100ms.
-    l_cancelled_at             timestamptz;
-    l_last_cancel_check        timestamptz;
-    l_error_sqlstate           text;
-    l_error_message            text;
-    l_error_boundary_no        bigint;
+    l_cancelled_at          timestamptz;
+    l_last_cancel_check     timestamptz;
+    l_error_sqlstate        text;
+    l_error_message         text;
+    l_error_boundary_no     bigint;
     -- pg_background is installed in the public schema. Qualify its types and
     -- functions explicitly so this routine resolves them regardless of the
     -- caller's (or Liquibase's) search_path.
-    l_handle                   public.pg_background_handle;
-    l_outcome                  public.pg_background_outcome;
+    l_handle                public.pg_background_handle;
+    l_outcome               public.pg_background_outcome;
 BEGIN
     -- Validate the template up front so a bad call fails before any run or
     -- worker exists.
