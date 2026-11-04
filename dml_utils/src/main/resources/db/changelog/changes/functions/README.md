@@ -1817,8 +1817,8 @@ synthetic ranges. No run or boundary is read or written. Shared by
 ```sql
 i_run_id bigint
 RETURNS TABLE
-    (o_leaf_ordinal integer, o_leaf_schema_name text, o_leaf_name text,
-     o_chunk_by dml_utils_data.chunking_strategy, o_chunk_size integer)
+(o_leaf_ordinal integer, o_leaf_schema_name text, o_leaf_name text,
+    o_chunk_by dml_utils_data.chunking_strategy, o_chunk_size integer)
 ```
 
 `SECURITY DEFINER`. Locks the run and claims the first pending/failed/
@@ -1828,6 +1828,7 @@ leaf identity plus the run's chunk strategy and size, or no row when the run is
 finalized, cancelled or fully calculated.
 
 ###
+
 `dml_utils_lib.leaf_boundary_population_sql(i_chunk_by, i_chunk_size, i_leaf_schema_name, i_leaf_name, i_run_id, i_leaf_ordinal)`
 
 ```sql
