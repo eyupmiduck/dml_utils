@@ -1737,6 +1737,7 @@ manifest leaf: chunk strategy, schema, name, OID, partition bound and blocks
 filepath. A missing run/leaf is `55000`.
 
 ###
+
 `dml_utils_lib.assert_live_leaf_matches_manifest(i_chunk_by, i_leaf_schema_name, i_leaf_name, i_leaf_oid, i_leaf_bound, i_relation_filepath)`
 
 ```sql
