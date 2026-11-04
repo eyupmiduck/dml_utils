@@ -961,7 +961,6 @@
     </changeSet>
 
 
-
     <changeSet id="function-dml_utils_lib.calculate_next_leaf_in_worker" author="lee.horner"
                dbms="postgresql" runOnChange="true">
         <createProcedure path="functions/dml_utils_lib/calculate_next_leaf_in_worker.sql"

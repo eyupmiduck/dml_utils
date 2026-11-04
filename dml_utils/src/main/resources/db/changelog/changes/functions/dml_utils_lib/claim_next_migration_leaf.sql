@@ -15,8 +15,8 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.claim_next_migration_leaf(
 AS
 $$
 DECLARE
-    l_run  dml_utils_data.migration_run%ROWTYPE;
-    l_leaf dml_utils_data.migration_run_leaf%ROWTYPE;
+    l_run    dml_utils_data.migration_run%ROWTYPE;
+    l_leaf   dml_utils_data.migration_run_leaf%ROWTYPE;
     l_caller name;
 BEGIN
     IF i_run_id IS NULL THEN

@@ -3,18 +3,16 @@ package io.github.eyupmiduck.dmlutils;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.enums.ChunkingStrategy;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.tables.records.ClaimNextMigrationLeafRecord;
-
-import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRunLeaf.MIGRATION_RUN_LEAF;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestPartitionedRange.TEST_PARTITIONED_RANGE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -101,7 +99,9 @@ class ClaimNextMigrationLeafTest extends PartitionTestBase {
         executeAsOwner("REVOKE SELECT ON " + PARTITION_SCHEMA
                 + ".test_partitioned_range_low FROM " + TEST_USER + ", dml_utils_caller");
         try {
-            assertSqlState("42501", () -> { claim(runId); });
+            assertSqlState("42501", () -> {
+                claim(runId);
+            });
         } finally {
             executeAsOwner("GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON "
                     + PARTITION_SCHEMA + ".test_partitioned_range_low TO "

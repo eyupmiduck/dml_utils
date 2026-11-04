@@ -1784,7 +1784,7 @@ i_table_name dml_utils_data.non_null_text
 i_table_alias dml_utils_data.non_null_text
 i_chunk_size bigint
 RETURNS TABLE
-(o_plan_kind text, o_sql_text text, o_plan json)
+    (o_plan_kind text, o_sql_text text, o_plan json)
 ```
 
 `VOLATILE`, `SECURITY INVOKER`. Returns the EXPLAIN plans for a blocks run: the
@@ -1804,7 +1804,7 @@ i_key_columns name[]
 i_key_kinds   text[]
 i_chunk_size  bigint
 RETURNS TABLE
-(o_plan_kind text, o_sql_text text, o_plan json)
+    (o_plan_kind text, o_sql_text text, o_plan json)
 ```
 
 `VOLATILE`, `SECURITY INVOKER`. Returns the EXPLAIN plans for a key-chunked run:
@@ -1827,7 +1827,8 @@ checks the effective caller can SELECT it and marks it `calculating`. Returns th
 leaf identity plus the run's chunk strategy and size, or no row when the run is
 finalized, cancelled or fully calculated.
 
-### `dml_utils_lib.leaf_boundary_population_sql(i_chunk_by, i_chunk_size, i_leaf_schema_name, i_leaf_name, i_run_id, i_leaf_ordinal)`
+###
+`dml_utils_lib.leaf_boundary_population_sql(i_chunk_by, i_chunk_size, i_leaf_schema_name, i_leaf_name, i_run_id, i_leaf_ordinal)`
 
 ```sql
 i_chunk_by          dml_utils_data.chunking_strategy
