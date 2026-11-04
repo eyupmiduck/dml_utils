@@ -25,8 +25,8 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.populate_migration_boundaries(
 AS
 $$
 DECLARE
-    l_key      record;
-    l_run_id   bigint;
+    l_key    record;
+    l_run_id bigint;
 BEGIN
     -- The index selects the ordered key, so it is required for that strategy and
     -- rejected for the others; the shared helper owns that rule.
