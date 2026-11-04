@@ -13,10 +13,10 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.assert_live_leaf_matches_manifest(
 AS
 $$
 DECLARE
-    l_live_oid        oid;
-    l_live_relkind    text;
-    l_live_bound      text;
-    l_live_filepath   text;
+    l_live_oid      oid;
+    l_live_relkind  text;
+    l_live_bound    text;
+    l_live_filepath text;
 BEGIN
     SELECT c.oid,
            c.relkind::text,

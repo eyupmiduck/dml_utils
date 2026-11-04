@@ -1564,6 +1564,7 @@ catalog). `prepare_chunk_sql_render` uses it to build the run-invariant render
 context.
 
 ###
+
 `dml_utils_lib.build_chunk_boundary_literals(i_column_names, i_key_kinds, i_key_collations, i_start_values, i_end_values)`
 
 ```sql
@@ -1584,6 +1585,7 @@ its kind or a malformed array raises `22023`. Shared by
 `render_prepared_chunk_sql`.
 
 ###
+
 `dml_utils_lib.build_chunk_range_boxes(i_column_names, i_start_literals, i_end_literals, i_first_difference_position, i_is_final)`
 
 ```sql
@@ -1613,6 +1615,7 @@ position-aligned array. Unsupported or NULL kinds and a malformed array raise
 `22023`. Shared by `boundary_key_descriptor_sql`.
 
 ###
+
 `dml_utils_lib.format_boundary_population_sql(i_select_list, i_order_by, i_schema_name, i_table_name, i_id_list, i_pack_expression, i_order_by_desc, i_run_id, i_chunk_size)`
 
 ```sql
@@ -1733,7 +1736,8 @@ RETURNS record
 manifest leaf: chunk strategy, schema, name, OID, partition bound and blocks
 filepath. A missing run/leaf is `55000`.
 
-### `dml_utils_lib.assert_live_leaf_matches_manifest(i_chunk_by, i_leaf_schema_name, i_leaf_name, i_leaf_oid, i_leaf_bound, i_relation_filepath)`
+###
+`dml_utils_lib.assert_live_leaf_matches_manifest(i_chunk_by, i_leaf_schema_name, i_leaf_name, i_leaf_oid, i_leaf_bound, i_relation_filepath)`
 
 ```sql
 i_chunk_by           dml_utils_data.chunking_strategy
