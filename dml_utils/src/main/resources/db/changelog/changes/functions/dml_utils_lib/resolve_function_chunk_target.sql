@@ -13,9 +13,9 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.resolve_function_chunk_target(
 AS
 $$
 DECLARE
-    l_argument_oids        oid[];
-    l_function_not_void    boolean;
-    l_argument_type_list   text;
+    l_argument_oids      oid[];
+    l_function_not_void  boolean;
+    l_argument_type_list text;
 BEGIN
     -- Resolve the driving table's primary key in key order; this also validates
     -- the schema/table exist and that the key has one to three supported columns.
