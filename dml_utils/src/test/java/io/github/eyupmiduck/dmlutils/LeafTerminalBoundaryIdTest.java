@@ -148,7 +148,6 @@ class LeafTerminalBoundaryIdTest extends PartitionTestBase {
     }
 
 
-
     private Long[] lastKey(String leafName) {
         var row = dsl.fetchOne("SELECT id, bucket FROM " + PARTITION_SCHEMA + "."
                 + leafName + " ORDER BY id DESC, bucket DESC LIMIT 1");

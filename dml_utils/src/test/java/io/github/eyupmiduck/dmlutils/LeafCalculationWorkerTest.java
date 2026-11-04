@@ -129,8 +129,6 @@ class LeafCalculationWorkerTest extends PartitionTestBase {
     }
 
 
-
-
     private MigrationRunRecord run(long runId) {
         return dsl.selectFrom(MIGRATION_RUN)
                 .where(MIGRATION_RUN.RUN_ID.eq(runId))

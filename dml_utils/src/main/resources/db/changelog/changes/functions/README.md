@@ -2042,6 +2042,7 @@ marking a run cancelled during calculation, and compares the live tree with the
 manifest. Returns true when the run is ready.
 
 ###
+
 `dml_utils_lib.next_migration_chunk(i_run_id, i_partition_wise, i_key_kinds, i_in_flight_boundaries, i_default_schema_name, i_default_table_name)`
 
 ```sql

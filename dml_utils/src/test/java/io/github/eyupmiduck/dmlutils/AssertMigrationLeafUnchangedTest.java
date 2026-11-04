@@ -150,7 +150,6 @@ class AssertMigrationLeafUnchangedTest extends PartitionTestBase {
     }
 
 
-
     private List<Integer> leafOrdinals(long runId) {
         return dsl.select(MIGRATION_RUN_LEAF.LEAF_ORDINAL)
                 .from(MIGRATION_RUN_LEAF)
