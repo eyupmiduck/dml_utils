@@ -1756,6 +1756,7 @@ detached or rebound (different partition bound), not a plain table, or (for
 blocks) a rewritten heap.
 
 ###
+
 `dml_utils_lib.resolve_function_chunk_target(i_table_schema_name, i_table_name, i_function_schema_name, i_function_name)`
 
 ```sql
@@ -1782,7 +1783,8 @@ i_schema_name dml_utils_data.non_null_text
 i_table_name dml_utils_data.non_null_text
 i_table_alias dml_utils_data.non_null_text
 i_chunk_size bigint
-RETURNS TABLE (o_plan_kind text, o_sql_text text, o_plan json)
+RETURNS TABLE
+(o_plan_kind text, o_sql_text text, o_plan json)
 ```
 
 `VOLATILE`, `SECURITY INVOKER`. Returns the EXPLAIN plans for a blocks run: the
@@ -1790,6 +1792,7 @@ boundary insert and two representative half-open ctid ranges. No run or boundary
 is read or written. Shared by `explain_chunk_plans`.
 
 ###
+
 `dml_utils_lib.explain_key_chunk_plans(i_sql_text, i_schema_name, i_table_name, i_table_alias, i_key_columns, i_key_kinds, i_chunk_size)`
 
 ```sql
@@ -1800,7 +1803,8 @@ i_table_alias dml_utils_data.non_null_text
 i_key_columns name[]
 i_key_kinds   text[]
 i_chunk_size  bigint
-RETURNS TABLE (o_plan_kind text, o_sql_text text, o_plan json)
+RETURNS TABLE
+(o_plan_kind text, o_sql_text text, o_plan json)
 ```
 
 `VOLATILE`, `SECURITY INVOKER`. Returns the EXPLAIN plans for a key-chunked run:
