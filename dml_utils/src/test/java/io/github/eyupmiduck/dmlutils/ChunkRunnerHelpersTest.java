@@ -161,14 +161,6 @@ class ChunkRunnerHelpersTest extends PartitionTestBase {
                 new String[]{"bigint"}, inFlight, schema(TEST_BIGINT), name(TEST_BIGINT));
     }
 
-    private void insertRangeRows(Long... ids) {
-        for (Long id : ids) {
-            dsl.insertInto(TEST_PARTITIONED_RANGE,
-                            TEST_PARTITIONED_RANGE.ID, TEST_PARTITIONED_RANGE.PAYLOAD)
-                    .values(id, "payload-" + id)
-                    .execute();
-        }
-    }
 
     private MigrationRunRecord run(long runId) {
         return dsl.selectFrom(MIGRATION_RUN)
