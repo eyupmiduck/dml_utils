@@ -114,6 +114,48 @@ class LeafCalculationWorkerTest extends PartitionTestBase {
     }
 
     /**
+     * A failure inside the autonomous finalizer is re-raised to the caller
+     * instead of being reported as a successful finalization.
+     */
+    @Test
+    void reRaisesAFailingFinalizer() throws Exception {
+        insertRangeRows(0L, 100L, 200L);
+        long runId = populatePartitionWise("leaf-worker", TABLE, TEMPLATE, ChunkingStrategy.primary_key, 1, null);
+        for (int i = 0; i < 3; i++) {
+            calculateNext(runId);
+        }
+
+        executeAsOwner("CREATE OR REPLACE FUNCTION " + PARTITION_SCHEMA + ".fail_finalize()"
+                + " RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN"
+                + " RAISE EXCEPTION 'injected finalize failure' USING ERRCODE = 'P0001';"
+                + " RETURN NEW; END; $$");
+        executeAsOwner("CREATE TRIGGER fail_finalize BEFORE INSERT"
+                + " ON dml_utils_data.migration_boundary FOR EACH ROW"
+                + " EXECUTE FUNCTION " + PARTITION_SCHEMA + ".fail_finalize()");
+        try {
+            assertSqlState("P0001", () -> Routines.finalizeCalculatedRun(
+                    dsl.configuration(), runId));
+        } finally {
+            executeAsOwner("DROP TRIGGER IF EXISTS fail_finalize"
+                    + " ON dml_utils_data.migration_boundary");
+            executeAsOwner("DROP FUNCTION IF EXISTS " + PARTITION_SCHEMA + ".fail_finalize()");
+        }
+
+        assertNull(run(runId).getBoundariesCalculatedAt(),
+                "a failed finalizer must not record the milestone");
+    }
+
+    /**
+     * Finalizing an unknown run raises {@code P0002} instead of treating it as an
+     * already-finalized no-op.
+     */
+    @Test
+    void finalizeRejectsAMissingRun() {
+        assertSqlState("P0002", () -> Routines.finalizeCalculatedRun(
+                dsl.configuration(), -1L));
+    }
+
+    /**
      * Finalizing while a leaf is still pending raises {@code 55000}.
      */
     @Test

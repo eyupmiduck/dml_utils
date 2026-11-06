@@ -80,5 +80,12 @@ class ResolveFunctionChunkTargetTest extends PostgresTestBase {
                 + " LANGUAGE plpgsql AS $$ BEGIN NULL; END $$");
         assertSqlState("22023", () -> resolve(name(TEST_COMPOSITE_MIXED),
                 "target_mark_proc"));
+
+        // RETURNS SETOF void has prorettype void but expands rows in the select
+        // list, so it does not satisfy the one-value-per-row contract.
+        dsl.execute("CREATE OR REPLACE FUNCTION public.target_mark_setof(a bigint, b text)"
+                + " RETURNS SETOF void LANGUAGE plpgsql AS $$ BEGIN RETURN; END $$");
+        assertSqlState("22023", () -> resolve(name(TEST_COMPOSITE_MIXED),
+                "target_mark_setof"));
     }
 }
