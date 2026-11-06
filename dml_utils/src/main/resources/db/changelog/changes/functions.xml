@@ -9,10 +9,12 @@
          has no createFunction change type). runOnChange re-applies only the
          changeset whose body changed, and each one carries its own rollback.
 
-         Nothing is deployed, so edit a routine body in place: runOnChange
-         re-applies it. A signature change should also be made in place; there
-         is no compatibility overload, and LiquibaseUpgradeTest is disabled if
-         the change requires it. -->
+         CREATE OR REPLACE only replaces a routine with an identical signature:
+         changing RETURNS or the parameter names aborts the deploy, and changing
+         a parameter type silently leaves the old overload behind. When a
+         signature changes, add an explicit
+         `DROP FUNCTION IF EXISTS <old signature>;` (for example another sqlFile
+         in that routine's changeset) so the deprecated signature is removed. -->
     <changeSet id="function-dml_utils_data.set_updated_at" author="lee.horner" dbms="postgresql"
                runOnChange="true">
         <createProcedure path="functions/dml_utils_data/set_updated_at.sql" relativeToChangelogFile="true"/>
