@@ -180,15 +180,34 @@ fi
 # key tuple by base-mod digits: with p columns and modulus m = ceil(rows^(1/p)),
 # the i-th column is ((g - 1) / m^(p-i)) % m + 1, so m^p >= rows makes the tuples
 # unique.
+case "$BENCH_PK_COLUMNS" in
+    1|2|3) ;;
+    *)
+        echo "BENCH_PK_COLUMNS must be 1, 2 or 3: $BENCH_PK_COLUMNS" >&2
+        exit 2
+        ;;
+esac
+case "$BENCH_ROWS" in
+    ''|*[!0-9]*)
+        echo "BENCH_ROWS must be a positive integer: $BENCH_ROWS" >&2
+        exit 2
+        ;;
+esac
+[ "$BENCH_ROWS" -gt 0 ] || {
+    echo "BENCH_ROWS must be positive: $BENCH_ROWS" >&2
+    exit 2
+}
+case "$BENCH_PARTITIONED_LEAVES" in
+    ''|*[!0-9]*)
+        echo "BENCH_PARTITIONED_LEAVES must be a positive integer: $BENCH_PARTITIONED_LEAVES" >&2
+        exit 2
+        ;;
+esac
+[ "$BENCH_PARTITIONED_LEAVES" -gt 0 ] || {
+    echo "BENCH_PARTITIONED_LEAVES must be positive: $BENCH_PARTITIONED_LEAVES" >&2
+    exit 2
+}
 pk_count="$BENCH_PK_COLUMNS"
-if [ "$pk_count" -lt 1 ] || [ "$pk_count" -gt 3 ]; then
-    echo "BENCH_PK_COLUMNS must be 1, 2 or 3: $BENCH_PK_COLUMNS" >&2
-    exit 2
-fi
-if [ "$BENCH_PARTITIONED_LEAVES" -lt 1 ]; then
-    echo "BENCH_PARTITIONED_LEAVES must be at least 1: $BENCH_PARTITIONED_LEAVES" >&2
-    exit 2
-fi
 pk_mod="$(awk -v n="$BENCH_ROWS" -v p="$pk_count" 'BEGIN { m = 1; while (m ^ p < n) m++; print m }')"
 if [ "$BENCH_PARTITIONED_LEAVES" -gt "$pk_mod" ]; then
     echo "BENCH_PARTITIONED_LEAVES ($BENCH_PARTITIONED_LEAVES) must not exceed the distinct k1 values ($pk_mod) produced for $BENCH_ROWS rows" >&2
