@@ -238,8 +238,8 @@ These changes were applied to the pre-deployment baseline:
 `006-create-migration-tables.sql`, the create/type scripts, routine files,
 grants and rollbacks were edited in place; no compatibility changesets or
 backfills were added, and local/dev/benchmark databases were recreated.
-`LiquibaseUpgradeTest` was suspended while the baseline was edited in place
-(`dml-b87.12`) and was restored in `dml-b87.13` against v1.16.0, the first
+`LiquibaseUpgradeTest` was suspended while the baseline was edited in place (`dml-b87.12`) and was restored in
+`dml-b87.13` against v1.16.0, the first
 release cut from the cleaned changelog.
 
 This policy no longer applies: the baseline is published, so further changes are
