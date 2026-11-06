@@ -68,15 +68,15 @@ class LeafCalculationWorkerTest extends PartitionTestBase {
         long runId = populatePartitionWise("leaf-worker", TABLE, TEMPLATE, ChunkingStrategy.primary_key, 1, null);
         assertEquals(1, calculateNext(runId));
 
-        executeAsOwner("CREATE OR REPLACE FUNCTION " + PARTITION_SCHEMA + ".fail_leaf_two()"
-                + " RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN"
-                + " RAISE EXCEPTION 'injected leaf failure' USING ERRCODE = '55000';"
-                + " RETURN NEW; END; $$");
-        executeAsOwner("CREATE TRIGGER fail_leaf_two BEFORE INSERT"
-                + " ON dml_utils_data.migration_boundary FOR EACH ROW"
-                + " WHEN (NEW.leaf_ordinal = 2)"
-                + " EXECUTE FUNCTION " + PARTITION_SCHEMA + ".fail_leaf_two()");
         try {
+            executeAsOwner("CREATE OR REPLACE FUNCTION " + PARTITION_SCHEMA + ".fail_leaf_two()"
+                    + " RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN"
+                    + " RAISE EXCEPTION 'injected leaf failure' USING ERRCODE = '55000';"
+                    + " RETURN NEW; END; $$");
+            executeAsOwner("CREATE TRIGGER fail_leaf_two BEFORE INSERT"
+                    + " ON dml_utils_data.migration_boundary FOR EACH ROW"
+                    + " WHEN (NEW.leaf_ordinal = 2)"
+                    + " EXECUTE FUNCTION " + PARTITION_SCHEMA + ".fail_leaf_two()");
             assertSqlState("55000", () -> calculateNext(runId));
         } finally {
             executeAsOwner("DROP TRIGGER IF EXISTS fail_leaf_two"
