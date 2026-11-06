@@ -79,10 +79,10 @@ BEGIN
                a.column_type,
                a.key_kind
         FROM dml_utils_lib.ordered_key_attributes_for_index(
-                i_index_oid => l_index.indexrelid,
-                i_schema_name => i_schema_name,
-                i_table_name => i_table_name,
-                i_index_name => i_index_name) AS a;
+                     i_index_oid => l_index.indexrelid,
+                     i_schema_name => i_schema_name,
+                     i_table_name => i_table_name,
+                     i_index_name => i_index_name) AS a;
 END;
 $$;
 

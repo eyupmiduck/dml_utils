@@ -109,17 +109,17 @@ BEGIN
                effective.o_partition_wise
         INTO l_effective
         FROM dml_utils_lib.resume_migration_run(
-                i_run => l_run,
-                i_driving_table_schema_name => i_driving_table_schema_name,
-                i_driving_table_name => i_driving_table_name,
-                i_sql_text => i_sql_text,
-                i_chunk_size => i_chunk_size,
-                i_threads => i_threads,
-                i_driving_table_alias => i_driving_table_alias,
-                i_chunk_by => i_chunk_by,
-                i_sleep_ms => i_sleep_ms,
-                i_boundary_key_index => i_boundary_key_index,
-                i_partition_wise => i_partition_wise) AS effective;
+                     i_run => l_run,
+                     i_driving_table_schema_name => i_driving_table_schema_name,
+                     i_driving_table_name => i_driving_table_name,
+                     i_sql_text => i_sql_text,
+                     i_chunk_size => i_chunk_size,
+                     i_threads => i_threads,
+                     i_driving_table_alias => i_driving_table_alias,
+                     i_chunk_by => i_chunk_by,
+                     i_sleep_ms => i_sleep_ms,
+                     i_boundary_key_index => i_boundary_key_index,
+                     i_partition_wise => i_partition_wise) AS effective;
         o_run_id := l_run.run_id;
 
         o_effective_sql_text := l_effective.o_effective_sql_text;
