@@ -82,7 +82,8 @@ Rules:
   a `<rollback>` block pointing at the rollback file.
 - Every change needs a working rollback.
 - Keep changesets small, focused, and safe to deploy against a live database (see the guidance in `AGENTS.md`).
-- Do not modify an already-deployed changeset. Add a new one instead.
+- Nothing is deployed: edit an existing changeset/routine/trigger in place. Add
+  a changeset only for genuinely new schema state, not as a compatibility shim.
 - Lint changelog SQL before submitting:
 
   ```sh

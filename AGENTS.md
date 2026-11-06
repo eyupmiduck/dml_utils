@@ -90,11 +90,13 @@ jOOQ codegen and tests. CI: GitHub Actions (`.github/workflows/maven.yml`) runs
   with `contents` and `pull-requests` write); the default `GITHUB_TOKEN` is not
   used because GitHub suppresses workflow runs for events it creates, which
   would leave the PR without the required checks.
-- `LiquibaseUpgradeTest` must stay enabled. It resolves the most recent
-  published release below the current `<revision>` and upgrades it to the
-  current changelog. If a baseline change is unavoidable, cut a release from the
-  cleaned changelog first, then re-enable the test against that release; do not
-  leave it `@Disabled` or skip it in CI.
+- `LiquibaseUpgradeTest` resolves the most recent published release below the
+  current `<revision>` and upgrades it to the current changelog. Keep it enabled
+  while changes stay within `runOnChange` changesets (routines, triggers, 005,
+  999) or add new changesets. Editing a non-`runOnChange` changeset
+  (001-004/006) or changing a routine signature breaks the simulated upgrade:
+  disable/remove the test deliberately and update this rule, rather than adding
+  compatibility DDL. Do not leave it silently `@Disabled` or skipped in CI.
 - A release is a `v<version>` tag pushed to `main`. The `Release` workflow (`.github/workflows/release.yml`) derives the
   version from the tag (`-Drevision=${tag#v}`), runs the full `verify` gate, deploys to GitHub
   Packages, then creates the GitHub Release. Do not tag a commit that CI has
@@ -213,11 +215,12 @@ jOOQ codegen and tests. CI: GitHub Actions (`.github/workflows/maven.yml`) runs
   `<createProcedure path="functions/<schema>/<name>.sql" relativeToChangelogFile="true"/>`.
   Liquibase has no `createFunction` change type, so functions use
   `createProcedure` too; the `path` attribute keeps SQL out of the XML.
-- `CREATE OR REPLACE` only replaces a routine with an identical signature.
-  Changing `RETURNS` or a parameter name aborts the deploy, and changing a
-  parameter type leaves the old overload behind. When a signature changes, add
-  an explicit `DROP FUNCTION IF EXISTS <old signature>;` (for example another
-  `sqlFile` in the same changeset) so the deprecated signature is removed.
+- Nothing is deployed: changesets are living definitions. Edit an existing
+  routine file in place rather than appending compatibility changesets or
+  `DROP FUNCTION IF EXISTS` shims. Routine changesets are `runOnChange`, so an
+  in-place body edit is re-applied. If a signature change is genuinely required,
+  change it in place and disable `LiquibaseUpgradeTest` (see Releases); do not
+  keep a compatibility overload.
 - Type routine arguments with the `dml_utils_data` domains (for example
   `non_null_text`, `positive_integer`) so null or invalid inputs fail fast with
   a check-constraint violation.
@@ -265,7 +268,10 @@ jOOQ codegen and tests. CI: GitHub Actions (`.github/workflows/maven.yml`) runs
   `triggers-rollback/` from the `NNN-` file-name rule, like `functions/`.
 - Prefer changes that are safe to deploy against a live database.
 - Consider rollback and idempotency where appropriate.
-- Do not modify an already-deployed changeset unless explicitly instructed.
+- Nothing is deployed, so treat changesets as living definitions: edit the
+  existing SQL/routine/trigger file in place. Add a changeset only for genuinely
+  new schema state (for example a new privilege-ordering step), never as a
+  compatibility shim for an existing one.
 - Liquibase's tracking tables are kept out of the application schemas: they live
   in a dedicated `liquibase` schema as `dml_utils_databasechangelog` and
   `dml_utils_databasechangeloglock`. Every entry point sets this — the jOOQ
