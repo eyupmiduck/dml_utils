@@ -11,7 +11,7 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.stop_migration_workers(
 AS
 $$
 DECLARE
-    l_cancel_failed boolean[] := ARRAY[]::boolean[];
+    l_cancel_failed boolean[] := ARRAY []::boolean[];
     l_finished      boolean;
 BEGIN
     IF i_pids IS NULL OR pg_catalog.cardinality(i_pids) = 0 THEN

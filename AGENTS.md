@@ -93,10 +93,10 @@ jOOQ codegen and tests. CI: GitHub Actions (`.github/workflows/maven.yml`) runs
 - `LiquibaseUpgradeTest` resolves the most recent published release below the
   current `<revision>` and upgrades it to the current changelog. Keep it enabled
   while changes stay within `runOnChange` changesets (routines, triggers, 005,
-  999) or add new changesets. Editing a non-`runOnChange` changeset
-  (001-004/006) or changing a routine signature breaks the simulated upgrade:
-  disable/remove the test deliberately and update this rule, rather than adding
-  compatibility DDL. Do not leave it silently `@Disabled` or skipped in CI.
+    999) or add new changesets. Editing a non-`runOnChange` changeset (001-004/006) or changing a routine signature
+         breaks the simulated upgrade:
+         disable/remove the test deliberately and update this rule, rather than adding
+         compatibility DDL. Do not leave it silently `@Disabled` or skipped in CI.
 - A release is a `v<version>` tag pushed to `main`. The `Release` workflow (`.github/workflows/release.yml`) derives the
   version from the tag (`-Drevision=${tag#v}`), runs the full `verify` gate, deploys to GitHub
   Packages, then creates the GitHub Release. Do not tag a commit that CI has

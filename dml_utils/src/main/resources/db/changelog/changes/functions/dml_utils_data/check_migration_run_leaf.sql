@@ -10,8 +10,10 @@ DECLARE
     l_calculated_at  timestamptz;
     l_cancelled_at   timestamptz;
 BEGIN
-    SELECT run.partition_wise, run.chunk_by,
-           run.boundaries_calculated_at, run.cancelled_at
+    SELECT run.partition_wise,
+           run.chunk_by,
+           run.boundaries_calculated_at,
+           run.cancelled_at
     INTO l_partition_wise, l_chunk_by, l_calculated_at, l_cancelled_at
     FROM dml_utils_data.migration_run AS run
     WHERE run.run_id = NEW.run_id;

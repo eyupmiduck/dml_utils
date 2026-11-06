@@ -68,11 +68,12 @@ BEGIN
                     i_driving_table_name,
                     i_function_schema_name,
                     i_function_name,
-                    CASE WHEN i_filter IS NULL THEN NULL
-                         ELSE 'sha256:' || pg_catalog.encode(
-                                 pg_catalog.sha256(pg_catalog.convert_to(i_filter, 'UTF8')),
-                                 'hex')
-                    END,
+                    CASE
+                        WHEN i_filter IS NULL THEN NULL
+                        ELSE 'sha256:' || pg_catalog.encode(
+                                pg_catalog.sha256(pg_catalog.convert_to(i_filter, 'UTF8')),
+                                'hex')
+                        END,
                     i_chunk_by)::text);
 
     -- Delegate to the base engine: it owns resume, chunk scheduling, error

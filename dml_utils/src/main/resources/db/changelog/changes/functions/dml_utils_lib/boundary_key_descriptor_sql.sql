@@ -60,8 +60,7 @@ BEGIN
             -- A repeated column renders a non-unique boundary key (the same
             -- column aliased and ordered twice), so reject it here where the
             -- key contract is enforced.
-            IF pg_catalog.array_position(i_key_columns, i_key_columns[l_position])
-                IS DISTINCT FROM l_position
+            IF pg_catalog.array_position(i_key_columns, i_key_columns[l_position]) IS DISTINCT FROM l_position
             THEN
                 RAISE EXCEPTION 'boundary-key column % is repeated at position %',
                     i_key_columns[l_position], l_position

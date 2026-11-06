@@ -27,13 +27,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 class LiquibaseUpgradeTest extends UpgradeContract {
 
-    @Override
-    protected PublishedRelease.Coordinates releaseCoordinates() {
-        return new PublishedRelease.Coordinates(
-                "https://maven.pkg.github.com/eyupmiduck/dml_utils",
-                "io.github.eyupmiduck", "dml_utils", currentVersion());
-    }
-
     /**
      * The current revision, injected by the surefire configuration.
      *
@@ -51,6 +44,13 @@ class LiquibaseUpgradeTest extends UpgradeContract {
                             + "run this test through Maven/surefire or set -Dupgrade.current.version");
         }
         return version;
+    }
+
+    @Override
+    protected PublishedRelease.Coordinates releaseCoordinates() {
+        return new PublishedRelease.Coordinates(
+                "https://maven.pkg.github.com/eyupmiduck/dml_utils",
+                "io.github.eyupmiduck", "dml_utils", currentVersion());
     }
 
     /**

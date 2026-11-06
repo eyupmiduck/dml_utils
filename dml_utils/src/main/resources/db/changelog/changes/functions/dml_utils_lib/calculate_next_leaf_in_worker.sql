@@ -105,7 +105,7 @@ BEGIN
         SELECT ordinal
         INTO l_ordinal
         FROM public.pg_background_result(
-                l_handle.pid, l_handle.cookie) AS (ordinal integer);
+                     l_handle.pid, l_handle.cookie) AS (ordinal integer);
     EXCEPTION
         WHEN OTHERS THEN
             BEGIN
