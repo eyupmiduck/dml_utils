@@ -287,7 +287,7 @@ Negative / risks:
 
 ## Baseline policy (pre-deployment, historical)
 
-At the time this decision was made, nothing was deployed, so:
+These changes were applied to the pre-deployment baseline:
 
 - `004`, `005`, `006`, the routine files and `999-grant-privileges.sql` were
   edited in place;

@@ -234,7 +234,7 @@ leaf is rejected.
 
 ### 10. Baseline policy (pre-deployment, historical)
 
-At the time this decision was made, nothing was deployed, so
+These changes were applied to the pre-deployment baseline:
 `006-create-migration-tables.sql`, the create/type scripts, routine files,
 grants and rollbacks were edited in place; no compatibility changesets or
 backfills were added, and local/dev/benchmark databases were recreated.
