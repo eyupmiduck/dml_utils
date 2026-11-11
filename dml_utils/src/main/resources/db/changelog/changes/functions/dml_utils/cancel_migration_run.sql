@@ -15,7 +15,7 @@ BEGIN
     -- update uses, so a race has exactly one winner.
     UPDATE dml_utils_data.migration_run
     SET cancelled_at = pg_catalog.clock_timestamp(),
-        paused_at = NULL
+        paused_at    = NULL
     WHERE label = i_label
       AND archived_at IS NULL
       AND completed_at IS NULL

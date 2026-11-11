@@ -42,7 +42,7 @@ BEGIN
 
     UPDATE dml_utils_data.migration_run
     SET cancelled_at = COALESCE(cancelled_at, pg_catalog.clock_timestamp()),
-        paused_at = NULL
+        paused_at    = NULL
     WHERE run_id = i_run_id
       AND completed_at IS NULL;
 END;
