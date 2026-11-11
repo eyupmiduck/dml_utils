@@ -123,6 +123,10 @@ Rules:
 - Every test class and test method needs Javadoc describing the behavior it
   verifies.
 - Add a regression test when fixing a bug.
+- `LiquibaseUpgradeTest` is temporarily suspended with `@Disabled` for the
+  pre-deployment baseline rewrite tracked by `dml-99x`. Restore it in
+  `dml-99x.3` after a release is cut from the cleaned changelog; do not leave a
+  silent skip or `@Disabled` beyond that release.
 
 ## Branches and commits
 

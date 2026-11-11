@@ -6,6 +6,8 @@ import io.github.eyupmiduck.changelogvalidator.testing.UpgradeContract;
 import java.util.Collection;
 import java.util.List;
 
+import org.junit.jupiter.api.Disabled;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
@@ -24,7 +26,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * cleaned changelog. A release is a prerequisite for a meaningful upgrade test:
  * editing an existing changeset in place changes its Liquibase checksum, so the
  * test must be re-pointed only after the cleaned baseline is published.
+ *
+ * <p>This test is temporarily disabled while the pre-deployment baseline is
+ * edited in place under {@code dml-99x}; restore it in {@code dml-99x.3} after a
+ * release is cut from the cleaned changelog.
  */
+@Disabled("pre-deployment baseline edit; restore in dml-99x.3 after a release is cut from the cleaned changelog")
 class LiquibaseUpgradeTest extends UpgradeContract {
 
     /**
