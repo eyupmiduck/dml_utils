@@ -587,6 +587,10 @@ scripts/build-postgres-image.sh postgres:17-alpine   # once, or after scripts/po
 over the changelog `.sql` files, and the Liquibase changelog linter. Docker must
 be running.
 
+The previous-release `LiquibaseUpgradeTest` is temporarily suspended while the
+pre-deployment baseline is edited under `dml-99x`; it is restored after a release
+is cut from the cleaned changelog (`dml-99x.3`). All other tests remain enabled.
+
 - One test: `./mvnw -pl dml_utils -am test -Dtest=DomainTest`
 - Skip SQLFluff: `./mvnw verify -Dskip.sqlfluff`
 - Skip the changelog linter: `./mvnw verify -Dskip.liquibase-linter`
