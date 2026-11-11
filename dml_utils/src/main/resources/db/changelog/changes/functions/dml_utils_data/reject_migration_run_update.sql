@@ -48,6 +48,27 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
 
+    -- paused_at is a reversible run-control flag, not an immutable identity. It
+    -- may be set or cleared while the run is unfinished and not cancelled; a
+    -- terminal run cannot be paused, and a non-NULL pause timestamp cannot be
+    -- rewritten (a second pause is a no-op). Clearing it to NULL resumes.
+    IF NEW.paused_at IS DISTINCT FROM OLD.paused_at THEN
+        IF OLD.completed_at IS NOT NULL
+            OR OLD.cancelled_at IS NOT NULL
+            OR OLD.archived_at IS NOT NULL
+        THEN
+            RAISE EXCEPTION 'migration_run.paused_at cannot change once the run is terminal'
+                USING ERRCODE = '22023';
+        END IF;
+
+        IF OLD.paused_at IS NOT NULL
+            AND NEW.paused_at IS NOT NULL
+        THEN
+            RAISE EXCEPTION 'migration_run.paused_at is immutable once set; clear it to resume'
+                USING ERRCODE = '22023';
+        END IF;
+    END IF;
+
     -- cancelled_at is set once, by cancel_migration_run or the coordinator; a
     -- second cancellation is a no-op, and the timestamp must not be rewritten.
     IF OLD.cancelled_at IS NOT NULL
@@ -71,4 +92,6 @@ COMMENT ON FUNCTION dml_utils_data.reject_migration_run_update IS
         'boundaries_calculated_at is set (the value is written with that '
         'milestone), rejects clearing or moving boundaries_calculated_at once it '
         'is set, and rejects rewriting a migration_run.cancelled_at that is '
-        'already set; migration_run.total_chunks_completed stays mutable.';
+        'already set. It allows paused_at to be set or cleared on an unfinished, '
+        'non-cancelled run, rejects pausing a terminal run, and rejects rewriting '
+        'a non-NULL paused_at; migration_run.total_chunks_completed stays mutable.';

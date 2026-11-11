@@ -10,6 +10,7 @@ CREATE TABLE dml_utils_data.migration_run
     partition_wise                  boolean                             NOT NULL DEFAULT FALSE,
     threads                         dml_utils_data.positive_integer     NOT NULL,
     sleep_ms                        dml_utils_data.non_negative_integer NOT NULL DEFAULT 0,
+    paused_at                       timestamptz,
     driving_table_schema_name       dml_utils_data.non_null_text        NOT NULL,
     driving_table_name              dml_utils_data.non_null_text        NOT NULL,
     driving_table_alias             dml_utils_data.non_null_text        NOT NULL DEFAULT 't',
@@ -71,6 +72,16 @@ CREATE TABLE dml_utils_data.migration_run
         cancelled_at IS NULL
             OR (started_at IS NOT NULL AND cancelled_at >= started_at)
         ),
+    -- A paused run is unfinished and not cancelled: pause is a reversible flag,
+    -- not a terminal state. The timestamp cannot precede the start, and a
+    -- terminal run cannot be paused.
+    CONSTRAINT migration_run_paused_at_check CHECK (
+        paused_at IS NULL
+            OR (started_at IS NOT NULL
+                AND paused_at >= started_at
+                AND completed_at IS NULL
+                AND cancelled_at IS NULL)
+        ),
     CONSTRAINT migration_run_completed_or_cancelled_check CHECK (
         completed_at IS NULL OR cancelled_at IS NULL
         ),
@@ -110,6 +121,10 @@ COMMENT ON COLUMN dml_utils_data.migration_run.sleep_ms IS
     'Milliseconds to wait after each successfully completed chunk before '
         'launching another; 0 means no delay. Set when the run is created and '
         'changed for later calls with dml_utils.set_migration_run_sleep_ms.';
+COMMENT ON COLUMN dml_utils_data.migration_run.paused_at IS
+    'Actual server time when the run was paused; NULL when it is not paused. A '
+        'paused run is still unfinished and resumable; completing or cancelling '
+        'the run clears it.';
 COMMENT ON COLUMN dml_utils_data.migration_run.driving_table_schema_name IS
     'Schema of the driving table whose primary-key order defines the chunks.';
 COMMENT ON COLUMN dml_utils_data.migration_run.driving_table_name IS
