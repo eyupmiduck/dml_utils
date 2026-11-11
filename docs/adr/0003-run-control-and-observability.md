@@ -71,9 +71,8 @@ dml_utils.resume_migration_run(i_label dml_utils_data.non_null_text)
 Both are `SECURITY DEFINER` with a pinned `search_path`, following
 `cancel_migration_run` and `archive_migration_run`.
 
-- `pause_migration_run` sets `paused_at = clock_timestamp()` on the active
-  (`archived_at IS NULL`), unfinished (`completed_at IS NULL`), non-cancelled
-  (`cancelled_at IS NULL`) run for the label. If the run is already paused it
+- `pause_migration_run` sets `paused_at = clock_timestamp()` on the active (`archived_at IS NULL`), unfinished
+  (`completed_at IS NULL`), non-cancelled (`cancelled_at IS NULL`) run for the label. If the run is already paused it
   returns the same `run_id` without moving the timestamp. It does not mark
   boundaries or leaves. It returns NULL when there is no active unfinished run.
 - `resume_migration_run` clears `paused_at` on the active unfinished,
@@ -195,11 +194,11 @@ the setter changes the next call.
 
 Only these SQLSTATEs are retryable:
 
-| SQLSTATE | Meaning |
-|---|---|
-| `40001` | `serialization_failure` |
-| `40P01` | `deadlock_detected` |
-| `55P03` | `lock_not_available` |
+| SQLSTATE | Meaning                 |
+|----------|-------------------------|
+| `40001`  | `serialization_failure` |
+| `40P01`  | `deadlock_detected`     |
+| `55P03`  | `lock_not_available`    |
 
 `57014` (`query_canceled`) is not retried: cancellation is an intentional
 operator action, not a transient conflict. Arbitrary user SQLSTATEs are not
@@ -374,13 +373,13 @@ Negative / risks:
 
 ## Implementation map
 
-| Bead | Work |
-|---|---|
-| `dml-99x.1` | This design |
-| `dml-99x.2` | Suspend the upgrade test for the baseline edit |
-| `dml-99x.4`–`dml-99x.8` | Partition-wise function, explain, leaf manifest and benchmark |
-| `dml-99x.9`–`dml-99x.11` | Pause schema, control functions and runner |
-| `dml-99x.12`–`dml-99x.14` | Rows-affected schema/capture and progress |
-| `dml-99x.15`–`dml-99x.17` | Retry policy schema, setter and runner |
-| `dml-99x.18`–`dml-99x.19` | Documentation and full verification |
-| `dml-99x.3` | Restore the upgrade test after the next release |
+| Bead                      | Work                                                          |
+|---------------------------|---------------------------------------------------------------|
+| `dml-99x.1`               | This design                                                   |
+| `dml-99x.2`               | Suspend the upgrade test for the baseline edit                |
+| `dml-99x.4`–`dml-99x.8`   | Partition-wise function, explain, leaf manifest and benchmark |
+| `dml-99x.9`–`dml-99x.11`  | Pause schema, control functions and runner                    |
+| `dml-99x.12`–`dml-99x.14` | Rows-affected schema/capture and progress                     |
+| `dml-99x.15`–`dml-99x.17` | Retry policy schema, setter and runner                        |
+| `dml-99x.18`–`dml-99x.19` | Documentation and full verification                           |
+| `dml-99x.3`               | Restore the upgrade test after the next release               |

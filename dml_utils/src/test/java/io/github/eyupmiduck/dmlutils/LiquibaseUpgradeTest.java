@@ -2,11 +2,10 @@ package io.github.eyupmiduck.dmlutils;
 
 import io.github.eyupmiduck.changelogvalidator.testing.PublishedRelease;
 import io.github.eyupmiduck.changelogvalidator.testing.UpgradeContract;
+import org.junit.jupiter.api.Disabled;
 
 import java.util.Collection;
 import java.util.List;
-
-import org.junit.jupiter.api.Disabled;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 

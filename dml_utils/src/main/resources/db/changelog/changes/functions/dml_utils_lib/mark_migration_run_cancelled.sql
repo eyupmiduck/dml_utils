@@ -41,15 +41,16 @@ BEGIN
       AND cancelled_at IS NULL;
 
     UPDATE dml_utils_data.migration_run
-    SET cancelled_at = COALESCE(cancelled_at, pg_catalog.clock_timestamp())
+    SET cancelled_at = COALESCE(cancelled_at, pg_catalog.clock_timestamp()),
+        paused_at    = NULL
     WHERE run_id = i_run_id
       AND completed_at IS NULL;
 END;
 $$;
 
 COMMENT ON FUNCTION dml_utils_lib.mark_migration_run_cancelled IS
-    'Marks a run and its unfinished, uncompleted boundaries cancelled. Locks '
-        'pending boundaries before the run row to match the worker lock order, and '
-        'leaves an already-completed run untouched. SECURITY DEFINER so the '
-        'invoker-owned coordinator does not need metadata write privileges; callers '
-        'run it in an autonomous background worker.';
+    'Marks a run and its unfinished, uncompleted boundaries cancelled, clearing '
+        'any pause. Locks pending boundaries before the run row to match the worker '
+        'lock order, and leaves an already-completed run untouched. SECURITY '
+        'DEFINER so the invoker-owned coordinator does not need metadata write '
+        'privileges; callers run it in an autonomous background worker.';

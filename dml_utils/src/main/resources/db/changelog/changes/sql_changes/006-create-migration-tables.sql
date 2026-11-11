@@ -78,9 +78,9 @@ CREATE TABLE dml_utils_data.migration_run
     CONSTRAINT migration_run_paused_at_check CHECK (
         paused_at IS NULL
             OR (started_at IS NOT NULL
-                AND paused_at >= started_at
-                AND completed_at IS NULL
-                AND cancelled_at IS NULL)
+            AND paused_at >= started_at
+            AND completed_at IS NULL
+            AND cancelled_at IS NULL)
         ),
     CONSTRAINT migration_run_completed_or_cancelled_check CHECK (
         completed_at IS NULL OR cancelled_at IS NULL
