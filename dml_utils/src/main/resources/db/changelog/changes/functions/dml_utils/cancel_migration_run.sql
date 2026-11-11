@@ -14,7 +14,8 @@ BEGIN
     -- completed/cancelled guard is the same one the coordinator's completion
     -- update uses, so a race has exactly one winner.
     UPDATE dml_utils_data.migration_run
-    SET cancelled_at = pg_catalog.clock_timestamp()
+    SET cancelled_at = pg_catalog.clock_timestamp(),
+        paused_at = NULL
     WHERE label = i_label
       AND archived_at IS NULL
       AND completed_at IS NULL
@@ -49,8 +50,8 @@ $$;
 
 COMMENT ON FUNCTION dml_utils.cancel_migration_run IS
     'Cancels the active (not archived, unfinished) migration run for the label, '
-        'if any: sets its cancelled_at and marks its unclaimed pending boundaries '
-        'cancelled, leaving boundaries held by an in-flight worker for the '
-        'coordinator to mark after it cancels them. Returns the cancelled run_id, '
-        'or NULL when there was no active unfinished run. A cancelled run is '
-        'terminal; archive it and create a new run to resume.';
+        'if any: sets its cancelled_at, clears paused_at and marks its unclaimed '
+        'pending boundaries cancelled, leaving boundaries held by an in-flight '
+        'worker for the coordinator to mark after it cancels them. Returns the '
+        'cancelled run_id, or NULL when there was no active unfinished run. A '
+        'cancelled run is terminal; archive it and create a new run to resume.';

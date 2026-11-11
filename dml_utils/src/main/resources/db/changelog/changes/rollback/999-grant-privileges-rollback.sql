@@ -777,6 +777,18 @@ REVOKE EXECUTE ON FUNCTION dml_utils.cancel_migration_run(
 GRANT EXECUTE ON FUNCTION dml_utils.cancel_migration_run(
     dml_utils_data.non_null_text
     ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils.pause_migration_run(
+    dml_utils_data.non_null_text
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils.pause_migration_run(
+    dml_utils_data.non_null_text
+    ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils.resume_migration_run(
+    dml_utils_data.non_null_text
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils.resume_migration_run(
+    dml_utils_data.non_null_text
+    ) TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils.delete_archived_migration_runs() FROM dml_utils_caller;
 GRANT EXECUTE ON FUNCTION dml_utils.delete_archived_migration_runs() TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils.delete_archived_migration_runs(
