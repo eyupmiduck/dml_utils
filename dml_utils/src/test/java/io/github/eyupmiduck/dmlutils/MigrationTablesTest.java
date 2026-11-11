@@ -71,6 +71,7 @@ class MigrationTablesTest extends PostgresTestBase {
         assertTrue(hasColumn("dml_utils_data", "migration_run", "completed_at"), "completed_at should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "cancelled_at"), "cancelled_at should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "sleep_ms"), "sleep_ms should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_run", "paused_at"), "paused_at should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "driving_table_schema_name"),
                 "driving_table_schema_name should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "driving_table_name"),
@@ -291,6 +292,88 @@ class MigrationTablesTest extends PostgresTestBase {
         assertSqlState("22023", () -> dsl.update(MIGRATION_RUN)
                 .set(MIGRATION_RUN.CANCELLED_AT, (OffsetDateTime) null)
                 .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute());
+    }
+
+    /**
+     * Pause is a reversible, non-terminal flag: it requires a start, cannot be
+     * rewritten once set, can be cleared to resume, and cannot be set on a
+     * terminal run.
+     */
+    @Test
+    void enforcesTheRunPauseTimeline() {
+        Long runId = insertRun();
+
+        // A pause cannot precede the run start.
+        assertDomainViolation(() -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.PAUSED_AT, OffsetDateTime.parse("2020-01-01T00:00:00Z"))
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute());
+
+        dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.STARTED_AT, OffsetDateTime.parse("2020-01-02T00:00:00Z"))
+                .set(MIGRATION_RUN.PAUSED_AT, OffsetDateTime.parse("2020-01-03T00:00:00Z"))
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute();
+
+        // A set pause cannot be rewritten, but writing the same value is a no-op.
+        assertSqlState("22023", () -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.PAUSED_AT, OffsetDateTime.parse("2020-01-04T00:00:00Z"))
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute());
+        OffsetDateTime pausedAt = dsl.select(MIGRATION_RUN.PAUSED_AT)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_RUN.PAUSED_AT);
+        dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.PAUSED_AT, pausedAt)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute();
+
+        // Clearing the flag resumes the run.
+        dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.PAUSED_AT, (OffsetDateTime) null)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute();
+
+        // A paused run cannot be completed or cancelled without clearing the flag
+        // in the same statement.
+        dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.PAUSED_AT, OffsetDateTime.parse("2020-01-05T00:00:00Z"))
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute();
+        assertDomainViolation(() -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.COMPLETED_AT, OffsetDateTime.parse("2020-01-06T00:00:00Z"))
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute());
+        assertDomainViolation(() -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.CANCELLED_AT, OffsetDateTime.parse("2020-01-06T00:00:00Z"))
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute());
+
+        // Clearing the pause in the same statement as completion is allowed.
+        dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.PAUSED_AT, (OffsetDateTime) null)
+                .set(MIGRATION_RUN.COMPLETED_AT, OffsetDateTime.parse("2020-01-06T00:00:00Z"))
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute();
+
+        // A completed run cannot be paused.
+        assertSqlState("22023", () -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.PAUSED_AT, OffsetDateTime.parse("2020-01-07T00:00:00Z"))
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute());
+
+        // A cancelled run cannot be paused either.
+        Long cancelled = insertRun();
+        dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.STARTED_AT, OffsetDateTime.parse("2020-01-01T00:00:00Z"))
+                .set(MIGRATION_RUN.CANCELLED_AT, OffsetDateTime.parse("2020-01-02T00:00:00Z"))
+                .where(MIGRATION_RUN.RUN_ID.eq(cancelled))
+                .execute();
+        assertSqlState("22023", () -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.PAUSED_AT, OffsetDateTime.parse("2020-01-03T00:00:00Z"))
+                .where(MIGRATION_RUN.RUN_ID.eq(cancelled))
                 .execute());
     }
 

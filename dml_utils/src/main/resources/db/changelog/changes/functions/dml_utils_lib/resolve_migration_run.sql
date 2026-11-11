@@ -55,6 +55,7 @@ BEGIN
            partition_wise,
            threads,
            sleep_ms,
+           paused_at,
            driving_table_schema_name,
            driving_table_name,
            driving_table_alias,
