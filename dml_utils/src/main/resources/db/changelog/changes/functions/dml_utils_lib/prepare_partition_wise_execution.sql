@@ -11,17 +11,18 @@ $$
 DECLARE
     l_boundaries_calculated_at timestamptz;
     l_cancelled_at             timestamptz;
+    l_paused_at                timestamptz;
 BEGIN
-    SELECT run.boundaries_calculated_at
-    INTO l_boundaries_calculated_at
+    SELECT run.boundaries_calculated_at, run.paused_at
+    INTO l_boundaries_calculated_at, l_paused_at
     FROM dml_utils_data.migration_run AS run
     WHERE run.run_id = i_run_id;
 
     IF l_boundaries_calculated_at IS NULL THEN
         PERFORM dml_utils_lib.calculate_migration_run_boundaries(i_run_id => i_run_id);
 
-        SELECT run.cancelled_at, run.boundaries_calculated_at
-        INTO l_cancelled_at, l_boundaries_calculated_at
+        SELECT run.cancelled_at, run.paused_at, run.boundaries_calculated_at
+        INTO l_cancelled_at, l_paused_at, l_boundaries_calculated_at
         FROM dml_utils_data.migration_run AS run
         WHERE run.run_id = i_run_id;
 
@@ -41,10 +42,19 @@ BEGIN
             RAISE NOTICE 'run for label % was cancelled during boundary calculation', i_label;
             RETURN false;
         END IF;
+
+        IF l_paused_at IS NOT NULL THEN
+            RAISE NOTICE 'run for label % was paused during boundary calculation; resume it with dml_utils.resume_migration_run', i_label;
+            RETURN false;
+        END IF;
+
         IF l_boundaries_calculated_at IS NULL THEN
             RAISE EXCEPTION 'run % boundary calculation did not finish', i_run_id
                 USING ERRCODE = '55000';
         END IF;
+    ELSIF l_paused_at IS NOT NULL THEN
+        RAISE NOTICE 'run for label % is paused; resume it with dml_utils.resume_migration_run', i_label;
+        RETURN false;
     END IF;
 
     -- The live tree is compared with the manifest before processing, so a
@@ -61,6 +71,7 @@ COMMENT ON FUNCTION dml_utils_lib.prepare_partition_wise_execution(
     ) IS
     'Prepares a partition-wise run for processing: finishes any pending one-leaf-'
         'per-transaction boundary calculation, returns false after marking a run '
-        'that was cancelled during calculation, and compares the live tree with '
-        'the manifest. A calculation that neither finishes nor cancels raises '
-        '55000. Returns true when the run is ready to process.';
+        'that was cancelled during calculation, returns false without processing '
+        'while the run is paused, and compares the live tree with the manifest. A '
+        'calculation that neither finishes nor cancels raises 55000. Returns true '
+        'when the run is ready to process.';
