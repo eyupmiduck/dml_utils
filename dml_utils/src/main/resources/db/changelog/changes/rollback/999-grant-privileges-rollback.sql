@@ -765,6 +765,16 @@ GRANT EXECUTE ON FUNCTION dml_utils.set_migration_run_sleep_ms(
     dml_utils_data.non_null_text,
     dml_utils_data.non_negative_integer
     ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils.set_migration_run_retries(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_negative_integer,
+    dml_utils_data.non_negative_integer
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils.set_migration_run_retries(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_negative_integer,
+    dml_utils_data.non_negative_integer
+    ) TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils.archive_migration_run(
     dml_utils_data.non_null_text
     ) FROM dml_utils_caller;
