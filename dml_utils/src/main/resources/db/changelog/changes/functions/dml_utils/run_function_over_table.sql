@@ -27,7 +27,11 @@ CREATE OR REPLACE FUNCTION dml_utils.run_function_over_table(
     i_boundary_key_index name DEFAULT NULL,
     -- When true, the driving table is a declarative partitioned parent and the
     -- chosen strategy is applied inside each leaf.
-    i_partition_wise dml_utils_data.non_null_boolean DEFAULT FALSE
+    i_partition_wise dml_utils_data.non_null_boolean DEFAULT FALSE,
+    -- Initial transient-retry policy for a new run; a resumed run uses its stored
+    -- values.
+    i_max_retries dml_utils_data.non_negative_integer DEFAULT 3,
+    i_retry_backoff_ms dml_utils_data.non_negative_integer DEFAULT 1000
 )
     RETURNS void
     LANGUAGE plpgsql
@@ -114,7 +118,9 @@ BEGIN
             i_poll_timeout_ms => i_poll_timeout_ms,
             i_sleep_ms => i_sleep_ms,
             i_boundary_key_index => i_boundary_key_index,
-            i_partition_wise => i_partition_wise);
+            i_partition_wise => i_partition_wise,
+            i_max_retries => i_max_retries,
+            i_retry_backoff_ms => i_retry_backoff_ms);
 END;
 $$;
 
@@ -131,7 +137,9 @@ COMMENT ON FUNCTION dml_utils.run_function_over_table(
     dml_utils_data.positive_integer,
     dml_utils_data.non_negative_integer,
     name,
-    dml_utils_data.non_null_boolean
+    dml_utils_data.non_null_boolean,
+    dml_utils_data.non_negative_integer,
+    dml_utils_data.non_negative_integer
     ) IS
     'Runs a user-supplied void function once per row of the driving table, chunk '
         'by chunk, resuming by label (derived from the table, function, filter, '
@@ -145,4 +153,6 @@ COMMENT ON FUNCTION dml_utils.run_function_over_table(
         'leaf of a declarative partitioned parent. blocks requires a quiescent, '
         'read-only driving table and is unsafe when the function updates the '
         'driving table in place. i_sleep_ms seeds a new run''s per-chunk delay; a '
-        'resumed run uses its stored value.';
+        'resumed run uses its stored value. i_max_retries and i_retry_backoff_ms '
+        'seed a new run''s transient-retry policy; a resumed run uses the stored '
+        'values.';

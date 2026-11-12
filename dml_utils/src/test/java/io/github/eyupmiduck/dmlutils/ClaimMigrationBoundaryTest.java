@@ -121,7 +121,7 @@ class ClaimMigrationBoundaryTest extends PostgresTestBase {
         return Routines.populateMigrationBoundaries(dsl.configuration(),
                 TEST_BIGINT.getSchema().getName(), TEST_BIGINT.getName(),
                 uniqueLabel("claim-boundary"), "SELECT 1", chunkSize, 1,
-                ChunkingStrategy.primary_key, "t", 0, null, false);
+                ChunkingStrategy.primary_key, "t", 0, null, false, 3, 1000);
     }
 
     private OffsetDateTime claim(long runId, long boundaryNo) {

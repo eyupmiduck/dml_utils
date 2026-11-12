@@ -9,7 +9,9 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.create_migration_run(
     i_driving_table_alias dml_utils_data.non_null_text,
     i_sleep_ms dml_utils_data.non_negative_integer,
     i_boundary_key_index name,
-    i_partition_wise dml_utils_data.non_null_boolean
+    i_partition_wise dml_utils_data.non_null_boolean,
+    i_max_retries dml_utils_data.non_negative_integer,
+    i_retry_backoff_ms dml_utils_data.non_negative_integer
 )
     RETURNS bigint
     LANGUAGE plpgsql
@@ -30,7 +32,7 @@ BEGIN
     -- Populate the boundaries in a worker so the run and its boundaries commit
     -- autonomously and become visible to the processing workers.
     l_handle := public.pg_background_launch(pg_catalog.format(
-            'SELECT dml_utils_lib.populate_migration_boundaries(%L, %L, %L, %L, %s, %s, %L, %L, %s, %L, %L) AS run_id',
+            'SELECT dml_utils_lib.populate_migration_boundaries(%L, %L, %L, %L, %s, %s, %L, %L, %s, %L, %L, %s, %s) AS run_id',
             i_schema_name,
             i_table_name,
             i_label,
@@ -41,7 +43,9 @@ BEGIN
             i_driving_table_alias,
             i_sleep_ms,
             i_boundary_key_index,
-            i_partition_wise::boolean));
+            i_partition_wise::boolean,
+            i_max_retries,
+            i_retry_backoff_ms));
     PERFORM public.pg_background_wait(l_handle.pid, l_handle.cookie);
 
     -- result() is one-time consumption and auto-detaches; it re-raises the
@@ -65,7 +69,9 @@ COMMENT ON FUNCTION dml_utils_lib.create_migration_run(
     dml_utils_data.non_null_text,
     dml_utils_data.non_negative_integer,
     name,
-    dml_utils_data.non_null_boolean
+    dml_utils_data.non_null_boolean,
+    dml_utils_data.non_negative_integer,
+    dml_utils_data.non_negative_integer
     ) IS
     'Creates a new run by calling populate_migration_boundaries in a pg_background '
         'worker, so the run and its boundaries commit autonomously, and returns '

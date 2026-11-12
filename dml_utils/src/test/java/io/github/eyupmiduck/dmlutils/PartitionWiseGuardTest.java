@@ -289,7 +289,7 @@ class PartitionWiseGuardTest extends PartitionTestBase {
                           boolean partitionWise) {
         return io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines
                 .populateMigrationBoundaries(dsl.configuration(), SCHEMA, table, label, TEMPLATE,
-                        chunkSize, 1, chunkBy, "t", 0, null, partitionWise);
+                        chunkSize, 1, chunkBy, "t", 0, null, partitionWise, 3, 1000);
     }
 
     private String liveFilepath(String leafName) {

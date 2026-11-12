@@ -217,7 +217,7 @@ class PartitionWiseValidationTest extends PartitionTestBase {
     void leafValidationRejectsANonPartitionedRun() {
         long runId = Routines.populateMigrationBoundaries(dsl.configuration(), PARTITION_SCHEMA,
                 "test_bigint", uniqueLabel("validation-plain-leaf"), "SELECT 1", 1, 1,
-                ChunkingStrategy.primary_key, "t", 0, null, false);
+                ChunkingStrategy.primary_key, "t", 0, null, false, 3, 1000);
 
         assertSqlState("22023", () -> Routines.assertPartitionedOrderedKeyLeaves(
                 dsl.configuration(), runId, "ignored"));
@@ -238,7 +238,7 @@ class PartitionWiseValidationTest extends PartitionTestBase {
         String index = "test_partitioned_multi_ordered_key_idx";
         long runId = Routines.populateMigrationBoundaries(dsl.configuration(), PARTITION_SCHEMA,
                 "test_partitioned_multi", label, TEMPLATE, 2, 1,
-                ChunkingStrategy.ordered_key, "t", 0, index, true);
+                ChunkingStrategy.ordered_key, "t", 0, index, true, 3, 1000);
         assertNotNull(run(label));
 
         executeAsOwner("DROP INDEX " + PARTITION_SCHEMA + "." + index);
@@ -264,18 +264,18 @@ class PartitionWiseValidationTest extends PartitionTestBase {
     private long populateOrdered(String label, String index) {
         return Routines.populateMigrationBoundaries(dsl.configuration(), PARTITION_SCHEMA,
                 PARTITIONED_RANGE, label, TEMPLATE, 2, 1, ChunkingStrategy.ordered_key,
-                "t", 0, index, true);
+                "t", 0, index, true, 3, 1000);
     }
 
     private long populate(String table, String label, int chunkSize, ChunkingStrategy chunkBy) {
         return Routines.populateMigrationBoundaries(dsl.configuration(), PARTITION_SCHEMA,
-                table, label, TEMPLATE, chunkSize, 1, chunkBy, "t", 0, null, true);
+                table, label, TEMPLATE, chunkSize, 1, chunkBy, "t", 0, null, true, 3, 1000);
     }
 
     private void run(String table, String label, int chunkSize, ChunkingStrategy chunkBy,
                      String boundaryKeyIndex) {
         io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines.runMigrationChunks(dsl.configuration(), TEMPLATE, PARTITION_SCHEMA, table,
-                label, chunkSize, 1, "t", chunkBy, 1, 0, boundaryKeyIndex, true);
+                label, chunkSize, 1, "t", chunkBy, 1, 0, boundaryKeyIndex, true, 3, 1000);
     }
 
     private MigrationRunRecord run(String label) {

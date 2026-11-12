@@ -67,7 +67,7 @@ class RunMigrationChunksPauseTest extends PostgresTestBase {
                 DSLContext ownerDsl = DSL.using(owner, SQLDialect.POSTGRES);
                 Routines.runMigrationChunks(ownerDsl.configuration(), SLOW_TEMPLATE,
                         schema(TEST_BIGINT), name(TEST_BIGINT), label, 2, 1, "t",
-                        ChunkingStrategy.primary_key, 1, 0, null, false);
+                        ChunkingStrategy.primary_key, 1, 0, null, false, 3, 1000);
             } catch (SQLException error) {
                 throw new CompletionException(error);
             }
@@ -92,7 +92,7 @@ class RunMigrationChunksPauseTest extends PostgresTestBase {
         long completedBefore = completedBoundaries(runId);
         Routines.runMigrationChunks(dsl.configuration(), FAST_TEMPLATE,
                 schema(TEST_BIGINT), name(TEST_BIGINT), label, 2, 1, "t",
-                ChunkingStrategy.primary_key, 1, 0, null, false);
+                ChunkingStrategy.primary_key, 1, 0, null, false, 3, 1000);
 
         assertEquals(completedBefore, completedBoundaries(runId),
                 "a repeated call must not auto-resume a paused run");
@@ -101,7 +101,7 @@ class RunMigrationChunksPauseTest extends PostgresTestBase {
         assertEquals(runId, Routines.resumeMigrationRun(dsl.configuration(), label));
         Routines.runMigrationChunks(dsl.configuration(), FAST_TEMPLATE,
                 schema(TEST_BIGINT), name(TEST_BIGINT), label, 2, 1, "t",
-                ChunkingStrategy.primary_key, 1, 0, null, false);
+                ChunkingStrategy.primary_key, 1, 0, null, false, 3, 1000);
 
         record = run(runId);
         assertNotNull(record.getCompletedAt(), "the resumed run completes");
@@ -125,7 +125,7 @@ class RunMigrationChunksPauseTest extends PostgresTestBase {
                 DSLContext ownerDsl = DSL.using(owner, SQLDialect.POSTGRES);
                 Routines.runMigrationChunks(ownerDsl.configuration(), FAST_TEMPLATE,
                         schema(TEST_BIGINT), name(TEST_BIGINT), label, 1, 1, "t",
-                        ChunkingStrategy.primary_key, 1, 5_000, null, false);
+                        ChunkingStrategy.primary_key, 1, 5_000, null, false, 3, 1000);
             } catch (SQLException error) {
                 throw new CompletionException(error);
             }
@@ -159,7 +159,7 @@ class RunMigrationChunksPauseTest extends PostgresTestBase {
 
         Routines.runMigrationChunks(dsl.configuration(), FAST_TEMPLATE,
                 schema(TEST_BIGINT), name(TEST_BIGINT), label, 2, 1, "t",
-                ChunkingStrategy.primary_key, 1, 0, null, false);
+                ChunkingStrategy.primary_key, 1, 0, null, false, 3, 1000);
 
         MigrationRunRecord record = run(runId);
         assertNotNull(record.getCompletedAt(), "completion wins over pause");
@@ -180,7 +180,7 @@ class RunMigrationChunksPauseTest extends PostgresTestBase {
                 DSLContext ownerDsl = DSL.using(owner, SQLDialect.POSTGRES);
                 Routines.runMigrationChunks(ownerDsl.configuration(), SLOW_TEMPLATE,
                         schema(TEST_BIGINT), name(TEST_BIGINT), label, 1, 1, "t",
-                        ChunkingStrategy.primary_key, 1, 0, null, false);
+                        ChunkingStrategy.primary_key, 1, 0, null, false, 3, 1000);
             } catch (SQLException error) {
                 throw new CompletionException(error);
             }
@@ -253,7 +253,7 @@ class RunMigrationChunksPauseTest extends PostgresTestBase {
     private Long populate(String label) {
         return io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
                 dsl.configuration(), schema(TEST_BIGINT), name(TEST_BIGINT), label,
-                FAST_TEMPLATE, 2, 1, ChunkingStrategy.primary_key, "t", 0, null, false);
+                FAST_TEMPLATE, 2, 1, ChunkingStrategy.primary_key, "t", 0, null, false, 3, 1000);
     }
 
     /**

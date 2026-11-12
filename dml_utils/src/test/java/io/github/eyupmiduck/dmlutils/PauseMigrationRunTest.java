@@ -222,7 +222,7 @@ class PauseMigrationRunTest extends PostgresTestBase {
     private Long populate(String label) {
         return io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
                 dsl.configuration(), schema(TEST_BIGINT), name(TEST_BIGINT), label,
-                TEMPLATE, 2, 1, ChunkingStrategy.primary_key, "t", 0, null, false);
+                TEMPLATE, 2, 1, ChunkingStrategy.primary_key, "t", 0, null, false, 3, 1000);
     }
 
     /**
@@ -233,7 +233,7 @@ class PauseMigrationRunTest extends PostgresTestBase {
     private void runToCompletion(String label) {
         Routines.runMigrationChunks(dsl.configuration(), TEMPLATE,
                 schema(TEST_BIGINT), name(TEST_BIGINT), label, 1, 1, "t",
-                ChunkingStrategy.primary_key, 1, 0, null, false);
+                ChunkingStrategy.primary_key, 1, 0, null, false, 3, 1000);
     }
 
     /**

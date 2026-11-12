@@ -501,7 +501,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
         assertSqlState("22012", () -> Routines.runMigrationChunks(
                 dsl.configuration(),
                 "UPDATE <driving_table> SET payload = (1 / 0)::text WHERE <chunking_clause>",
-                schema(TEST_BIGINT), name(TEST_BIGINT), label, 2, 1, "t", ChunkingStrategy.primary_key, 1, 0, null, false));
+                schema(TEST_BIGINT), name(TEST_BIGINT), label, 2, 1, "t", ChunkingStrategy.primary_key, 1, 0, null, false, 3, 1000));
 
         long runId = runId(label);
         assertFalse(runCompleted(runId), "a failed run must not be marked complete");
@@ -653,7 +653,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     @Test
     void rejectsNullSqlText() {
         assertDomainViolation(() -> Routines.runMigrationChunks(
-                dsl.configuration(), null, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 1, "t", ChunkingStrategy.primary_key, 1, 0, null, false));
+                dsl.configuration(), null, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 1, "t", ChunkingStrategy.primary_key, 1, 0, null, false, 3, 1000));
     }
 
     /**
@@ -662,7 +662,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     @Test
     void rejectsBlankLabel() {
         assertDomainViolation(() -> Routines.runMigrationChunks(
-                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "   ", 2, 1, "t", ChunkingStrategy.primary_key, 1, 0, null, false));
+                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "   ", 2, 1, "t", ChunkingStrategy.primary_key, 1, 0, null, false, 3, 1000));
     }
 
     /**
@@ -671,7 +671,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     @Test
     void rejectsNonPositiveChunkSize() {
         assertDomainViolation(() -> Routines.runMigrationChunks(
-                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 0, 1, "t", ChunkingStrategy.primary_key, 1, 0, null, false));
+                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 0, 1, "t", ChunkingStrategy.primary_key, 1, 0, null, false, 3, 1000));
     }
 
     /**
@@ -680,7 +680,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     @Test
     void rejectsNullAlias() {
         assertDomainViolation(() -> Routines.runMigrationChunks(
-                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 1, null, ChunkingStrategy.primary_key, 1, 0, null, false));
+                dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 1, null, ChunkingStrategy.primary_key, 1, 0, null, false, 3, 1000));
     }
 
     /**
@@ -889,7 +889,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
 
         assertSqlState("22023", () -> Routines.runMigrationChunks(
                 dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2,
-                tooMany, "t", ChunkingStrategy.primary_key, 1, 0, null, false));
+                tooMany, "t", ChunkingStrategy.primary_key, 1, 0, null, false, 3, 1000));
     }
 
     /**
@@ -1037,7 +1037,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     void runMigrationChunksRejectsNullSleep() {
         assertDomainViolation(() -> Routines.runMigrationChunks(
                 dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT),
-                "l", 2, 1, "t", ChunkingStrategy.primary_key, 1, null, null, false));
+                "l", 2, 1, "t", ChunkingStrategy.primary_key, 1, null, null, false, 3, 1000));
     }
 
     /**
@@ -1116,7 +1116,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     void rejectsNonPositiveThreads() {
         assertDomainViolation(() -> Routines.runMigrationChunks(
                 dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 0,
-                "t", ChunkingStrategy.primary_key, 1, 0, null, false));
+                "t", ChunkingStrategy.primary_key, 1, 0, null, false, 3, 1000));
     }
 
     /**
@@ -1128,7 +1128,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     void rejectsNonPositivePollTimeout() {
         assertDomainViolation(() -> Routines.runMigrationChunks(
                 dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 1,
-                "t", ChunkingStrategy.primary_key, 0, 0, null, false));
+                "t", ChunkingStrategy.primary_key, 0, 0, null, false, 3, 1000));
     }
 
     /**
@@ -1142,7 +1142,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
 
         Routines.runMigrationChunks(
                 dsl.configuration(), TEMPLATE, schema(TEST_BIGINT), name(TEST_BIGINT), label, 2, 1,
-                "t", ChunkingStrategy.primary_key, 50, 0, null, false);
+                "t", ChunkingStrategy.primary_key, 50, 0, null, false, 3, 1000);
 
         assertEquals(4, doneCount(TEST_BIGINT), "every row should be processed");
         assertTrue(runCompleted(runId(label)), "the run should be marked complete");
@@ -1291,7 +1291,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
     private long populate(Table<?> table, String label, String template, int chunkSize, int threads,
                           int sleepMs) {
         return io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
-                dsl.configuration(), schema(table), name(table), label, template, chunkSize, threads, ChunkingStrategy.primary_key, "t", sleepMs, null, false);
+                dsl.configuration(), schema(table), name(table), label, template, chunkSize, threads, ChunkingStrategy.primary_key, "t", sleepMs, null, false, 3, 1000);
     }
 
     private String label(String suffix) {
@@ -1310,7 +1310,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
                               Table<?> table) {
         Routines.runMigrationChunks(
                 dsl.configuration(), template, schema(table), name(table), label, chunkSize, threads,
-                "t", ChunkingStrategy.primary_key, 1, sleepMs, null, false);
+                "t", ChunkingStrategy.primary_key, 1, sleepMs, null, false, 3, 1000);
     }
 
     private void runOrderedKey(String label, int chunkSize, int threads) {
@@ -1318,7 +1318,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
                 dsl.configuration(), TEMPLATE,
                 TEST_ORDERED_KEY.getSchema().getName(), TEST_ORDERED_KEY.getName(),
                 label, chunkSize, threads, "t", ChunkingStrategy.ordered_key, 1, 0,
-                "test_ordered_key_created_at_id_idx", false);
+                "test_ordered_key_created_at_id_idx", false, 3, 1000);
     }
 
     /**

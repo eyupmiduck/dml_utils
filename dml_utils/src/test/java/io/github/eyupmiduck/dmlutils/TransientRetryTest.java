@@ -1,0 +1,308 @@
+package io.github.eyupmiduck.dmlutils;
+
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.enums.ChunkingStrategy;
+import org.jooq.DSLContext;
+import org.jooq.Record;
+import org.jooq.SQLDialect;
+import org.jooq.impl.DSL;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.TimeUnit;
+
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationError.MIGRATION_ERROR;
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
+
+/**
+ * Verifies the coordinator transient-retry policy: serialization failures,
+ * deadlocks and lock-not-available errors are retried within the run's budget,
+ * non-transient errors are not retried, exhaustion records the error, and pause
+ * or cancellation interrupts the retry backoff.
+ */
+class TransientRetryTest extends PostgresTestBase {
+
+    private static final String SEQUENCE = "public.retry_probe_seq";
+
+    /**
+     * Clears the fixture and metadata, then creates a fresh probe sequence and the
+     * two transient-error functions.
+     */
+    @BeforeEach
+    void resetFixtures() {
+        dsl.deleteFrom(MIGRATION_RUN).execute();
+        dsl.truncate(TEST_BIGINT).execute();
+        dsl.execute("DROP FUNCTION IF EXISTS public.retry_once(text)");
+        dsl.execute("DROP FUNCTION IF EXISTS public.fail_counted(text)");
+        dsl.execute("DROP SEQUENCE IF EXISTS " + SEQUENCE);
+        dsl.execute("CREATE SEQUENCE " + SEQUENCE);
+        dsl.execute("GRANT USAGE, SELECT ON SEQUENCE " + SEQUENCE
+                + " TO dml_utils_owner, dml_utils_caller");
+        dsl.execute("CREATE FUNCTION public.retry_once(p_code text) RETURNS void"
+                + " LANGUAGE plpgsql AS $$"
+                + " BEGIN"
+                + "   IF nextval('" + SEQUENCE + "') = 1 THEN"
+                + "     RAISE EXCEPTION 'transient' USING ERRCODE = p_code;"
+                + "   END IF;"
+                + " END $$");
+        dsl.execute("CREATE FUNCTION public.fail_counted(p_code text) RETURNS void"
+                + " LANGUAGE plpgsql AS $$"
+                + " BEGIN"
+                + "   PERFORM nextval('" + SEQUENCE + "');"
+                + "   RAISE EXCEPTION 'permanent' USING ERRCODE = p_code;"
+                + " END $$");
+    }
+
+    /**
+     * Drops the probe functions and sequence.
+     */
+    @AfterEach
+    void dropProbe() {
+        dsl.execute("DROP FUNCTION IF EXISTS public.retry_once(text)");
+        dsl.execute("DROP FUNCTION IF EXISTS public.fail_counted(text)");
+        dsl.execute("DROP SEQUENCE IF EXISTS " + SEQUENCE);
+    }
+
+    /**
+     * Each transient SQLSTATE is retried once and then succeeds, leaving no
+     * migration error row.
+     */
+    @Test
+    void retriesEachTransientSqlstateOnceThenSucceeds() {
+        seedBigint(1);
+        for (String code : List.of("40001", "40P01", "55P03")) {
+            dsl.deleteFrom(MIGRATION_RUN).execute();
+            dsl.execute("ALTER SEQUENCE " + SEQUENCE + " RESTART WITH 1");
+            String label = uniqueLabel("retry-" + code);
+
+            run(label, template("retry_once", code), 2, 0);
+
+            long runId = runId(label);
+            assertTrue(runCompleted(label),
+                    code + " should be retried and the run should complete");
+            assertEquals(0, dsl.fetchCount(MIGRATION_ERROR, MIGRATION_ERROR.RUN_ID.eq(runId)),
+                    code + " should leave no error row after recovery");
+            assertEquals(2L, lastProbeValue(),
+                    "the first attempt fails and the retry succeeds for " + code);
+        }
+    }
+
+    /**
+     * Retry exhaustion records the final transient error and leaves the run
+     * incomplete.
+     */
+    @Test
+    void retryExhaustionRecordsTheFinalError() {
+        seedBigint(1);
+        String label = uniqueLabel("retry-exhausted");
+
+        assertSqlState("40P01", () -> run(label,
+                template("fail_counted", "40P01"), 1, 0));
+
+        long runId = runId(label);
+        assertNull(run(runId).getCompletedAt(), "the exhausted run is not complete");
+        assertEquals(1, dsl.fetchCount(MIGRATION_ERROR, MIGRATION_ERROR.RUN_ID.eq(runId)),
+                "exhaustion records exactly one error row");
+        assertEquals("40P01", dsl.select(MIGRATION_ERROR.SQLSTATE)
+                .from(MIGRATION_ERROR)
+                .where(MIGRATION_ERROR.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_ERROR.SQLSTATE));
+        assertEquals(2L, lastProbeValue(),
+                "one initial attempt plus one configured retry");
+    }
+
+    /**
+     * A non-transient SQLSTATE is not retried even with a retry budget.
+     */
+    @Test
+    void doesNotRetryANonTransientError() {
+        seedBigint(1);
+        String label = uniqueLabel("retry-permanent");
+
+        assertSqlState("22012", () -> run(label,
+                template("fail_counted", "22012"), 3, 0));
+
+        long runId = runId(label);
+        assertNull(run(runId).getCompletedAt(), "the failed run is not complete");
+        assertEquals(1, dsl.fetchCount(MIGRATION_ERROR, MIGRATION_ERROR.RUN_ID.eq(runId)),
+                "the non-transient error is recorded once");
+        assertEquals(1L, lastProbeValue(), "the function is attempted only once");
+    }
+
+    /**
+     * A zero retry budget disables retries.
+     */
+    @Test
+    void zeroRetriesNeverRetries() {
+        seedBigint(1);
+        String label = uniqueLabel("retry-zero");
+
+        assertSqlState("40P01", () -> run(label,
+                template("retry_once", "40P01"), 0, 0));
+
+        long runId = runId(label);
+        assertNull(run(runId).getCompletedAt(), "the run is not complete");
+        assertEquals(1, dsl.fetchCount(MIGRATION_ERROR, MIGRATION_ERROR.RUN_ID.eq(runId)));
+        assertEquals(1L, lastProbeValue(), "no retry is attempted");
+    }
+
+    /**
+     * A pause during the retry backoff leaves the failed boundary pending and the
+     * run resumable; a resume with a zero backoff completes it.
+     */
+    @Test
+    void pauseInterruptsTheRetryBackoffAndLeavesTheRunResumable() throws Exception {
+        seedBigint(1);
+        String label = uniqueLabel("retry-pause");
+
+        CompletableFuture<Void> run = CompletableFuture.runAsync(() -> {
+            try (Connection owner = openOwnerConnection()) {
+                DSLContext ownerDsl = DSL.using(owner, SQLDialect.POSTGRES);
+                Routines.runMigrationChunks(ownerDsl.configuration(),
+                        template("retry_once", "40P01"), schema(TEST_BIGINT), name(TEST_BIGINT),
+                        label, 1, 1, "t", ChunkingStrategy.primary_key, 1, 0, null, false,
+                        3, 5_000);
+            } catch (SQLException error) {
+                throw new CompletionException(error);
+            }
+        });
+
+        long runId = awaitFirstAttempt(label);
+        assertEquals(runId, Routines.pauseMigrationRun(dsl.configuration(), label));
+        run.get(10, TimeUnit.SECONDS);
+
+        assertNotNull(run(runId).getPausedAt(), "the run is paused");
+        assertNull(run(runId).getCompletedAt(), "the paused run is not complete");
+        assertEquals(0, dsl.fetchCount(MIGRATION_ERROR, MIGRATION_ERROR.RUN_ID.eq(runId)),
+                "a pause during backoff does not record an error");
+        assertEquals(1, dsl.fetchCount(MIGRATION_BOUNDARY,
+                        MIGRATION_BOUNDARY.RUN_ID.eq(runId)
+                                .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(0L))
+                                .and(MIGRATION_BOUNDARY.COMPLETED_AT.isNull())
+                                .and(MIGRATION_BOUNDARY.CANCELLED_AT.isNull())),
+                "the failed chunk boundary is still pending");
+
+        Routines.setMigrationRunRetries(dsl.configuration(), label, 3, 0);
+        assertEquals(runId, Routines.resumeMigrationRun(dsl.configuration(), label));
+        run(label, template("retry_once", "40P01"), 3, 0);
+
+        assertNotNull(run(runId).getCompletedAt(), "the resumed run completes");
+        assertEquals(2L, lastProbeValue(), "the retry succeeds after the resume");
+    }
+
+    /**
+     * A cancellation during the retry backoff is terminal and records no chunk
+     * error for the interrupted attempt.
+     */
+    @Test
+    void cancellationInterruptsTheRetryBackoff() throws Exception {
+        seedBigint(1);
+        String label = uniqueLabel("retry-cancel");
+
+        CompletableFuture<Void> run = CompletableFuture.runAsync(() -> {
+            try (Connection owner = openOwnerConnection()) {
+                DSLContext ownerDsl = DSL.using(owner, SQLDialect.POSTGRES);
+                Routines.runMigrationChunks(ownerDsl.configuration(),
+                        template("retry_once", "40P01"), schema(TEST_BIGINT), name(TEST_BIGINT),
+                        label, 1, 1, "t", ChunkingStrategy.primary_key, 1, 0, null, false,
+                        3, 5_000);
+            } catch (SQLException error) {
+                throw new CompletionException(error);
+            }
+        });
+
+        long runId = awaitFirstAttempt(label);
+        assertEquals(runId, Routines.cancelMigrationRun(dsl.configuration(), label));
+        run.get(10, TimeUnit.SECONDS);
+
+        assertNotNull(run(runId).getCancelledAt(), "the run is cancelled");
+        assertNull(run(runId).getCompletedAt(), "the cancelled run is not complete");
+        assertEquals(0, dsl.fetchCount(MIGRATION_ERROR, MIGRATION_ERROR.RUN_ID.eq(runId)),
+                "cancellation during backoff records no chunk error");
+        assertTrue(dsl.fetchCount(MIGRATION_BOUNDARY,
+                        MIGRATION_BOUNDARY.RUN_ID.eq(runId)
+                                .and(MIGRATION_BOUNDARY.CANCELLED_AT.isNotNull())) > 0,
+                "the remaining boundaries are marked cancelled");
+    }
+
+    /**
+     * Runs the migration with the given retry policy.
+     *
+     * @param label        the run label
+     * @param sqlText      the chunk template
+     * @param maxRetries   the retry budget
+     * @param retryBackoff the retry backoff in milliseconds
+     */
+    private void run(String label, String sqlText, int maxRetries, int retryBackoff) {
+        Routines.runMigrationChunks(dsl.configuration(), sqlText,
+                schema(TEST_BIGINT), name(TEST_BIGINT), label, 1, 1, "t",
+                ChunkingStrategy.primary_key, 1, 0, null, false, maxRetries, retryBackoff);
+    }
+
+    /**
+     * Builds the chunk template that calls the probe function.
+     *
+     * @param functionName the probe function
+     * @param code         the SQLSTATE to raise
+     * @return the chunk template
+     */
+    private String template(String functionName, String code) {
+        return "SELECT public." + functionName + "('" + code + "')"
+                + " FROM <driving_table> WHERE <chunking_clause>";
+    }
+
+    /**
+     * Returns the probe sequence's last value.
+     *
+     * @return the last value
+     */
+    private long lastProbeValue() {
+        return dsl.fetchOne("SELECT last_value FROM " + SEQUENCE).get(0, Long.class);
+    }
+
+    /**
+     * Waits until the first transient attempt has happened and the run row exists.
+     *
+     * @param label the run label
+     * @return the run id
+     * @throws InterruptedException if the wait is interrupted
+     */
+    private long awaitFirstAttempt(String label) throws InterruptedException {
+        for (int attempt = 0; attempt < 200; attempt++) {
+            Record row = dsl.fetchOne(
+                    "SELECT run_id FROM dml_utils_data.migration_run WHERE label = ?", label);
+            if (row != null && lastProbeValue() >= 1) {
+                return row.get(0, Long.class);
+            }
+            Thread.sleep(50);
+        }
+        fail("the first retry attempt did not happen");
+        return -1;
+    }
+
+    /**
+     * Reads the run row.
+     *
+     * @param runId the run id
+     * @return the run record
+     */
+    private io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.records.MigrationRunRecord
+            run(long runId) {
+        return dsl.selectFrom(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne();
+    }
+}

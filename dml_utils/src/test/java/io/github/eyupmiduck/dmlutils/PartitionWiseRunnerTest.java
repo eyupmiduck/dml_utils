@@ -234,7 +234,7 @@ class PartitionWiseRunnerTest extends PartitionTestBase {
 
         long runId = io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
                 dsl.configuration(), SCHEMA, TABLE, label, TEMPLATE, 2, 1,
-                ChunkingStrategy.primary_key, "t", 0, null, true);
+                ChunkingStrategy.primary_key, "t", 0, null, true, 3, 1000);
 
         assertEquals(1, io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.calculateMigrationLeaf(dsl.configuration(), runId));
         long firstLeafBoundaries = leaves(runId).getFirst().getBoundaryCount();
@@ -267,7 +267,7 @@ class PartitionWiseRunnerTest extends PartitionTestBase {
 
         long runId = io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
                 dsl.configuration(), SCHEMA, TABLE, label, TEMPLATE, 2, 1,
-                ChunkingStrategy.primary_key, "t", 0, null, true);
+                ChunkingStrategy.primary_key, "t", 0, null, true, 3, 1000);
         io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.calculateMigrationRunBoundaries(dsl.configuration(), runId);
 
         executeAsOwner("ALTER TABLE " + SCHEMA + "." + TABLE
@@ -294,7 +294,7 @@ class PartitionWiseRunnerTest extends PartitionTestBase {
 
         long runId = io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
                 dsl.configuration(), SCHEMA, TABLE, label, TEMPLATE, 2, 1,
-                ChunkingStrategy.primary_key, "t", 0, null, true);
+                ChunkingStrategy.primary_key, "t", 0, null, true, 3, 1000);
 
         executeAsOwner("ALTER TABLE " + SCHEMA + "." + TABLE
                 + " DETACH PARTITION " + SCHEMA + ".test_partitioned_range_mid");
@@ -321,7 +321,7 @@ class PartitionWiseRunnerTest extends PartitionTestBase {
 
         long runId = io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
                 dsl.configuration(), SCHEMA, TABLE, label, TEMPLATE, 2, 1,
-                ChunkingStrategy.primary_key, "t", 0, null, true);
+                ChunkingStrategy.primary_key, "t", 0, null, true, 3, 1000);
         Routines.cancelMigrationRun(dsl.configuration(), label);
 
         run(TABLE, label, 2, true);
@@ -347,7 +347,7 @@ class PartitionWiseRunnerTest extends PartitionTestBase {
         String label = uniqueLabel("partition-wise-concurrent");
         long runId = io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
                 dsl.configuration(), SCHEMA, TABLE, label, TEMPLATE, 1, 1,
-                ChunkingStrategy.primary_key, "t", 0, null, true);
+                ChunkingStrategy.primary_key, "t", 0, null, true, 3, 1000);
 
         try (Connection other = openTestConnection()) {
             other.setAutoCommit(false);
@@ -387,14 +387,14 @@ class PartitionWiseRunnerTest extends PartitionTestBase {
     private void run(String table, String label, int chunkSize, ChunkingStrategy chunkBy,
                      String boundaryKeyIndex, boolean partitionWise) {
         Routines.runMigrationChunks(dsl.configuration(), TEMPLATE, SCHEMA, table, label,
-                chunkSize, 1, "t", chunkBy, 1, 0, boundaryKeyIndex, partitionWise);
+                chunkSize, 1, "t", chunkBy, 1, 0, boundaryKeyIndex, partitionWise, 3, 1000);
     }
 
     private long populate(String table, String label, int chunkSize, ChunkingStrategy chunkBy,
                           String boundaryKeyIndex, boolean partitionWise) {
         return io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines
                 .populateMigrationBoundaries(dsl.configuration(), SCHEMA, table, label, TEMPLATE,
-                        chunkSize, 1, chunkBy, "t", 0, boundaryKeyIndex, partitionWise);
+                        chunkSize, 1, chunkBy, "t", 0, boundaryKeyIndex, partitionWise, 3, 1000);
     }
 
     private void insertRows(Long... ids) {

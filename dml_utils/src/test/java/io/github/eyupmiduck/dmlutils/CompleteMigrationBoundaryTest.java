@@ -73,6 +73,6 @@ class CompleteMigrationBoundaryTest extends PostgresTestBase {
         return Routines.populateMigrationBoundaries(dsl.configuration(),
                 TEST_BIGINT.getSchema().getName(), TEST_BIGINT.getName(),
                 uniqueLabel("complete-boundary"), "SELECT 1", 2, 1,
-                ChunkingStrategy.primary_key, "t", 0, null, false);
+                ChunkingStrategy.primary_key, "t", 0, null, false, 3, 1000);
     }
 }

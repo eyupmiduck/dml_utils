@@ -10,12 +10,16 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.resume_migration_run(
     i_sleep_ms dml_utils_data.non_negative_integer,
     i_boundary_key_index name,
     i_partition_wise dml_utils_data.non_null_boolean,
+    i_max_retries dml_utils_data.non_negative_integer,
+    i_retry_backoff_ms dml_utils_data.non_negative_integer,
     OUT o_effective_sql_text text,
     OUT o_effective_schema_name text,
     OUT o_effective_table_name text,
     OUT o_effective_alias text,
     OUT o_effective_threads integer,
     OUT o_effective_sleep_ms integer,
+    OUT o_effective_max_retries integer,
+    OUT o_effective_retry_backoff_ms integer,
     OUT o_chunk_by dml_utils_data.chunking_strategy,
     OUT o_partition_wise boolean
 )
@@ -42,6 +46,8 @@ BEGIN
     o_partition_wise := i_run.partition_wise;
     o_effective_threads := i_run.threads::integer;
     o_effective_sleep_ms := i_run.sleep_ms::integer;
+    o_effective_max_retries := i_run.max_retries::integer;
+    o_effective_retry_backoff_ms := i_run.retry_backoff_ms::integer;
 
     IF i_run.chunk_by IS DISTINCT FROM i_chunk_by THEN
         RAISE NOTICE 'run for label % already exists; using the stored chunk_by %',
@@ -133,6 +139,14 @@ BEGIN
         RAISE NOTICE 'run for label % already exists; using the stored sleep_ms %',
             i_run.label, i_run.sleep_ms;
     END IF;
+    IF i_run.max_retries IS DISTINCT FROM i_max_retries::integer THEN
+        RAISE NOTICE 'run for label % already exists; using the stored max_retries %',
+            i_run.label, i_run.max_retries;
+    END IF;
+    IF i_run.retry_backoff_ms IS DISTINCT FROM i_retry_backoff_ms::integer THEN
+        RAISE NOTICE 'run for label % already exists; using the stored retry_backoff_ms %',
+            i_run.label, i_run.retry_backoff_ms;
+    END IF;
     IF i_run.driving_table_schema_name IS DISTINCT FROM i_driving_table_schema_name
         OR i_run.driving_table_name IS DISTINCT FROM i_driving_table_name
     THEN
@@ -162,10 +176,12 @@ COMMENT ON FUNCTION dml_utils_lib.resume_migration_run(
     dml_utils_data.chunking_strategy,
     dml_utils_data.non_negative_integer,
     name,
-    dml_utils_data.non_null_boolean
+    dml_utils_data.non_null_boolean,
+    dml_utils_data.non_negative_integer,
+    dml_utils_data.non_negative_integer
     ) IS
     'Resolves the effective inputs of a resumed run from its stored row, emits '
         'notices for differing call inputs, re-validates a stored ordered-key '
         'descriptor (failing closed with 55000) and asserts the stored blocks '
         'relation filepath. Returns the effective SQL/schema/table/alias/threads/'
-        'sleep/strategy/partition-wise values.';
+        'sleep/retry-policy/strategy/partition-wise values.';

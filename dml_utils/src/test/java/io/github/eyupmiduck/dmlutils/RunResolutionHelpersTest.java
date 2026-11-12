@@ -63,7 +63,7 @@ class RunResolutionHelpersTest extends PostgresTestBase {
         seedBigint(1, 2, 3, 4, 5);
         long single = Routines.createMigrationRun(dsl.configuration(),
                 schema(TEST_BIGINT), name(TEST_BIGINT), uniqueLabel("create-single"),
-                TEMPLATE, 2, 1, ChunkingStrategy.primary_key, "t", 0, null, false);
+                TEMPLATE, 2, 1, ChunkingStrategy.primary_key, "t", 0, null, false, 3, 1000);
 
         assertEquals(4, dsl.fetchCount(MIGRATION_BOUNDARY,
                 MIGRATION_BOUNDARY.RUN_ID.eq(single)));
@@ -72,7 +72,7 @@ class RunResolutionHelpersTest extends PostgresTestBase {
         long partitioned = Routines.createMigrationRun(dsl.configuration(),
                 "dml_utils_fixtures", "test_partitioned_range",
                 uniqueLabel("create-partitioned"), TEMPLATE, 2, 1,
-                ChunkingStrategy.primary_key, "t", 0, null, true);
+                ChunkingStrategy.primary_key, "t", 0, null, true, 3, 1000);
 
         assertTrue(run(partitioned).getPartitionWise());
         assertEquals(3, dsl.fetchCount(MIGRATION_RUN_LEAF,
@@ -88,7 +88,7 @@ class RunResolutionHelpersTest extends PostgresTestBase {
     void createRejectsAnOrderedRunWithoutAnIndex() {
         assertSqlState("22023", () -> Routines.createMigrationRun(dsl.configuration(),
                 "dml_utils_fixtures", "test_ordered_key", uniqueLabel("create-bad"),
-                TEMPLATE, 2, 1, ChunkingStrategy.ordered_key, "t", 0, null, false));
+                TEMPLATE, 2, 1, ChunkingStrategy.ordered_key, "t", 0, null, false, 3, 1000));
     }
 
     /**
@@ -102,7 +102,7 @@ class RunResolutionHelpersTest extends PostgresTestBase {
 
         ResumeMigrationRun resumed = Routines.resumeMigrationRun(dsl.configuration(),
                 stored, "dml_utils_fixtures", "test_ordered_key", TEMPLATE, 2, 1,
-                "t", ChunkingStrategy.ordered_key, 0, ORDERED_INDEX, false);
+                "t", ChunkingStrategy.ordered_key, 0, ORDERED_INDEX, false, 3, 1000);
 
         assertEquals(TEMPLATE, resumed.getOEffectiveSqlText());
         assertEquals("dml_utils_fixtures", resumed.getOEffectiveSchemaName());
@@ -127,7 +127,7 @@ class RunResolutionHelpersTest extends PostgresTestBase {
 
         assertSqlState("55000", () -> Routines.resumeMigrationRun(dsl.configuration(),
                 stored, "dml_utils_fixtures", "test_ordered_key", TEMPLATE, 1, 1,
-                "t", ChunkingStrategy.ordered_key, 0, ORDERED_INDEX, false));
+                "t", ChunkingStrategy.ordered_key, 0, ORDERED_INDEX, false, 3, 1000));
     }
 
     /**
@@ -143,7 +143,7 @@ class RunResolutionHelpersTest extends PostgresTestBase {
 
         assertSqlState("22023", () -> Routines.resumeMigrationRun(dsl.configuration(),
                 stored, schema(TEST_BIGINT), name(TEST_BIGINT), TEMPLATE, 1, 1,
-                "t", ChunkingStrategy.blocks, 0, null, false));
+                "t", ChunkingStrategy.blocks, 0, null, false, 3, 1000));
     }
 
     private long populate(String label, ChunkingStrategy chunkBy, boolean partitionWise) {
@@ -155,7 +155,7 @@ class RunResolutionHelpersTest extends PostgresTestBase {
         String index = chunkBy == ChunkingStrategy.ordered_key ? ORDERED_INDEX : null;
         return Routines.populateMigrationBoundaries(dsl.configuration(),
                 tableSchema, table, label, TEMPLATE, 1, 1, chunkBy, "t", 0, index,
-                partitionWise);
+                partitionWise, 3, 1000);
     }
 
     private MigrationRunRecord run(long runId) {

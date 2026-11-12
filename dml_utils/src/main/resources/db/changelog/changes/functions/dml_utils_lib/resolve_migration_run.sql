@@ -16,6 +16,10 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.resolve_migration_run(
     -- When true, the driving table is a declarative partitioned parent and the
     -- run's boundaries are calculated leaf by leaf. The stored flag wins on resume.
     i_partition_wise dml_utils_data.non_null_boolean DEFAULT FALSE,
+    -- Initial transient-retry policy for a new run; a resumed run uses its stored
+    -- values.
+    i_max_retries dml_utils_data.non_negative_integer DEFAULT 3,
+    i_retry_backoff_ms dml_utils_data.non_negative_integer DEFAULT 1000,
     OUT o_run_id bigint,
     OUT o_already_completed boolean,
     OUT o_effective_sql_text text,
@@ -24,6 +28,8 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.resolve_migration_run(
     OUT o_effective_alias text,
     OUT o_effective_threads integer,
     OUT o_effective_sleep_ms integer,
+    OUT o_effective_max_retries integer,
+    OUT o_effective_retry_backoff_ms integer,
     OUT o_chunk_by dml_utils_data.chunking_strategy,
     OUT o_partition_wise boolean,
     OUT o_key_columns name[],
@@ -95,6 +101,9 @@ BEGIN
     -- which the caller retries.
     o_effective_threads := CASE WHEN FOUND THEN l_run.threads::integer ELSE i_threads::integer END;
     o_effective_sleep_ms := CASE WHEN FOUND THEN l_run.sleep_ms::integer ELSE i_sleep_ms::integer END;
+    o_effective_max_retries := CASE WHEN FOUND THEN l_run.max_retries::integer ELSE i_max_retries::integer END;
+    o_effective_retry_backoff_ms :=
+            CASE WHEN FOUND THEN l_run.retry_backoff_ms::integer ELSE i_retry_backoff_ms::integer END;
     IF o_effective_threads > pg_catalog.current_setting('max_worker_processes')::integer THEN
         RAISE EXCEPTION 'threads (%) exceeds max_worker_processes (%)',
             o_effective_threads, pg_catalog.current_setting('max_worker_processes')
@@ -108,6 +117,8 @@ BEGIN
                effective.o_effective_alias,
                effective.o_effective_threads,
                effective.o_effective_sleep_ms,
+               effective.o_effective_max_retries,
+               effective.o_effective_retry_backoff_ms,
                effective.o_chunk_by,
                effective.o_partition_wise
         INTO l_effective
@@ -122,7 +133,9 @@ BEGIN
                      i_chunk_by => i_chunk_by,
                      i_sleep_ms => i_sleep_ms,
                      i_boundary_key_index => i_boundary_key_index,
-                     i_partition_wise => i_partition_wise) AS effective;
+                     i_partition_wise => i_partition_wise,
+                     i_max_retries => i_max_retries,
+                     i_retry_backoff_ms => i_retry_backoff_ms) AS effective;
         o_run_id := l_run.run_id;
 
         o_effective_sql_text := l_effective.o_effective_sql_text;
@@ -131,6 +144,8 @@ BEGIN
         o_effective_alias := l_effective.o_effective_alias;
         o_effective_threads := l_effective.o_effective_threads;
         o_effective_sleep_ms := l_effective.o_effective_sleep_ms;
+        o_effective_max_retries := l_effective.o_effective_max_retries;
+        o_effective_retry_backoff_ms := l_effective.o_effective_retry_backoff_ms;
         o_chunk_by := l_effective.o_chunk_by;
         o_partition_wise := l_effective.o_partition_wise;
     ELSE
@@ -145,7 +160,9 @@ BEGIN
                 i_driving_table_alias => i_driving_table_alias,
                 i_sleep_ms => i_sleep_ms,
                 i_boundary_key_index => i_boundary_key_index,
-                i_partition_wise => i_partition_wise);
+                i_partition_wise => i_partition_wise,
+                i_max_retries => i_max_retries,
+                i_retry_backoff_ms => i_retry_backoff_ms);
 
         o_effective_sql_text := i_sql_text;
         o_effective_schema_name := i_driving_table_schema_name::text;
@@ -153,6 +170,8 @@ BEGIN
         o_effective_alias := i_driving_table_alias::text;
         o_effective_threads := i_threads::integer;
         o_effective_sleep_ms := i_sleep_ms::integer;
+        o_effective_max_retries := i_max_retries::integer;
+        o_effective_retry_backoff_ms := i_retry_backoff_ms::integer;
         o_chunk_by := i_chunk_by;
         o_partition_wise := i_partition_wise::boolean;
     END IF;
@@ -182,8 +201,8 @@ $$;
 COMMENT ON FUNCTION dml_utils_lib.resolve_migration_run IS
     'Resolves or creates the active run for the label and returns the inputs the '
         'coordinator should use: the run id, whether it was already complete, the '
-        'effective sql_text/schema/table/alias/threads/sleep_ms and chunking '
-        'strategy (stored values for a resumed run), whether the run is '
+        'effective sql_text/schema/table/alias/threads/sleep_ms/retry-policy and '
+        'chunking strategy (stored values for a resumed run), whether the run is '
         'partition-wise, and the boundary key columns and kinds (the stored '
         'ordered-key descriptor for ordered_key, the real primary key for '
         'primary_key, or a single bigint block number for blocks). '
