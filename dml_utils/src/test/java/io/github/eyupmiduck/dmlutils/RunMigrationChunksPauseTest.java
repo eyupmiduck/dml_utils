@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.time.OffsetDateTime;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
@@ -141,6 +142,62 @@ class RunMigrationChunksPauseTest extends PostgresTestBase {
     }
 
     /**
+     * If every chunk is already complete but the run has not recorded completion,
+     * a pause at the top of the call lets completion win instead of leaving the
+     * run paused forever.
+     */
+    @Test
+    void aPausedRunWithEveryChunkCompleteCompletesInsteadOfStayingPaused() {
+        seedBigint(1, 2);
+        String label = uniqueLabel("pause-complete-race");
+        Long runId = populate(label);
+        dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.TOTAL_CHUNKS_COMPLETED, MIGRATION_RUN.TOTAL_CHUNKS)
+                .set(MIGRATION_RUN.PAUSED_AT, OffsetDateTime.now())
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute();
+
+        Routines.runMigrationChunks(dsl.configuration(), FAST_TEMPLATE,
+                schema(TEST_BIGINT), name(TEST_BIGINT), label, 2, 1, "t",
+                ChunkingStrategy.primary_key, 1, 0, null, false);
+
+        MigrationRunRecord record = run(runId);
+        assertNotNull(record.getCompletedAt(), "completion wins over pause");
+        assertNull(record.getPausedAt(), "completion clears the pause");
+    }
+
+    /**
+     * A pause that lands while the final chunk is in flight lets that chunk
+     * commit and then completes the run instead of leaving it paused.
+     */
+    @Test
+    void completionWinsWhenPauseLandsWhileTheLastChunkIsInFlight() throws Exception {
+        seedBigint(1, 2);
+        String label = uniqueLabel("pause-last-chunk");
+
+        CompletableFuture<Void> run = CompletableFuture.runAsync(() -> {
+            try (Connection owner = openOwnerConnection()) {
+                DSLContext ownerDsl = DSL.using(owner, SQLDialect.POSTGRES);
+                Routines.runMigrationChunks(ownerDsl.configuration(), SLOW_TEMPLATE,
+                        schema(TEST_BIGINT), name(TEST_BIGINT), label, 1, 1, "t",
+                        ChunkingStrategy.primary_key, 1, 0, null, false);
+            } catch (SQLException error) {
+                throw new CompletionException(error);
+            }
+        });
+
+        long runId = awaitChunkInFlightAfter(label, 1);
+        assertEquals(runId, Routines.pauseMigrationRun(dsl.configuration(), label));
+
+        run.get(30, TimeUnit.SECONDS);
+
+        MigrationRunRecord record = run(runId);
+        assertNotNull(record.getCompletedAt(), "completion wins over pause");
+        assertNull(record.getPausedAt(), "completion clears the pause");
+        assertEquals(0, cancelledBoundaries(runId), "no chunk is cancelled");
+    }
+
+    /**
      * Counts cancelled chunk boundaries.
      *
      * @param runId the run id
@@ -188,6 +245,18 @@ class RunMigrationChunksPauseTest extends PostgresTestBase {
     }
 
     /**
+     * Creates a run without processing any chunk.
+     *
+     * @param label the run label
+     * @return the run id
+     */
+    private Long populate(String label) {
+        return io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.populateMigrationBoundaries(
+                dsl.configuration(), schema(TEST_BIGINT), name(TEST_BIGINT), label,
+                FAST_TEMPLATE, 2, 1, ChunkingStrategy.primary_key, "t", 0, null, false);
+    }
+
+    /**
      * Waits until the background call has created the run and a worker is running
      * a chunk, proved by the advisory lock the slow template takes.
      *
@@ -196,13 +265,29 @@ class RunMigrationChunksPauseTest extends PostgresTestBase {
      * @throws InterruptedException if the wait is interrupted
      */
     private long awaitChunkInFlight(String label) throws InterruptedException {
+        return awaitChunkInFlightAfter(label, 0);
+    }
+
+    /**
+     * Waits until at least {@code completedAtLeast} chunks have completed and a
+     * worker is running a chunk, proved by the advisory lock the slow template
+     * takes.
+     *
+     * @param label            the run label
+     * @param completedAtLeast the minimum completed chunk count
+     * @return the run id
+     * @throws InterruptedException if the wait is interrupted
+     */
+    private long awaitChunkInFlightAfter(String label, int completedAtLeast)
+            throws InterruptedException {
         for (int attempt = 0; attempt < 200; attempt++) {
             Record row = dsl.fetchOne(
                     "SELECT r.run_id FROM dml_utils_data.migration_run AS r"
                             + " WHERE r.label = ?"
+                            + " AND r.total_chunks_completed >= ?"
                             + " AND EXISTS (SELECT 1 FROM dml_utils_data.migration_boundary AS b"
                             + " WHERE b.run_id = r.run_id)",
-                    label);
+                    label, completedAtLeast);
             if (row != null
                     && Boolean.TRUE.equals(dsl.fetchOne(
                     "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_locks"

@@ -26,6 +26,22 @@ BEGIN
         FROM dml_utils_data.migration_run AS run
         WHERE run.run_id = i_run_id;
 
+        -- A pause can clear between the calculation returning and this read: the
+        -- calculation saw a pause and returned without finalizing, then a resume
+        -- cleared it. The run is now neither paused nor cancelled, so retry once
+        -- before treating a NULL milestone as a calculation failure.
+        IF l_cancelled_at IS NULL
+            AND l_paused_at IS NULL
+            AND l_boundaries_calculated_at IS NULL
+        THEN
+            PERFORM dml_utils_lib.calculate_migration_run_boundaries(i_run_id => i_run_id);
+
+            SELECT run.cancelled_at, run.paused_at, run.boundaries_calculated_at
+            INTO l_cancelled_at, l_paused_at, l_boundaries_calculated_at
+            FROM dml_utils_data.migration_run AS run
+            WHERE run.run_id = i_run_id;
+        END IF;
+
         IF l_cancelled_at IS NOT NULL THEN
             -- A leaf worker that committed after the canceller ran leaves its
             -- boundaries pending; mark them cancelled in an autonomous worker,

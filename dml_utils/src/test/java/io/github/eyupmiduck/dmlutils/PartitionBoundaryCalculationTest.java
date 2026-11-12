@@ -137,6 +137,35 @@ class PartitionBoundaryCalculationTest extends PartitionTestBase {
     }
 
     /**
+     * A pause after every leaf is already calculated still lets finalization
+     * finish; the pause then applies to processing.
+     */
+    @Test
+    void pauseAfterEveryLeafCalculatedStillFinalizes() {
+        insertRows(0L, 1L, 2L, 3L, 4L, 200L, 201L, 202L);
+        long runId = populatePartitionWise("calc-pause-finalize", TABLE, TEMPLATE,
+                ChunkingStrategy.primary_key, 2, null);
+        String label = dsl.select(MIGRATION_RUN.LABEL)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_RUN.LABEL);
+
+        while (calculate(runId) != null) {
+            // Calculate every leaf one call at a time; finalization is separate.
+        }
+        assertNull(run(runId).getBoundariesCalculatedAt());
+        assertNotNull(io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines.pauseMigrationRun(
+                dsl.configuration(), label));
+
+        Routines.calculateMigrationRunBoundaries(dsl.configuration(), runId);
+
+        assertNotNull(run(runId).getBoundariesCalculatedAt(),
+                "finalization wins when every leaf is already calculated");
+        assertNotNull(run(runId).getPausedAt(),
+                "the pause remains until resume clears it");
+    }
+
+    /**
      * Every leaf being empty finalizes the run with no terminal boundary and zero
      * chunks.
      */

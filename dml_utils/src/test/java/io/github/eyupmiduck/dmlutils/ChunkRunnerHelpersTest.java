@@ -61,6 +61,31 @@ class ChunkRunnerHelpersTest extends PartitionTestBase {
 
         assertFalse(Routines.preparePartitionWiseExecution(dsl.configuration(), cancelled,
                 "prepare-cancel"));
+
+        long pausedBefore = Routines.populateMigrationBoundaries(dsl.configuration(),
+                PARTITION_SCHEMA, "test_partitioned_range", uniqueLabel("prepare-paused"),
+                TEMPLATE, 1, 1, ChunkingStrategy.primary_key, "t", 0, null, true);
+        dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.PAUSED_AT, OffsetDateTime.now())
+                .where(MIGRATION_RUN.RUN_ID.eq(pausedBefore))
+                .execute();
+        assertFalse(Routines.preparePartitionWiseExecution(dsl.configuration(), pausedBefore,
+                "prepare-paused"));
+        assertNull(run(pausedBefore).getBoundariesCalculatedAt(),
+                "a paused calculation does not finalize");
+
+        long pausedAfter = Routines.populateMigrationBoundaries(dsl.configuration(),
+                PARTITION_SCHEMA, "test_partitioned_range", uniqueLabel("prepare-paused-after"),
+                TEMPLATE, 1, 1, ChunkingStrategy.primary_key, "t", 0, null, true);
+        assertTrue(Routines.preparePartitionWiseExecution(dsl.configuration(), pausedAfter,
+                "prepare-paused-after"));
+        assertNotNull(run(pausedAfter).getBoundariesCalculatedAt());
+        dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.PAUSED_AT, OffsetDateTime.now())
+                .where(MIGRATION_RUN.RUN_ID.eq(pausedAfter))
+                .execute();
+        assertFalse(Routines.preparePartitionWiseExecution(dsl.configuration(), pausedAfter,
+                "prepare-paused-after"));
     }
 
     /**
@@ -137,8 +162,8 @@ class ChunkRunnerHelpersTest extends PartitionTestBase {
     }
 
     /**
-     * The throttle returns immediately for zero and reports cancellation or pause
-     * while sleeping.
+     * The throttle returns immediately for zero and reports a cancellation while
+     * sleeping. Pause interruption is covered by the runner pause test.
      */
     @Test
     void sleepsAndReportsCancellation() {
@@ -147,28 +172,13 @@ class ChunkRunnerHelpersTest extends PartitionTestBase {
                 schema(TEST_BIGINT), name(TEST_BIGINT), uniqueLabel("sleep"),
                 TEMPLATE, 1, 1, ChunkingStrategy.primary_key, "t", 0, null, false);
 
-        var zero = Routines.sleepBetweenMigrationChunks(dsl.configuration(), runId, 0).get(0);
-        assertNull(zero.getOCancelledAt());
-        assertNull(zero.getOPausedAt());
+        assertNull(Routines.sleepBetweenMigrationChunks(dsl.configuration(), runId, 0));
 
         dsl.update(MIGRATION_RUN)
                 .set(MIGRATION_RUN.CANCELLED_AT, OffsetDateTime.now())
                 .where(MIGRATION_RUN.RUN_ID.eq(runId))
                 .execute();
-        var cancelled = Routines.sleepBetweenMigrationChunks(dsl.configuration(), runId, 10).get(0);
-        assertNotNull(cancelled.getOCancelledAt());
-        assertNull(cancelled.getOPausedAt());
-
-        long pausedRunId = Routines.populateMigrationBoundaries(dsl.configuration(),
-                schema(TEST_BIGINT), name(TEST_BIGINT), uniqueLabel("sleep-pause"),
-                TEMPLATE, 1, 1, ChunkingStrategy.primary_key, "t", 0, null, false);
-        dsl.update(MIGRATION_RUN)
-                .set(MIGRATION_RUN.PAUSED_AT, OffsetDateTime.now())
-                .where(MIGRATION_RUN.RUN_ID.eq(pausedRunId))
-                .execute();
-        var paused = Routines.sleepBetweenMigrationChunks(dsl.configuration(), pausedRunId, 10).get(0);
-        assertNull(paused.getOCancelledAt());
-        assertNotNull(paused.getOPausedAt());
+        assertNotNull(Routines.sleepBetweenMigrationChunks(dsl.configuration(), runId, 10));
     }
 
     private NextMigrationChunk next(long runId, boolean partitionWise, Long[] inFlight) {
