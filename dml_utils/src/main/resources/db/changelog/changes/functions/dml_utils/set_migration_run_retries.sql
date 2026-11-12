@@ -10,9 +10,10 @@ CREATE OR REPLACE FUNCTION dml_utils.set_migration_run_retries(
 AS
 $$
 BEGIN
-    -- Only an unfinished run can have its retry policy adjusted. A coordinator
-    -- already processing reads the values at its start; this update affects the
-    -- next run_migration_chunks call (a restart/resume), not one in progress.
+    -- Only an unfinished run can have its retry policy adjusted. This function
+    -- only stores the policy; it takes effect when the coordinator that processes
+    -- the run consumes it. A coordinator already processing keeps the values it
+    -- read at its start, so adjust between calls.
     UPDATE dml_utils_data.migration_run
     SET max_retries = i_max_retries,
         retry_backoff_ms = i_retry_backoff_ms
@@ -32,5 +33,7 @@ COMMENT ON FUNCTION dml_utils.set_migration_run_retries IS
     'Replaces the recorded transient-retry policy of the unfinished run for the '
         'label: max_retries is the number of retries after the first attempt (0 '
         'disables retries) and retry_backoff_ms is the wait between attempts (0 '
-        'retries immediately). A coordinator already processing the run keeps the '
-        'values it read at its start, so adjust between calls.';
+        'retries immediately). This function only stores the policy; it takes '
+        'effect when the coordinator that processes the run consumes it. A '
+        'coordinator already processing keeps the values it read at its start, so '
+        'adjust between calls.';

@@ -10,12 +10,14 @@ import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.Migration
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
  * Verifies {@code dml_utils.set_migration_run_retries}: it updates the retry
  * policy of an unfinished run, accepts zero values, and leaves terminal or
  * missing runs alone.
+ *
+ * <p>This covers the stored policy. The behavioural retry test is added with
+ * the coordinator retry loop ({@code dml-99x.17}).
  */
 class SetMigrationRunRetriesTest extends PostgresTestBase {
 

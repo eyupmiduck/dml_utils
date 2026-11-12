@@ -213,6 +213,9 @@ class MigrationTablesTest extends PostgresTestBase {
         assertRollbackDropsFunction(
                 "db/changelog/changes/functions-rollback/dml_utils/set_migration_run_sleep_ms-rollback.sql",
                 "dml_utils", "set_migration_run_sleep_ms");
+        assertRollbackDropsFunction(
+                "db/changelog/changes/functions-rollback/dml_utils/set_migration_run_retries-rollback.sql",
+                "dml_utils", "set_migration_run_retries");
     }
 
     private void assertRollbackDropsFunction(String resource, String schema, String name)
