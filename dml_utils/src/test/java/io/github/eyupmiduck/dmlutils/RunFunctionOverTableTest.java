@@ -585,7 +585,7 @@ class RunFunctionOverTableTest extends PostgresTestBase {
     private void insertBigintRows(Long... ids) {
         for (Long id : ids) {
             dsl.insertInto(TEST_BIGINT, TEST_BIGINT.ID, TEST_BIGINT.PAYLOAD)
-                    .values(id, (String) null)
+                    .values(id, null)
                     .execute();
         }
     }
@@ -594,7 +594,7 @@ class RunFunctionOverTableTest extends PostgresTestBase {
         for (Long id : ids) {
             dsl.insertInto(TEST_PARTITIONED_RANGE, TEST_PARTITIONED_RANGE.ID,
                             TEST_PARTITIONED_RANGE.PAYLOAD)
-                    .values(id, (String) null)
+                    .values(id, null)
                     .execute();
         }
     }
