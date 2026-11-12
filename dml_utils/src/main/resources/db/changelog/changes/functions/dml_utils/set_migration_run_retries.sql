@@ -15,7 +15,7 @@ BEGIN
     -- the run consumes it. A coordinator already processing keeps the values it
     -- read at its start, so adjust between calls.
     UPDATE dml_utils_data.migration_run
-    SET max_retries = i_max_retries,
+    SET max_retries      = i_max_retries,
         retry_backoff_ms = i_retry_backoff_ms
     WHERE label = i_label
       AND archived_at IS NULL

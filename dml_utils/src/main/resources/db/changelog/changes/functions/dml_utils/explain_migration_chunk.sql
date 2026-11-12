@@ -22,12 +22,12 @@ CREATE OR REPLACE FUNCTION dml_utils.explain_migration_chunk(
 )
     RETURNS TABLE
             (
-                o_plan_kind       text,
-                o_sql_text        text,
-                o_plan            json,
+                o_plan_kind        text,
+                o_sql_text         text,
+                o_plan             json,
                 o_leaf_schema_name text,
-                o_leaf_name       text,
-                o_leaf_ordinal    integer
+                o_leaf_name        text,
+                o_leaf_ordinal     integer
             )
     LANGUAGE plpgsql
     VOLATILE
@@ -70,7 +70,7 @@ BEGIN
                      i_table_name => i_driving_table_name,
                      i_chunk_by => i_chunk_by) AS leaf
         WHERE i_leaf_ordinal IS NULL
-            OR leaf.leaf_ordinal = i_leaf_ordinal
+           OR leaf.leaf_ordinal = i_leaf_ordinal
         ORDER BY leaf.leaf_ordinal
         LIMIT 1;
 
