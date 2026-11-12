@@ -16,8 +16,7 @@ import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestOrderedKey.T
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestOrderedKeyText.TEST_ORDERED_KEY_TEXT;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestOrderedKeyTimestamptz.TEST_ORDERED_KEY_TIMESTAMPTZ;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestOrderedKeyUuid.TEST_ORDERED_KEY_UUID;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Drives the ordered-key strategy end to end over the Liquibase fixtures: a
@@ -187,7 +186,7 @@ class OrderedKeyIntegrationTest extends PostgresTestBase {
         assertEquals(0, dsl.fetchCount(TEST_ORDERED_KEY_UUID,
                         TEST_ORDERED_KEY_UUID.PAYLOAD.eq("x")),
                 "a cancelled run must not process a chunk");
-        assertTrue(run(label).getCancelledAt() != null, "the run stays cancelled");
+        assertNotNull(run(label).getCancelledAt(), "the run stays cancelled");
     }
 
     private void run(String label, Table<?> table, String index, int chunkSize, int threads,

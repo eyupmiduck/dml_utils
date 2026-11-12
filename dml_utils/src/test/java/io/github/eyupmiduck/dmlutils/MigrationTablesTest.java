@@ -681,7 +681,7 @@ class MigrationTablesTest extends PostgresTestBase {
         assertSqlState("22023", () -> updateBoundary(run, 0L,
                 MIGRATION_BOUNDARY.LEAF_ORDINAL, 2));
         assertSqlState("22023", () -> updateBoundary(run, 0L,
-                MIGRATION_BOUNDARY.LEAF_ORDINAL, (Integer) null));
+                MIGRATION_BOUNDARY.LEAF_ORDINAL, null));
 
         Long single = insertRun();
         insertBoundary(single, 0L, null);
