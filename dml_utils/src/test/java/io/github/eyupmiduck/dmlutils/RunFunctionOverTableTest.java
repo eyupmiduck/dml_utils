@@ -115,9 +115,9 @@ class RunFunctionOverTableTest extends PostgresTestBase {
                 "the function should update every row");
         assertTrue(runCompleted(label), "the run should be marked complete");
         assertEquals(3L, dsl.select(MIGRATION_RUN.TOTAL_ROWS_AFFECTED)
-                .from(MIGRATION_RUN)
-                .where(MIGRATION_RUN.LABEL.eq(label))
-                .fetchOne(MIGRATION_RUN.TOTAL_ROWS_AFFECTED),
+                        .from(MIGRATION_RUN)
+                        .where(MIGRATION_RUN.LABEL.eq(label))
+                        .fetchOne(MIGRATION_RUN.TOTAL_ROWS_AFFECTED),
                 "the SELECT template records the number of rows passed to the function");
     }
 

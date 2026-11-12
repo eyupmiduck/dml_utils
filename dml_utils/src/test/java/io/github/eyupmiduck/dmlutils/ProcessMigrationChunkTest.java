@@ -66,15 +66,15 @@ class ProcessMigrationChunkTest extends PostgresTestBase {
         assertEquals(6, dsl.fetchCount(TEST_BIGINT, TEST_BIGINT.PAYLOAD.isNull()),
                 "rows outside the chunk range must be untouched");
         assertEquals(4L, dsl.select(MIGRATION_BOUNDARY.ROWS_AFFECTED)
-                .from(MIGRATION_BOUNDARY)
-                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
-                .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(0L))
-                .fetchOne(MIGRATION_BOUNDARY.ROWS_AFFECTED),
+                        .from(MIGRATION_BOUNDARY)
+                        .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                        .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(0L))
+                        .fetchOne(MIGRATION_BOUNDARY.ROWS_AFFECTED),
                 "the boundary records the affected-row count");
         assertEquals(4L, dsl.select(MIGRATION_RUN.TOTAL_ROWS_AFFECTED)
-                .from(MIGRATION_RUN)
-                .where(MIGRATION_RUN.RUN_ID.eq(runId))
-                .fetchOne(MIGRATION_RUN.TOTAL_ROWS_AFFECTED),
+                        .from(MIGRATION_RUN)
+                        .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                        .fetchOne(MIGRATION_RUN.TOTAL_ROWS_AFFECTED),
                 "the run total advances by the chunk count");
     }
 
