@@ -169,13 +169,13 @@ class MetadataPrivilegeTest extends PostgresTestBase {
         long runId = populate(label);
 
         io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.completeMigrationBoundary(
-                dsl.configuration(), runId, 0L, OffsetDateTime.now());
+                dsl.configuration(), runId, 0L, OffsetDateTime.now(), 0L);
         assertEquals(1L, totalCompleted(runId));
         assertTrue(boundaryCompleted(runId, 0));
 
         assertSqlState("P0C02", () ->
                 io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.completeMigrationBoundary(
-                        dsl.configuration(), runId, 0L, OffsetDateTime.now()));
+                        dsl.configuration(), runId, 0L, OffsetDateTime.now(), 0L));
         assertEquals(1L, totalCompleted(runId), "the failed second completion must not count");
     }
 
@@ -194,9 +194,9 @@ class MetadataPrivilegeTest extends PostgresTestBase {
         assertFalse(runCompleted(runId), "a run with pending chunks must not complete");
 
         io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.completeMigrationBoundary(
-                dsl.configuration(), runId, 0L, OffsetDateTime.now());
+                dsl.configuration(), runId, 0L, OffsetDateTime.now(), 0L);
         io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.completeMigrationBoundary(
-                dsl.configuration(), runId, 1L, OffsetDateTime.now());
+                dsl.configuration(), runId, 1L, OffsetDateTime.now(), 0L);
         io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.completeMigrationRun(
                 dsl.configuration(), runId);
 
@@ -213,9 +213,9 @@ class MetadataPrivilegeTest extends PostgresTestBase {
         String label = uniqueLabel("cancel-completed");
         long runId = populate(label);
         io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.completeMigrationBoundary(
-                dsl.configuration(), runId, 0L, OffsetDateTime.now());
+                dsl.configuration(), runId, 0L, OffsetDateTime.now(), 0L);
         io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.completeMigrationBoundary(
-                dsl.configuration(), runId, 1L, OffsetDateTime.now());
+                dsl.configuration(), runId, 1L, OffsetDateTime.now(), 0L);
         io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.completeMigrationRun(
                 dsl.configuration(), runId);
         assertTrue(runCompleted(runId));

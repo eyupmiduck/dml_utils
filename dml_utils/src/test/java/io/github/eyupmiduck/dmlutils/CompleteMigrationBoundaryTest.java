@@ -14,10 +14,11 @@ import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Verifies {@code dml_utils_lib.complete_migration_boundary}: a NULL started_at
- * is rejected with {@code 22023}, and a caller-supplied future timestamp is
- * clamped so it cannot violate the boundary's time-order check and roll back an
- * already-executed chunk.
+ * Verifies {@code dml_utils_lib.complete_migration_boundary}: it validates the
+ * start timestamp and row count, records the boundary completion and advances
+ * the run counters, and clamps a caller-supplied future timestamp so it cannot
+ * violate the boundary's time-order check and roll back an already-executed
+ * chunk.
  */
 class CompleteMigrationBoundaryTest extends PostgresTestBase {
 
@@ -40,12 +41,36 @@ class CompleteMigrationBoundaryTest extends PostgresTestBase {
         long runId = populate();
 
         assertSqlState("22023", () -> Routines.completeMigrationBoundary(
-                dsl.configuration(), runId, 0L, null));
+                dsl.configuration(), runId, 0L, null, 0L));
+    }
+
+    /**
+     * A NULL row count is rejected before the update.
+     */
+    @Test
+    void rejectsANullRowsAffected() {
+        seedBigint(1, 2, 3);
+        long runId = populate();
+
+        assertSqlState("22023", () -> Routines.completeMigrationBoundary(
+                dsl.configuration(), runId, 0L, OffsetDateTime.now(), null));
+    }
+
+    /**
+     * A negative row count is rejected before the update.
+     */
+    @Test
+    void rejectsANegativeRowsAffected() {
+        seedBigint(1, 2, 3);
+        long runId = populate();
+
+        assertSqlState("22023", () -> Routines.completeMigrationBoundary(
+                dsl.configuration(), runId, 0L, OffsetDateTime.now(), -1L));
     }
 
     /**
      * A future started_at is clamped to the completion timestamp, so the
-     * boundary completes and the run counter advances.
+     * boundary completes and the run counters advance.
      */
     @Test
     void clampsAFutureStartedAtToTheCompletionTime() {
@@ -53,7 +78,7 @@ class CompleteMigrationBoundaryTest extends PostgresTestBase {
         long runId = populate();
 
         Routines.completeMigrationBoundary(dsl.configuration(), runId, 0L,
-                OffsetDateTime.now().plusHours(1));
+                OffsetDateTime.now().plusHours(1), 3L);
 
         MigrationBoundaryRecord boundary = dsl.selectFrom(MIGRATION_BOUNDARY)
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
@@ -62,11 +87,16 @@ class CompleteMigrationBoundaryTest extends PostgresTestBase {
         assertNotNull(boundary.getCompletedAt(), "the boundary should be completed");
         assertFalse(boundary.getStartedAt().isAfter(boundary.getCompletedAt()),
                 "started_at must not follow completed_at");
+        assertEquals(3L, boundary.getRowsAffected(), "the row count is recorded");
 
         assertEquals(1L, dsl.select(MIGRATION_RUN.TOTAL_CHUNKS_COMPLETED)
                 .from(MIGRATION_RUN)
                 .where(MIGRATION_RUN.RUN_ID.eq(runId))
                 .fetchOne(MIGRATION_RUN.TOTAL_CHUNKS_COMPLETED));
+        assertEquals(3L, dsl.select(MIGRATION_RUN.TOTAL_ROWS_AFFECTED)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_RUN.TOTAL_ROWS_AFFECTED));
     }
 
     private long populate() {

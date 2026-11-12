@@ -39,7 +39,7 @@ class MarkMigrationRunCancelledTest extends PostgresTestBase {
         seedBigint(1, 2, 3);
         long runId = populate(1);
         Routines.completeMigrationBoundary(dsl.configuration(), runId, 0L,
-                OffsetDateTime.now());
+                OffsetDateTime.now(), 0L);
 
         Routines.markMigrationRunCancelled(dsl.configuration(), runId);
 
@@ -94,7 +94,7 @@ class MarkMigrationRunCancelledTest extends PostgresTestBase {
         long runId = populate(1);
         for (long boundaryNo = 0; boundaryNo <= 2; boundaryNo++) {
             Routines.completeMigrationBoundary(dsl.configuration(), runId, boundaryNo,
-                    OffsetDateTime.now());
+                    OffsetDateTime.now(), 0L);
         }
         Routines.completeMigrationRun(dsl.configuration(), runId);
 
