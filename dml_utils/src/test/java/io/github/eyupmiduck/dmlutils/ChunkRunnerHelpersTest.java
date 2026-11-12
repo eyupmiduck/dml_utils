@@ -45,7 +45,7 @@ class ChunkRunnerHelpersTest extends PartitionTestBase {
         insertRangeRows(0L, 1L, 200L);
         long runId = Routines.populateMigrationBoundaries(dsl.configuration(),
                 PARTITION_SCHEMA, "test_partitioned_range", uniqueLabel("prepare"),
-                TEMPLATE, 1, 1, ChunkingStrategy.primary_key, "t", 0, null, true);
+                TEMPLATE, 1, 1, ChunkingStrategy.primary_key, "t", 0, null, true, 3, 1000);
 
         assertTrue(Routines.preparePartitionWiseExecution(dsl.configuration(), runId,
                 "prepare"));
@@ -53,7 +53,7 @@ class ChunkRunnerHelpersTest extends PartitionTestBase {
 
         long cancelled = Routines.populateMigrationBoundaries(dsl.configuration(),
                 PARTITION_SCHEMA, "test_partitioned_range", uniqueLabel("prepare-cancel"),
-                TEMPLATE, 1, 1, ChunkingStrategy.primary_key, "t", 0, null, true);
+                TEMPLATE, 1, 1, ChunkingStrategy.primary_key, "t", 0, null, true, 3, 1000);
         dsl.update(MIGRATION_RUN)
                 .set(MIGRATION_RUN.CANCELLED_AT, OffsetDateTime.now())
                 .where(MIGRATION_RUN.RUN_ID.eq(cancelled))
@@ -64,7 +64,7 @@ class ChunkRunnerHelpersTest extends PartitionTestBase {
 
         long pausedBefore = Routines.populateMigrationBoundaries(dsl.configuration(),
                 PARTITION_SCHEMA, "test_partitioned_range", uniqueLabel("prepare-paused"),
-                TEMPLATE, 1, 1, ChunkingStrategy.primary_key, "t", 0, null, true);
+                TEMPLATE, 1, 1, ChunkingStrategy.primary_key, "t", 0, null, true, 3, 1000);
         dsl.update(MIGRATION_RUN)
                 .set(MIGRATION_RUN.PAUSED_AT, OffsetDateTime.now())
                 .where(MIGRATION_RUN.RUN_ID.eq(pausedBefore))
@@ -76,7 +76,7 @@ class ChunkRunnerHelpersTest extends PartitionTestBase {
 
         long pausedAfter = Routines.populateMigrationBoundaries(dsl.configuration(),
                 PARTITION_SCHEMA, "test_partitioned_range", uniqueLabel("prepare-paused-after"),
-                TEMPLATE, 1, 1, ChunkingStrategy.primary_key, "t", 0, null, true);
+                TEMPLATE, 1, 1, ChunkingStrategy.primary_key, "t", 0, null, true, 3, 1000);
         assertTrue(Routines.preparePartitionWiseExecution(dsl.configuration(), pausedAfter,
                 "prepare-paused-after"));
         assertNotNull(run(pausedAfter).getBoundariesCalculatedAt());
@@ -97,7 +97,7 @@ class ChunkRunnerHelpersTest extends PartitionTestBase {
         seedBigint(1, 2, 3, 4, 5);
         long runId = Routines.populateMigrationBoundaries(dsl.configuration(),
                 schema(TEST_BIGINT), name(TEST_BIGINT), uniqueLabel("next-single"),
-                TEMPLATE, 2, 1, ChunkingStrategy.primary_key, "t", 0, null, false);
+                TEMPLATE, 2, 1, ChunkingStrategy.primary_key, "t", 0, null, false, 3, 1000);
 
         NextMigrationChunk first = next(runId, false, new Long[0]);
         assertEquals(0L, first.getOBoundaryNo());
@@ -124,7 +124,7 @@ class ChunkRunnerHelpersTest extends PartitionTestBase {
         insertRangeRows(0L, 1L, 200L);
         long runId = Routines.populateMigrationBoundaries(dsl.configuration(),
                 PARTITION_SCHEMA, "test_partitioned_range", uniqueLabel("next-partition"),
-                TEMPLATE, 1, 1, ChunkingStrategy.primary_key, "t", 0, null, true);
+                TEMPLATE, 1, 1, ChunkingStrategy.primary_key, "t", 0, null, true, 3, 1000);
         Routines.calculateMigrationRunBoundaries(dsl.configuration(), runId);
 
         NextMigrationChunk lowFirst = next(runId, true, new Long[0]);
@@ -147,7 +147,7 @@ class ChunkRunnerHelpersTest extends PartitionTestBase {
         seedBigint(1, 2);
         long runId = Routines.populateMigrationBoundaries(dsl.configuration(),
                 schema(TEST_BIGINT), name(TEST_BIGINT), uniqueLabel("record-failure"),
-                TEMPLATE, 1, 1, ChunkingStrategy.primary_key, "t", 0, null, false);
+                TEMPLATE, 1, 1, ChunkingStrategy.primary_key, "t", 0, null, false, 3, 1000);
 
         Routines.recordMigrationWorkerFailure(dsl.configuration(), runId, 0L,
                 "55000", "boom");
@@ -170,7 +170,7 @@ class ChunkRunnerHelpersTest extends PartitionTestBase {
         seedBigint(1, 2);
         long runId = Routines.populateMigrationBoundaries(dsl.configuration(),
                 schema(TEST_BIGINT), name(TEST_BIGINT), uniqueLabel("sleep"),
-                TEMPLATE, 1, 1, ChunkingStrategy.primary_key, "t", 0, null, false);
+                TEMPLATE, 1, 1, ChunkingStrategy.primary_key, "t", 0, null, false, 3, 1000);
 
         assertNull(Routines.sleepBetweenMigrationChunks(dsl.configuration(), runId, 0));
 

@@ -79,7 +79,7 @@ class TerminalBoundaryHelpersTest extends PartitionTestBase {
                         .getSchema().getName(),
                 io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT.getName(),
                 uniqueLabel("terminal-helpers-single"), "SELECT 1", 1, 1,
-                ChunkingStrategy.primary_key, "t", 0, null, false);
+                ChunkingStrategy.primary_key, "t", 0, null, false, 3, 1000);
         assertSqlState("55000", () -> Routines.terminalLeafForRun(
                 dsl.configuration(), runId));
     }

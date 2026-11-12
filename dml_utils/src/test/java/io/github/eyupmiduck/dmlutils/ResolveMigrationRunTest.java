@@ -134,7 +134,35 @@ class ResolveMigrationRunTest extends PostgresTestBase {
 
         assertSqlState("22023", () -> Routines.resolveMigrationRun(
                 dsl.configuration(), TEMPLATE, schema(), name(),
-                uniqueLabel("resolve-chunk-by-null"), 2, 1, "t", null, 0, null, false));
+                uniqueLabel("resolve-chunk-by-null"), 2, 1, "t", null, 0, null, false, 3, 1000));
+    }
+
+    /**
+     * A new run stores the requested retry policy, and a resumed run returns the
+     * stored policy rather than the call's inputs.
+     */
+    @Test
+    void storesRetryPolicyAndResumesWithTheStoredValues() {
+        String label = uniqueLabel("resolve-retries");
+
+        ResolveMigrationRun first = resolveWithRetries(label, 7, 250);
+        assertEquals(7, first.getOEffectiveMaxRetries(), "the new run uses the input retries");
+        assertEquals(250, first.getOEffectiveRetryBackoffMs(),
+                "the new run uses the input backoff");
+
+        ResolveMigrationRun second = resolveWithRetries(label, 9, 500);
+        assertEquals(7, second.getOEffectiveMaxRetries(), "the stored retries win on resume");
+        assertEquals(250, second.getOEffectiveRetryBackoffMs(),
+                "the stored backoff wins on resume");
+        assertEquals(7, dsl.select(MIGRATION_RUN.MAX_RETRIES)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.LABEL.eq(label))
+                .fetchOne(MIGRATION_RUN.MAX_RETRIES), "the stored retries are persisted");
+        assertEquals(250, dsl.select(MIGRATION_RUN.RETRY_BACKOFF_MS)
+                        .from(MIGRATION_RUN)
+                        .where(MIGRATION_RUN.LABEL.eq(label))
+                        .fetchOne(MIGRATION_RUN.RETRY_BACKOFF_MS),
+                "the stored backoff is persisted");
     }
 
     /**
@@ -154,7 +182,7 @@ class ResolveMigrationRunTest extends PostgresTestBase {
         assertDomainViolation(() -> Routines.resolveMigrationRun(
                 dsl.configuration(), TEMPLATE, schema(), name(),
                 uniqueLabel("resolve-sleep-null"), 2, 1, "t",
-                ChunkingStrategy.primary_key, null, null, false));
+                ChunkingStrategy.primary_key, null, null, false, 3, 1000));
     }
 
     /**
@@ -185,7 +213,7 @@ class ResolveMigrationRunTest extends PostgresTestBase {
 
         assertSqlState("42P01", () -> Routines.resolveMigrationRun(
                 dsl.configuration(), TEMPLATE, schema(), "does_not_exist",
-                label, 2, 1, "t", ChunkingStrategy.primary_key, 0, null, false));
+                label, 2, 1, "t", ChunkingStrategy.primary_key, 0, null, false, 3, 1000));
 
         assertEquals(0, dsl.fetchCount(MIGRATION_RUN, MIGRATION_RUN.LABEL.eq(label)),
                 "a failed worker transaction must not leave a run row");
@@ -349,7 +377,7 @@ class ResolveMigrationRunTest extends PostgresTestBase {
                 dsl.configuration(), TEMPLATE,
                 TEST_ORDERED_KEY.getSchema().getName(), TEST_ORDERED_KEY.getName(),
                 uniqueLabel("resolve-ordered-null"), 2, 1, "t",
-                ChunkingStrategy.ordered_key, 0, null, false));
+                ChunkingStrategy.ordered_key, 0, null, false, 3, 1000));
     }
 
     /**
@@ -360,7 +388,7 @@ class ResolveMigrationRunTest extends PostgresTestBase {
         assertSqlState("22023", () -> Routines.resolveMigrationRun(
                 dsl.configuration(), TEMPLATE, schema(), name(),
                 uniqueLabel("resolve-primary-index"), 2, 1, "t",
-                ChunkingStrategy.primary_key, 0, "test_bigint_pkey", false));
+                ChunkingStrategy.primary_key, 0, "test_bigint_pkey", false, 3, 1000));
     }
 
     /**
@@ -370,7 +398,7 @@ class ResolveMigrationRunTest extends PostgresTestBase {
     private ResolveMigrationRun resolveOrderedKey(String label, String index) {
         return Routines.resolveMigrationRun(dsl.configuration(), TEMPLATE,
                 TEST_ORDERED_KEY.getSchema().getName(), TEST_ORDERED_KEY.getName(),
-                label, 2, 1, "t", ChunkingStrategy.ordered_key, 0, index, false);
+                label, 2, 1, "t", ChunkingStrategy.ordered_key, 0, index, false, 3, 1000);
     }
 
     private String storedOrderedKeyIndex(ResolveMigrationRun resolved) {
@@ -394,6 +422,12 @@ class ResolveMigrationRunTest extends PostgresTestBase {
                                                    int chunkSize, int threads, ChunkingStrategy chunkBy,
                                                    int sleepMs) {
         return Routines.resolveMigrationRun(dsl.configuration(), sqlText, schema(), name(),
-                label, chunkSize, threads, alias, chunkBy, sleepMs, null, false);
+                label, chunkSize, threads, alias, chunkBy, sleepMs, null, false, 3, 1000);
+    }
+
+    private ResolveMigrationRun resolveWithRetries(String label, int maxRetries, int retryBackoff) {
+        return Routines.resolveMigrationRun(dsl.configuration(), TEMPLATE, schema(), name(),
+                label, 2, 1, "t", ChunkingStrategy.primary_key, 0, null, false,
+                maxRetries, retryBackoff);
     }
 }

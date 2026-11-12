@@ -63,22 +63,29 @@ class RunResolutionHelpersTest extends PostgresTestBase {
         seedBigint(1, 2, 3, 4, 5);
         long single = Routines.createMigrationRun(dsl.configuration(),
                 schema(TEST_BIGINT), name(TEST_BIGINT), uniqueLabel("create-single"),
-                TEMPLATE, 2, 1, ChunkingStrategy.primary_key, "t", 0, null, false);
+                TEMPLATE, 2, 1, ChunkingStrategy.primary_key, "t", 0, null, false, 3, 1000);
 
         assertEquals(4, dsl.fetchCount(MIGRATION_BOUNDARY,
                 MIGRATION_BOUNDARY.RUN_ID.eq(single)));
         assertNotNull(run(single).getBoundariesCalculatedAt());
+        assertEquals(3, run(single).getMaxRetries(), "the single run stores the retry count");
+        assertEquals(1000, run(single).getRetryBackoffMs(),
+                "the single run stores the retry backoff");
 
         long partitioned = Routines.createMigrationRun(dsl.configuration(),
                 "dml_utils_fixtures", "test_partitioned_range",
                 uniqueLabel("create-partitioned"), TEMPLATE, 2, 1,
-                ChunkingStrategy.primary_key, "t", 0, null, true);
+                ChunkingStrategy.primary_key, "t", 0, null, true, 3, 1000);
 
         assertTrue(run(partitioned).getPartitionWise());
         assertEquals(3, dsl.fetchCount(MIGRATION_RUN_LEAF,
                 MIGRATION_RUN_LEAF.RUN_ID.eq(partitioned)));
         assertEquals(0, dsl.fetchCount(MIGRATION_BOUNDARY,
                 MIGRATION_BOUNDARY.RUN_ID.eq(partitioned)));
+        assertEquals(3, run(partitioned).getMaxRetries(),
+                "the partition-wise run stores the retry count");
+        assertEquals(1000, run(partitioned).getRetryBackoffMs(),
+                "the partition-wise run stores the retry backoff");
     }
 
     /**
@@ -88,7 +95,7 @@ class RunResolutionHelpersTest extends PostgresTestBase {
     void createRejectsAnOrderedRunWithoutAnIndex() {
         assertSqlState("22023", () -> Routines.createMigrationRun(dsl.configuration(),
                 "dml_utils_fixtures", "test_ordered_key", uniqueLabel("create-bad"),
-                TEMPLATE, 2, 1, ChunkingStrategy.ordered_key, "t", 0, null, false));
+                TEMPLATE, 2, 1, ChunkingStrategy.ordered_key, "t", 0, null, false, 3, 1000));
     }
 
     /**
@@ -102,7 +109,7 @@ class RunResolutionHelpersTest extends PostgresTestBase {
 
         ResumeMigrationRun resumed = Routines.resumeMigrationRun(dsl.configuration(),
                 stored, "dml_utils_fixtures", "test_ordered_key", TEMPLATE, 2, 1,
-                "t", ChunkingStrategy.ordered_key, 0, ORDERED_INDEX, false);
+                "t", ChunkingStrategy.ordered_key, 0, ORDERED_INDEX, false, 3, 1000);
 
         assertEquals(TEMPLATE, resumed.getOEffectiveSqlText());
         assertEquals("dml_utils_fixtures", resumed.getOEffectiveSchemaName());
@@ -112,6 +119,27 @@ class RunResolutionHelpersTest extends PostgresTestBase {
         assertEquals(0, resumed.getOEffectiveSleepMs());
         assertEquals(ChunkingStrategy.ordered_key, resumed.getOChunkBy());
         assertFalse(resumed.getOPartitionWise());
+        assertEquals(3, resumed.getOEffectiveMaxRetries());
+        assertEquals(1000, resumed.getOEffectiveRetryBackoffMs());
+    }
+
+    /**
+     * A resumed run uses its stored retry policy, not the call's inputs.
+     */
+    @Test
+    void resumeUsesTheStoredRetryPolicy() {
+        String label = uniqueLabel("resume-retries");
+        long runId = Routines.populateMigrationBoundaries(dsl.configuration(),
+                schema(TEST_BIGINT), name(TEST_BIGINT), label, TEMPLATE, 1, 1,
+                ChunkingStrategy.primary_key, "t", 0, null, false, 7, 250);
+        MigrationRunRecord stored = run(runId);
+
+        ResumeMigrationRun resumed = Routines.resumeMigrationRun(dsl.configuration(),
+                stored, schema(TEST_BIGINT), name(TEST_BIGINT), TEMPLATE, 1, 1,
+                "t", ChunkingStrategy.primary_key, 0, null, false, 9, 500);
+
+        assertEquals(7, resumed.getOEffectiveMaxRetries(), "the stored retries win");
+        assertEquals(250, resumed.getOEffectiveRetryBackoffMs(), "the stored backoff wins");
     }
 
     /**
@@ -127,7 +155,7 @@ class RunResolutionHelpersTest extends PostgresTestBase {
 
         assertSqlState("55000", () -> Routines.resumeMigrationRun(dsl.configuration(),
                 stored, "dml_utils_fixtures", "test_ordered_key", TEMPLATE, 1, 1,
-                "t", ChunkingStrategy.ordered_key, 0, ORDERED_INDEX, false));
+                "t", ChunkingStrategy.ordered_key, 0, ORDERED_INDEX, false, 3, 1000));
     }
 
     /**
@@ -143,7 +171,7 @@ class RunResolutionHelpersTest extends PostgresTestBase {
 
         assertSqlState("22023", () -> Routines.resumeMigrationRun(dsl.configuration(),
                 stored, schema(TEST_BIGINT), name(TEST_BIGINT), TEMPLATE, 1, 1,
-                "t", ChunkingStrategy.blocks, 0, null, false));
+                "t", ChunkingStrategy.blocks, 0, null, false, 3, 1000));
     }
 
     private long populate(String label, ChunkingStrategy chunkBy, boolean partitionWise) {
@@ -155,7 +183,7 @@ class RunResolutionHelpersTest extends PostgresTestBase {
         String index = chunkBy == ChunkingStrategy.ordered_key ? ORDERED_INDEX : null;
         return Routines.populateMigrationBoundaries(dsl.configuration(),
                 tableSchema, table, label, TEMPLATE, 1, 1, chunkBy, "t", 0, index,
-                partitionWise);
+                partitionWise, 3, 1000);
     }
 
     private MigrationRunRecord run(long runId) {

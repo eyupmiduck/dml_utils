@@ -16,7 +16,11 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.populate_migration_boundaries(
     -- When true, the driving table is a declarative partitioned parent and this
     -- call only creates the run and its pending leaf manifest; the per-leaf
     -- boundaries are calculated separately, one committed transaction per leaf.
-    i_partition_wise dml_utils_data.non_null_boolean DEFAULT FALSE
+    i_partition_wise dml_utils_data.non_null_boolean DEFAULT FALSE,
+    -- Retries after the first attempt for a transient chunk failure; 0 disables.
+    i_max_retries dml_utils_data.non_negative_integer DEFAULT 3,
+    -- Milliseconds between transient-retry attempts; 0 retries immediately.
+    i_retry_backoff_ms dml_utils_data.non_negative_integer DEFAULT 1000
 )
     RETURNS bigint
     LANGUAGE plpgsql
@@ -77,7 +81,7 @@ BEGIN
     -- renders with the same alias the first call used.
     INSERT INTO dml_utils_data.migration_run (label, sql_text, chunk_size, chunk_by,
                                               partition_wise, threads,
-                                              sleep_ms,
+                                              sleep_ms, max_retries, retry_backoff_ms,
                                               driving_table_schema_name, driving_table_name,
                                               driving_table_alias,
                                               driving_table_relation_filepath,
@@ -85,7 +89,7 @@ BEGIN
                                               ordered_key_kinds,
                                               started_at)
     VALUES (i_label, i_sql_text, i_chunk_size, i_chunk_by, i_partition_wise::boolean, i_threads,
-            i_sleep_ms,
+            i_sleep_ms, i_max_retries, i_retry_backoff_ms,
             i_schema_name, i_table_name,
             i_driving_table_alias,
             l_key.o_relation_filepath,
@@ -121,7 +125,21 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION dml_utils_lib.populate_migration_boundaries IS
+COMMENT ON FUNCTION dml_utils_lib.populate_migration_boundaries(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.positive_integer,
+    dml_utils_data.positive_integer,
+    dml_utils_data.chunking_strategy,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_negative_integer,
+    name,
+    dml_utils_data.non_null_boolean,
+    dml_utils_data.non_negative_integer,
+    dml_utils_data.non_negative_integer
+    ) IS
     'Creates a run and returns its id. resolve_migration_creation_key resolves '
         'the key and filepath, and for a single-relation run '
         'populate_single_relation_boundaries scans the driving table and inserts '
@@ -129,6 +147,8 @@ COMMENT ON FUNCTION dml_utils_lib.populate_migration_boundaries IS
         'instead validates the partitioned parent and calls '
         'snapshot_partition_leaf_manifest, which stores the deterministic pending '
         'leaf manifest and returns without boundaries or a boundaries_calculated_at '
-        'milestone, so calculation can resume one leaf per transaction. SECURITY '
+        'milestone, so calculation can resume one leaf per transaction. The run '
+        'stores max_retries and retry_backoff_ms for the coordinator transient-retry '
+        'policy. SECURITY '
         'DEFINER so the metadata writes run as the owner, with an explicit '
         'effective-caller SELECT check on the parent and every leaf.';

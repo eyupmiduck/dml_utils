@@ -38,7 +38,7 @@ abstract class PartitionTestBase extends PostgresTestBase {
                                          String index) {
         return Routines.populateMigrationBoundaries(dsl.configuration(),
                 PARTITION_SCHEMA, table, uniqueLabel(labelPrefix), sqlText, chunkSize, 1,
-                chunkBy, "t", 0, index, true);
+                chunkBy, "t", 0, index, true, 3, 1000);
     }
 
     /**

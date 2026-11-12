@@ -26,7 +26,11 @@ CREATE OR REPLACE FUNCTION dml_utils.run_migration_chunks(
     -- and its leaf manifest are created first, each leaf's boundaries are
     -- calculated in its own worker/transaction, and every chunk is rendered
     -- against its leaf.
-    i_partition_wise dml_utils_data.non_null_boolean DEFAULT FALSE
+    i_partition_wise dml_utils_data.non_null_boolean DEFAULT FALSE,
+    -- Retries after the first attempt for a transient chunk failure; 0 disables.
+    i_max_retries dml_utils_data.non_negative_integer DEFAULT 3,
+    -- Milliseconds between transient-retry attempts; 0 retries immediately.
+    i_retry_backoff_ms dml_utils_data.non_negative_integer DEFAULT 1000
 )
     RETURNS void
     LANGUAGE plpgsql
@@ -34,44 +38,51 @@ CREATE OR REPLACE FUNCTION dml_utils.run_migration_chunks(
 AS
 $$
 DECLARE
-    l_key_columns           name[];
-    l_key_kinds             text[];
-    l_chunk_by              dml_utils_data.chunking_strategy;
-    l_partition_wise        boolean;
-    l_run_id                bigint;
-    l_already_completed     boolean;
-    l_effective_sql_text    text;
-    l_effective_threads     integer;
-    l_effective_sleep_ms    integer;
-    l_effective_schema_name text;
-    l_effective_table_name  text;
-    l_effective_alias       text;
-    l_boundary_no           bigint;
-    l_chunk                 record;
-    l_chunk_sql             text;
+    l_key_columns                name[];
+    l_key_kinds                  text[];
+    l_chunk_by                   dml_utils_data.chunking_strategy;
+    l_partition_wise             boolean;
+    l_run_id                     bigint;
+    l_already_completed          boolean;
+    l_effective_sql_text         text;
+    l_effective_threads          integer;
+    l_effective_sleep_ms         integer;
+    l_effective_max_retries      integer;
+    l_effective_retry_backoff_ms integer;
+    l_effective_schema_name      text;
+    l_effective_table_name       text;
+    l_effective_alias            text;
+    l_boundary_no                bigint;
+    l_chunk                      record;
+    l_chunk_sql                  text;
     -- Run-invariant chunk-render context, prepared once before the loop so the
     -- per-chunk render does not repeat the template validation and quoting.
-    l_render_prepared       record;
+    l_render_prepared            record;
     -- The workers kept in flight, and the boundary each one was launched for
     -- (parallel arrays, aligned by position).
-    l_in_flight             public.pg_background_handle[] := ARRAY []::public.pg_background_handle[];
-    l_in_flight_boundaries  bigint[]                      := ARRAY []::bigint[];
-    l_worker_index          integer;
-    l_pids                  integer[];
-    l_cookies               bigint[];
-    l_aborting              boolean                       := false;
+    l_in_flight                  public.pg_background_handle[] := ARRAY []::public.pg_background_handle[];
+    l_in_flight_boundaries       bigint[]                      := ARRAY []::bigint[];
+    l_in_flight_sql              text[]                        := ARRAY []::text[];
+    -- Transient-retry attempts per boundary, aligned parallel arrays.
+    l_retry_boundaries           bigint[]                      := ARRAY []::bigint[];
+    l_retry_counts               integer[]                     := ARRAY []::integer[];
+    l_retry_attempt              integer;
+    l_worker_index               integer;
+    l_pids                       integer[];
+    l_cookies                    bigint[];
+    l_aborting                   boolean                       := false;
     -- Cancellation state: the run's cancelled_at, polled at most every 100ms.
-    l_cancelled_at          timestamptz;
-    l_paused_at             timestamptz;
-    l_last_state_check      timestamptz;
-    l_error_sqlstate        text;
-    l_error_message         text;
-    l_error_boundary_no     bigint;
+    l_cancelled_at               timestamptz;
+    l_paused_at                  timestamptz;
+    l_last_state_check           timestamptz;
+    l_error_sqlstate             text;
+    l_error_message              text;
+    l_error_boundary_no          bigint;
     -- pg_background is installed in the public schema. Qualify its types and
     -- functions explicitly so this routine resolves them regardless of the
     -- caller's (or Liquibase's) search_path.
-    l_handle                public.pg_background_handle;
-    l_outcome               record;
+    l_handle                     public.pg_background_handle;
+    l_outcome                    record;
 BEGIN
     -- Validate the template up front so a bad call fails before any run or
     -- worker exists.
@@ -88,13 +99,16 @@ BEGIN
            r.o_effective_alias,
            r.o_effective_threads,
            r.o_effective_sleep_ms,
+           r.o_effective_max_retries,
+           r.o_effective_retry_backoff_ms,
            r.o_chunk_by,
            r.o_partition_wise,
            r.o_key_columns,
            r.o_key_kinds
     INTO l_run_id, l_already_completed, l_effective_sql_text,
         l_effective_schema_name, l_effective_table_name, l_effective_alias,
-        l_effective_threads, l_effective_sleep_ms, l_chunk_by, l_partition_wise,
+        l_effective_threads, l_effective_sleep_ms, l_effective_max_retries,
+        l_effective_retry_backoff_ms, l_chunk_by, l_partition_wise,
         l_key_columns, l_key_kinds
     FROM dml_utils_lib.resolve_migration_run(
                  i_sql_text => i_sql_text,
@@ -107,7 +121,9 @@ BEGIN
                  i_chunk_by => i_chunk_by,
                  i_sleep_ms => i_sleep_ms,
                  i_boundary_key_index => i_boundary_key_index,
-                 i_partition_wise => i_partition_wise) AS r;
+                 i_partition_wise => i_partition_wise,
+                 i_max_retries => i_max_retries,
+                 i_retry_backoff_ms => i_retry_backoff_ms) AS r;
 
     IF l_already_completed THEN
         RETURN;
@@ -286,6 +302,7 @@ BEGIN
                                 pg_catalog.format('run %s chunk %s', l_run_id, l_boundary_no));
                         l_in_flight := l_in_flight || l_handle;
                         l_in_flight_boundaries := l_in_flight_boundaries || l_boundary_no;
+                        l_in_flight_sql := l_in_flight_sql || l_chunk_sql;
                     END LOOP;
             END IF;
 
@@ -324,10 +341,13 @@ BEGIN
             -- from the in-flight set.
             l_worker_index := pg_catalog.array_position(l_in_flight, l_handle);
             l_boundary_no := l_in_flight_boundaries[l_worker_index];
+            l_chunk_sql := l_in_flight_sql[l_worker_index];
             l_in_flight := l_in_flight[1:l_worker_index - 1]
                 || l_in_flight[l_worker_index + 1:];
             l_in_flight_boundaries := l_in_flight_boundaries[1:l_worker_index - 1]
                 || l_in_flight_boundaries[l_worker_index + 1:];
+            l_in_flight_sql := l_in_flight_sql[1:l_worker_index - 1]
+                || l_in_flight_sql[l_worker_index + 1:];
 
             SELECT outcome.has_error,
                    outcome.sqlstate,
@@ -350,6 +370,56 @@ BEGIN
                                  AND b.boundary_no = l_boundary_no
                                  AND (b.completed_at IS NOT NULL
                                    OR b.cancelled_at IS NOT NULL)) THEN
+                        CONTINUE;
+                    END IF;
+                END IF;
+
+                -- Retry a transient failure within the run's configured budget,
+                -- unless an earlier failure has already latched the abort.
+                IF NOT l_aborting
+                    AND l_outcome.sqlstate IN ('40001', '40P01', '55P03')
+                THEN
+                    l_worker_index := pg_catalog.array_position(
+                            l_retry_boundaries, l_boundary_no);
+                    IF l_worker_index IS NULL THEN
+                        l_retry_boundaries := l_retry_boundaries || l_boundary_no;
+                        l_retry_counts := l_retry_counts || 1;
+                        l_retry_attempt := 1;
+                    ELSE
+                        l_retry_counts[l_worker_index] := l_retry_counts[l_worker_index] + 1;
+                        l_retry_attempt := l_retry_counts[l_worker_index];
+                    END IF;
+
+                    IF l_retry_attempt <= l_effective_max_retries THEN
+                        -- Wait the fixed backoff, stopping on cancellation or pause.
+                        l_cancelled_at := dml_utils_lib.sleep_between_migration_chunks(
+                                i_run_id => l_run_id,
+                                i_sleep_ms => l_effective_retry_backoff_ms);
+
+                        SELECT r.cancelled_at, r.paused_at
+                        INTO l_cancelled_at, l_paused_at
+                        FROM dml_utils_data.migration_run AS r
+                        WHERE r.run_id = l_run_id;
+
+                        EXIT WHEN l_cancelled_at IS NOT NULL;
+                        -- A pause stops the retry, but the main loop must still
+                        -- drain the other in-flight workers before returning.
+                        CONTINUE WHEN l_paused_at IS NOT NULL;
+
+                        RAISE NOTICE 'retrying boundary % of run % after % (attempt % of %)',
+                            l_boundary_no, l_run_id, l_outcome.sqlstate,
+                            l_retry_attempt, l_effective_max_retries;
+
+                        l_handle := public.pg_background_launch(
+                                pg_catalog.format(
+                                        'SELECT dml_utils_lib.process_migration_chunk(%s, %s, %L)',
+                                        l_run_id, l_boundary_no, l_chunk_sql),
+                                0,
+                                pg_catalog.format('run %s chunk %s retry %s',
+                                                  l_run_id, l_boundary_no, l_retry_attempt));
+                        l_in_flight := l_in_flight || l_handle;
+                        l_in_flight_boundaries := l_in_flight_boundaries || l_boundary_no;
+                        l_in_flight_sql := l_in_flight_sql || l_chunk_sql;
                         CONTINUE;
                     END IF;
                 END IF;
@@ -481,7 +551,22 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION dml_utils.run_migration_chunks IS
+COMMENT ON FUNCTION dml_utils.run_migration_chunks(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.positive_integer,
+    dml_utils_data.positive_integer,
+    dml_utils_data.non_null_text,
+    dml_utils_data.chunking_strategy,
+    dml_utils_data.positive_integer,
+    dml_utils_data.non_negative_integer,
+    name,
+    dml_utils_data.non_null_boolean,
+    dml_utils_data.non_negative_integer,
+    dml_utils_data.non_negative_integer
+    ) IS
     'Runs the chunk SQL for every chunk of the driving table (primary_key: fixed '
         'rows in primary-key order; ordered_key: fixed rows in the order of '
         'i_boundary_key_index, a unique index on the driving table; blocks: '
@@ -505,7 +590,11 @@ COMMENT ON FUNCTION dml_utils.run_migration_chunks IS
         'workers to commit their current chunk, leaves the remaining boundaries '
         'pending and returns; re-calling it while paused is a no-op until '
         'dml_utils.resume_migration_run clears the flag. Completion wins if every '
-        'chunk already finished. With i_partition_wise the parent is '
+        'chunk already finished. A transient chunk failure with SQLSTATE 40001 '
+        '(serialization), 40P01 (deadlock) or 55P03 (lock not available) is retried '
+        'up to the run''s stored max_retries after a cancellation- and pause-aware '
+        'retry_backoff_ms; the failure is recorded only after the budget is '
+        'exhausted. With i_partition_wise the parent is '
         'declarative partitioned: prepare_partition_wise_execution first finishes '
         'one-leaf-per-transaction boundary calculation, finalizes, then processes '
         'each chunk against its boundary''s leaf via next_migration_chunk. The live '

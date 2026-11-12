@@ -335,7 +335,7 @@ class PartitionWiseIntegrationTest extends PartitionTestBase {
     private long populate(String table, String label, int chunkSize) {
         return Routines.populateMigrationBoundaries(dsl.configuration(), PARTITION_SCHEMA,
                 table, label, TEMPLATE, chunkSize, 1, ChunkingStrategy.primary_key,
-                "t", 0, null, true);
+                "t", 0, null, true, 3, 1000);
     }
 
     private void run(String table, String label, int chunkSize) {
@@ -346,7 +346,7 @@ class PartitionWiseIntegrationTest extends PartitionTestBase {
                      ChunkingStrategy chunkBy, String boundaryKeyIndex) {
         io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines.runMigrationChunks(
                 dsl.configuration(), TEMPLATE, PARTITION_SCHEMA, table, label,
-                chunkSize, threads, "t", chunkBy, 1, 0, boundaryKeyIndex, true);
+                chunkSize, threads, "t", chunkBy, 1, 0, boundaryKeyIndex, true, 3, 1000);
     }
 
     private MigrationRunRecord run(String label) {

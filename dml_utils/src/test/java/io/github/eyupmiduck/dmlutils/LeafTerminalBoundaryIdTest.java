@@ -67,7 +67,7 @@ class LeafTerminalBoundaryIdTest extends PartitionTestBase {
                 PARTITION_SCHEMA, "test_partitioned_multi",
                 uniqueLabel("terminal-ordered"), TEMPLATE, 2, 1,
                 ChunkingStrategy.ordered_key, "t", 0,
-                "test_partitioned_multi_ordered_key_idx", true);
+                "test_partitioned_multi_ordered_key_idx", true, 3, 1000);
 
         for (String leaf : List.of("test_partitioned_multi_low_h0",
                 "test_partitioned_multi_low_h1", "test_partitioned_multi_high")) {
@@ -122,7 +122,7 @@ class LeafTerminalBoundaryIdTest extends PartitionTestBase {
         long runId = Routines.populateMigrationBoundaries(dsl.configuration(),
                 PARTITION_SCHEMA, "test_partitioned_range",
                 uniqueLabel("terminal-plain"), TEMPLATE, 1, 1,
-                ChunkingStrategy.primary_key, "t", 0, null, false);
+                ChunkingStrategy.primary_key, "t", 0, null, false, 3, 1000);
 
         assertSqlState("55000", () -> Routines.leafTerminalBoundaryId(
                 dsl.configuration(), runId, 1));
@@ -132,7 +132,7 @@ class LeafTerminalBoundaryIdTest extends PartitionTestBase {
         return Routines.populateMigrationBoundaries(dsl.configuration(),
                 PARTITION_SCHEMA, "test_partitioned_range",
                 uniqueLabel("terminal-" + chunkBy), TEMPLATE, 2, 1,
-                chunkBy, "t", 0, index, true);
+                chunkBy, "t", 0, index, true, 3, 1000);
     }
 
     private MigrationKeyRecord terminal(long runId, String leafName) {

@@ -86,7 +86,7 @@ class ClaimNextMigrationLeafTest extends PartitionTestBase {
         assertSqlState("P0002", () -> claim(-1L));
         long plain = Routines.populateMigrationBoundaries(dsl.configuration(),
                 PARTITION_SCHEMA, TABLE, uniqueLabel("claim-plain"), TEMPLATE, 2, 1,
-                ChunkingStrategy.primary_key, "t", 0, null, false);
+                ChunkingStrategy.primary_key, "t", 0, null, false, 3, 1000);
         assertSqlState("22023", () -> claim(plain));
     }
 
