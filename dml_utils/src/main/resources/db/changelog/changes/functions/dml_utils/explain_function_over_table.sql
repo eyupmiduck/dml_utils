@@ -20,12 +20,12 @@ CREATE OR REPLACE FUNCTION dml_utils.explain_function_over_table(
 )
     RETURNS TABLE
             (
-                o_plan_kind       text,
-                o_sql_text        text,
-                o_plan            json,
+                o_plan_kind        text,
+                o_sql_text         text,
+                o_plan             json,
                 o_leaf_schema_name text,
-                o_leaf_name       text,
-                o_leaf_ordinal    integer
+                o_leaf_name        text,
+                o_leaf_ordinal     integer
             )
     LANGUAGE plpgsql
     VOLATILE
