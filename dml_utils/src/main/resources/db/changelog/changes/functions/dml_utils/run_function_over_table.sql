@@ -62,22 +62,43 @@ BEGIN
     -- The filter is hashed because label is indexed by three btree indexes; a
     -- large IN list or regex would otherwise exceed the btree tuple limit and fail
     -- run creation with an opaque "index row size" error.
+    --
+    -- Keep the v1 six-component shape when the ordered-key index is absent and
+    -- partition_wise is false, so a plain call still resumes a run created before
+    -- this change. The key and partition flag are appended only when they can
+    -- distinguish a run.
     l_label := coalesce(
             i_label,
-            'function:' || pg_catalog.json_build_array(
-                    i_driving_table_schema_name,
-                    i_driving_table_name,
-                    i_function_schema_name,
-                    i_function_name,
-                    CASE
-                        WHEN i_filter IS NULL THEN NULL
-                        ELSE 'sha256:' || pg_catalog.encode(
-                                pg_catalog.sha256(pg_catalog.convert_to(i_filter, 'UTF8')),
-                                'hex')
-                        END,
-                    i_chunk_by,
-                    i_boundary_key_index,
-                    i_partition_wise)::text);
+            'function:' || CASE
+                WHEN i_boundary_key_index IS NULL AND NOT i_partition_wise::boolean THEN
+                    pg_catalog.json_build_array(
+                            i_driving_table_schema_name,
+                            i_driving_table_name,
+                            i_function_schema_name,
+                            i_function_name,
+                            CASE
+                                WHEN i_filter IS NULL THEN NULL
+                                ELSE 'sha256:' || pg_catalog.encode(
+                                        pg_catalog.sha256(pg_catalog.convert_to(i_filter, 'UTF8')),
+                                        'hex')
+                                END,
+                            i_chunk_by)::text
+                ELSE
+                    pg_catalog.json_build_array(
+                            i_driving_table_schema_name,
+                            i_driving_table_name,
+                            i_function_schema_name,
+                            i_function_name,
+                            CASE
+                                WHEN i_filter IS NULL THEN NULL
+                                ELSE 'sha256:' || pg_catalog.encode(
+                                        pg_catalog.sha256(pg_catalog.convert_to(i_filter, 'UTF8')),
+                                        'hex')
+                                END,
+                            i_chunk_by,
+                            i_boundary_key_index,
+                            i_partition_wise)::text
+                END);
 
     -- Delegate to the base engine: it owns resume, chunk scheduling, error
     -- recording and run completion. The generated template is a valid
@@ -97,7 +118,21 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION dml_utils.run_function_over_table IS
+COMMENT ON FUNCTION dml_utils.run_function_over_table(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.positive_integer,
+    dml_utils_data.positive_integer,
+    text,
+    text,
+    dml_utils_data.chunking_strategy,
+    dml_utils_data.positive_integer,
+    dml_utils_data.non_negative_integer,
+    name,
+    dml_utils_data.non_null_boolean
+    ) IS
     'Runs a user-supplied void function once per row of the driving table, chunk '
         'by chunk, resuming by label (derived from the table, function, filter, '
         'chunk key and partition flag when i_label is NULL; the filter is hashed so '

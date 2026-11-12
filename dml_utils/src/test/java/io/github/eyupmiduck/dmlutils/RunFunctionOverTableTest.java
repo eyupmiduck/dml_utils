@@ -8,11 +8,13 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeMixed.TEST_COMPOSITE_MIXED;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestOrderedKey.TEST_ORDERED_KEY;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestOther.TEST_OTHER;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestPartitionedRange.TEST_PARTITIONED_RANGE;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestTimestamptzPk.TEST_TIMESTAMPTZ_PK;
@@ -42,7 +44,7 @@ class RunFunctionOverTableTest extends PostgresTestBase {
     void resetFixtures() {
         dsl.deleteFrom(MIGRATION_RUN).execute();
         for (Table<?> table : List.of(TEST_BIGINT, TEST_COMPOSITE_MIXED, TEST_OTHER,
-                TEST_TIMESTAMPTZ_PK, TEST_PARTITIONED_RANGE)) {
+                TEST_TIMESTAMPTZ_PK, TEST_PARTITIONED_RANGE, TEST_ORDERED_KEY)) {
             dsl.truncate(table).execute();
         }
     }
@@ -58,6 +60,7 @@ class RunFunctionOverTableTest extends PostgresTestBase {
         dsl.execute("DROP FUNCTION IF EXISTS public.mark_bigint(bigint)");
         dsl.execute("DROP FUNCTION IF EXISTS public.mark_timestamptz(timestamptz)");
         dsl.execute("DROP FUNCTION IF EXISTS public.mark_partitioned(bigint)");
+        dsl.execute("DROP FUNCTION IF EXISTS public.mark_ordered_key(bigint)");
         dsl.execute("DROP FUNCTION IF EXISTS public.wrong_order(text, bigint)");
         dsl.execute("DROP FUNCTION IF EXISTS public.bad_return(bigint, text)");
         dsl.execute("DROP PROCEDURE IF EXISTS public.mark_mixed_proc(bigint, text)");
@@ -188,9 +191,9 @@ class RunFunctionOverTableTest extends PostgresTestBase {
                 ChunkingStrategy.primary_key, 1, 0, null, false);
 
         String derivedLabel = "function:"
-                + dsl.fetchOne("SELECT pg_catalog.json_build_array(?, ?, ?, ?, CAST(? AS text), CAST(? AS text), CAST(? AS text), CAST(? AS boolean))::text",
+                + dsl.fetchOne("SELECT pg_catalog.json_build_array(?, ?, ?, ?, CAST(? AS text), CAST(? AS text))::text",
                 schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
-                FN_SCHEMA, "mark_mixed", null, "primary_key", null, false).get(0, String.class);
+                FN_SCHEMA, "mark_mixed", null, "primary_key").get(0, String.class);
         assertEquals(1, dsl.fetchCount(MIGRATION_RUN, MIGRATION_RUN.LABEL.eq(derivedLabel)),
                 "both calls share one derived run");
         assertEquals(3, payloadCount(TEST_COMPOSITE_MIXED, "done"),
@@ -311,16 +314,17 @@ class RunFunctionOverTableTest extends PostgresTestBase {
      */
     @Test
     void appliesAnOrderedKeyFunctionOverEveryRow() {
-        insertBigintRows(1L, 2L, 3L, 4L, 5L);
-        createMarkBigint("done");
+        seedOrderedKeyRows(1L, 2L, 3L);
+        createMarkOrderedKey("done");
         String label = functionTestLabel("ordered-key");
 
-        Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_BIGINT),
-                name(TEST_BIGINT), FN_SCHEMA, "mark_bigint", 2, 1, label, null,
-                ChunkingStrategy.ordered_key, 1, 0, "test_bigint_pkey", false);
+        Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_ORDERED_KEY),
+                name(TEST_ORDERED_KEY), FN_SCHEMA, "mark_ordered_key", 1, 1, label, null,
+                ChunkingStrategy.ordered_key, 1, 0,
+                "test_ordered_key_created_at_id_idx", false);
 
-        assertEquals(5, payloadCount(TEST_BIGINT, "done"),
-                "the function runs once per row through the ordered key");
+        assertEquals(3, payloadCount(TEST_ORDERED_KEY, "done"),
+                "the function runs once per row while the ordered key drives chunking");
         assertTrue(runCompleted(label), "the run should be complete");
     }
 
@@ -330,7 +334,7 @@ class RunFunctionOverTableTest extends PostgresTestBase {
      */
     @Test
     void appliesAPartitionWiseFunctionOverEveryLeaf() {
-        insertPartitionedRows(0L, 1L, 200L);
+        insertPartitionedRows(50L, 150L, 250L);
         createMarkPartitioned("done");
         String label = functionTestLabel("partition-primary");
 
@@ -349,7 +353,7 @@ class RunFunctionOverTableTest extends PostgresTestBase {
      */
     @Test
     void appliesAPartitionWiseOrderedKeyFunctionOverEveryLeaf() {
-        insertPartitionedRows(0L, 1L, 200L);
+        insertPartitionedRows(50L, 150L, 250L);
         createMarkPartitioned("done");
         String label = functionTestLabel("partition-ordered");
 
@@ -582,10 +586,17 @@ class RunFunctionOverTableTest extends PostgresTestBase {
         assertTrue(runCompleted(label), "the run should be complete");
     }
 
-    private void insertBigintRows(Long... ids) {
+    private void seedOrderedKeyRows(Long... ids) {
         for (Long id : ids) {
-            dsl.insertInto(TEST_BIGINT, TEST_BIGINT.ID, TEST_BIGINT.PAYLOAD)
-                    .values(id, null)
+            dsl.insertInto(TEST_ORDERED_KEY,
+                            TEST_ORDERED_KEY.ID,
+                            TEST_ORDERED_KEY.CREATED_AT,
+                            TEST_ORDERED_KEY.EXTERNAL_ID,
+                            TEST_ORDERED_KEY.LABEL,
+                            TEST_ORDERED_KEY.COLLATED_LABEL,
+                            TEST_ORDERED_KEY.NUMERIC_KEY)
+                    .values(id, timestamp(id.intValue()), uuid(id.intValue()),
+                            "label-" + id, "collated-" + id, BigDecimal.valueOf(id))
                     .execute();
         }
     }
@@ -603,6 +614,14 @@ class RunFunctionOverTableTest extends PostgresTestBase {
         dsl.execute("CREATE OR REPLACE FUNCTION public.mark_bigint(p_id bigint)"
                 + " RETURNS void LANGUAGE sql AS $$"
                 + " UPDATE " + schema(TEST_BIGINT) + "." + name(TEST_BIGINT)
+                + " SET payload = coalesce(payload, '') || " + DSL.inline(value)
+                + " WHERE id = p_id $$");
+    }
+
+    private void createMarkOrderedKey(String value) {
+        dsl.execute("CREATE OR REPLACE FUNCTION public.mark_ordered_key(p_id bigint)"
+                + " RETURNS void LANGUAGE sql AS $$"
+                + " UPDATE " + schema(TEST_ORDERED_KEY) + "." + name(TEST_ORDERED_KEY)
                 + " SET payload = coalesce(payload, '') || " + DSL.inline(value)
                 + " WHERE id = p_id $$");
     }
