@@ -61,6 +61,31 @@ class ChunkRunnerHelpersTest extends PartitionTestBase {
 
         assertFalse(Routines.preparePartitionWiseExecution(dsl.configuration(), cancelled,
                 "prepare-cancel"));
+
+        long pausedBefore = Routines.populateMigrationBoundaries(dsl.configuration(),
+                PARTITION_SCHEMA, "test_partitioned_range", uniqueLabel("prepare-paused"),
+                TEMPLATE, 1, 1, ChunkingStrategy.primary_key, "t", 0, null, true);
+        dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.PAUSED_AT, OffsetDateTime.now())
+                .where(MIGRATION_RUN.RUN_ID.eq(pausedBefore))
+                .execute();
+        assertFalse(Routines.preparePartitionWiseExecution(dsl.configuration(), pausedBefore,
+                "prepare-paused"));
+        assertNull(run(pausedBefore).getBoundariesCalculatedAt(),
+                "a paused calculation does not finalize");
+
+        long pausedAfter = Routines.populateMigrationBoundaries(dsl.configuration(),
+                PARTITION_SCHEMA, "test_partitioned_range", uniqueLabel("prepare-paused-after"),
+                TEMPLATE, 1, 1, ChunkingStrategy.primary_key, "t", 0, null, true);
+        assertTrue(Routines.preparePartitionWiseExecution(dsl.configuration(), pausedAfter,
+                "prepare-paused-after"));
+        assertNotNull(run(pausedAfter).getBoundariesCalculatedAt());
+        dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.PAUSED_AT, OffsetDateTime.now())
+                .where(MIGRATION_RUN.RUN_ID.eq(pausedAfter))
+                .execute();
+        assertFalse(Routines.preparePartitionWiseExecution(dsl.configuration(), pausedAfter,
+                "prepare-paused-after"));
     }
 
     /**
@@ -138,7 +163,7 @@ class ChunkRunnerHelpersTest extends PartitionTestBase {
 
     /**
      * The throttle returns immediately for zero and reports a cancellation while
-     * sleeping.
+     * sleeping. Pause interruption is covered by the runner pause test.
      */
     @Test
     void sleepsAndReportsCancellation() {

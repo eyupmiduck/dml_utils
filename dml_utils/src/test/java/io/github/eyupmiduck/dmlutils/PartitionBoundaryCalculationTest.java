@@ -96,6 +96,76 @@ class PartitionBoundaryCalculationTest extends PartitionTestBase {
     }
 
     /**
+     * A pause after one leaf is calculated stops the coordinator before the next
+     * leaf; resuming continues and finalizes.
+     */
+    @Test
+    void pauseStopsBoundaryCalculationAndResumeContinues() {
+        insertRows(0L, 1L, 2L, 3L, 4L, 200L, 201L, 202L);
+        long runId = populatePartitionWise("calc-pause", TABLE, TEMPLATE,
+                ChunkingStrategy.primary_key, 2, null);
+        String label = dsl.select(MIGRATION_RUN.LABEL)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_RUN.LABEL);
+
+        assertEquals(1, calculate(runId), "one leaf is calculated before the pause");
+        assertEquals("calculated", leafState(runId, 1));
+        assertEquals("pending", leafState(runId, 2));
+
+        assertNotNull(io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines.pauseMigrationRun(
+                dsl.configuration(), label));
+
+        Routines.calculateMigrationRunBoundaries(dsl.configuration(), runId);
+
+        assertNull(run(runId).getBoundariesCalculatedAt(),
+                "a paused calculation does not finalize");
+        assertEquals("calculated", leafState(runId, 1),
+                "the already calculated leaf stays committed");
+        assertEquals("pending", leafState(runId, 2),
+                "the next leaf stays pending");
+
+        assertNotNull(io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines.resumeMigrationRun(
+                dsl.configuration(), label));
+        Routines.calculateMigrationRunBoundaries(dsl.configuration(), runId);
+
+        assertNotNull(run(runId).getBoundariesCalculatedAt(),
+                "the resumed calculation finalizes");
+        for (int ordinal = 1; ordinal <= 3; ordinal++) {
+            assertEquals("calculated", leafState(runId, ordinal));
+        }
+    }
+
+    /**
+     * A pause after every leaf is already calculated still lets finalization
+     * finish; the pause then applies to processing.
+     */
+    @Test
+    void pauseAfterEveryLeafCalculatedStillFinalizes() {
+        insertRows(0L, 1L, 2L, 3L, 4L, 200L, 201L, 202L);
+        long runId = populatePartitionWise("calc-pause-finalize", TABLE, TEMPLATE,
+                ChunkingStrategy.primary_key, 2, null);
+        String label = dsl.select(MIGRATION_RUN.LABEL)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_RUN.LABEL);
+
+        while (calculate(runId) != null) {
+            // Calculate every leaf one call at a time; finalization is separate.
+        }
+        assertNull(run(runId).getBoundariesCalculatedAt());
+        assertNotNull(io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines.pauseMigrationRun(
+                dsl.configuration(), label));
+
+        Routines.calculateMigrationRunBoundaries(dsl.configuration(), runId);
+
+        assertNotNull(run(runId).getBoundariesCalculatedAt(),
+                "finalization wins when every leaf is already calculated");
+        assertNotNull(run(runId).getPausedAt(),
+                "the pause remains until resume clears it");
+    }
+
+    /**
      * Every leaf being empty finalizes the run with no terminal boundary and zero
      * chunks.
      */

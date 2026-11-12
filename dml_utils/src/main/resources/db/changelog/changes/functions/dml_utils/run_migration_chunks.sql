@@ -62,7 +62,8 @@ DECLARE
     l_aborting              boolean                       := false;
     -- Cancellation state: the run's cancelled_at, polled at most every 100ms.
     l_cancelled_at          timestamptz;
-    l_last_cancel_check     timestamptz;
+    l_paused_at             timestamptz;
+    l_last_state_check      timestamptz;
     l_error_sqlstate        text;
     l_error_message         text;
     l_error_boundary_no     bigint;
@@ -112,15 +113,38 @@ BEGIN
         RETURN;
     END IF;
 
-    -- A cancelled run is terminal: a re-run must not silently resume it. The
-    -- caller archives it (archive_migration_run) and starts a new run.
-    SELECT r.cancelled_at
-    INTO l_cancelled_at
+    -- A cancelled run is terminal; a paused run is resumable but must not be
+    -- auto-resumed. Completion wins when every chunk is already done.
+    SELECT r.cancelled_at, r.paused_at
+    INTO l_cancelled_at, l_paused_at
     FROM dml_utils_data.migration_run AS r
     WHERE r.run_id = l_run_id;
 
     IF l_cancelled_at IS NOT NULL THEN
         RAISE NOTICE 'run for label % is cancelled; archive it or use a new label', i_label;
+        RETURN;
+    END IF;
+
+    IF l_paused_at IS NOT NULL THEN
+        -- complete_migration_run requires the boundaries to be calculated; do not
+        -- turn an uncalculated partition-wise run into a zero-chunk completion.
+        IF EXISTS (SELECT 1
+                   FROM dml_utils_data.migration_run AS r
+                   WHERE r.run_id = l_run_id
+                     AND r.boundaries_calculated_at IS NOT NULL)
+        THEN
+            PERFORM dml_utils_lib.complete_migration_run(i_run_id => l_run_id);
+        END IF;
+
+        IF EXISTS (SELECT 1
+                   FROM dml_utils_data.migration_run AS r
+                   WHERE r.run_id = l_run_id
+                     AND r.completed_at IS NOT NULL)
+        THEN
+            RETURN;
+        END IF;
+
+        RAISE NOTICE 'run for label % is paused; resume it with dml_utils.resume_migration_run', i_label;
         RETURN;
     END IF;
 
@@ -133,6 +157,16 @@ BEGIN
         IF NOT dml_utils_lib.prepare_partition_wise_execution(
                 i_run_id => l_run_id,
                 i_label => i_label) THEN
+            -- A pause that raced with preparation still lets completion win when
+            -- every chunk is already done.
+            IF EXISTS (SELECT 1
+                       FROM dml_utils_data.migration_run AS r
+                       WHERE r.run_id = l_run_id
+                         AND r.paused_at IS NOT NULL
+                         AND r.boundaries_calculated_at IS NOT NULL)
+            THEN
+                PERFORM dml_utils_lib.complete_migration_run(i_run_id => l_run_id);
+            END IF;
             RETURN;
         END IF;
     END IF;
@@ -174,27 +208,28 @@ BEGIN
 
     BEGIN
         LOOP
-            -- Poll the run's cancellation flag at most every 100ms; the inner wait
-            -- loop polls too, so a cancellation is noticed while a long chunk is
-            -- still running.
+            -- Poll the run's cancellation and pause flags at most every 100ms; the
+            -- inner wait loop polls too, so a change is noticed while a long chunk
+            -- is still running.
             IF l_cancelled_at IS NULL
-                AND (l_last_cancel_check IS NULL
-                    OR pg_catalog.clock_timestamp() - l_last_cancel_check >= interval '100 milliseconds')
+                AND (l_last_state_check IS NULL
+                    OR pg_catalog.clock_timestamp() - l_last_state_check >= interval '100 milliseconds')
             THEN
-                SELECT r.cancelled_at
-                INTO l_cancelled_at
+                SELECT r.cancelled_at, r.paused_at
+                INTO l_cancelled_at, l_paused_at
                 FROM dml_utils_data.migration_run AS r
                 WHERE r.run_id = l_run_id;
-                l_last_cancel_check := pg_catalog.clock_timestamp();
+                l_last_state_check := pg_catalog.clock_timestamp();
             END IF;
 
             -- A cancelled run stops launching and leaves the loop for the
-            -- cancellation handler below.
+            -- cancellation handler below. A paused run stops launching but keeps
+            -- waiting for the in-flight workers to commit their current chunk.
             EXIT WHEN l_cancelled_at IS NOT NULL;
 
             -- Keep launching until i_threads are in flight (or there is nothing left
-            -- to launch), unless a worker has already failed.
-            IF NOT l_aborting THEN
+            -- to launch), unless a worker has already failed or the run is paused.
+            IF NOT l_aborting AND l_paused_at IS NULL THEN
                 WHILE pg_catalog.cardinality(l_in_flight) < l_effective_threads
                     LOOP
                         SELECT o_boundary_no,
@@ -270,14 +305,14 @@ BEGIN
                 EXIT WHEN l_handle IS NOT NULL;
 
                 IF l_cancelled_at IS NULL
-                    AND (l_last_cancel_check IS NULL
-                        OR pg_catalog.clock_timestamp() - l_last_cancel_check >= interval '100 milliseconds')
+                    AND (l_last_state_check IS NULL
+                        OR pg_catalog.clock_timestamp() - l_last_state_check >= interval '100 milliseconds')
                 THEN
-                    SELECT r.cancelled_at
-                    INTO l_cancelled_at
+                    SELECT r.cancelled_at, r.paused_at
+                    INTO l_cancelled_at, l_paused_at
                     FROM dml_utils_data.migration_run AS r
                     WHERE r.run_id = l_run_id;
-                    l_last_cancel_check := pg_catalog.clock_timestamp();
+                    l_last_state_check := pg_catalog.clock_timestamp();
                 END IF;
                 EXIT WHEN l_cancelled_at IS NOT NULL;
             END LOOP;
@@ -339,11 +374,12 @@ BEGIN
             END IF;
 
             -- Throttle: after a successful chunk, wait before refilling the slot.
-            -- Skip the terminal-boundary case (no following chunk) and the drain
-            -- path after a failure.
+            -- Skip the terminal-boundary case (no following chunk), the drain path
+            -- after a failure and the drain path after a pause.
             IF NOT l_aborting
                 AND NOT l_outcome.has_error
                 AND l_cancelled_at IS NULL
+                AND l_paused_at IS NULL
                 AND l_effective_sleep_ms > 0
                 AND EXISTS (SELECT 1
                             FROM dml_utils_data.migration_boundary AS b
@@ -358,6 +394,13 @@ BEGIN
                 l_cancelled_at := dml_utils_lib.sleep_between_migration_chunks(
                         i_run_id => l_run_id,
                         i_sleep_ms => l_effective_sleep_ms);
+
+                -- The helper stops on a pause but only returns cancelled_at, so
+                -- re-read both flags before deciding whether to keep launching.
+                SELECT r.cancelled_at, r.paused_at
+                INTO l_cancelled_at, l_paused_at
+                FROM dml_utils_data.migration_run AS r
+                WHERE r.run_id = l_run_id;
                 EXIT WHEN l_cancelled_at IS NOT NULL;
             END IF;
         END LOOP;
@@ -396,6 +439,23 @@ BEGIN
             RAISE EXCEPTION 'chunk % for run % failed: %', l_error_boundary_no, l_run_id,
                 l_error_message
                 USING ERRCODE = COALESCE(l_error_sqlstate, 'P0001');
+        END IF;
+
+        -- Pause: the in-flight workers have committed or rolled back their current
+        -- chunk. If every chunk finished before the pause reached the coordinator,
+        -- completion wins; otherwise leave the run resumable and return without
+        -- marking anything cancelled.
+        IF l_paused_at IS NOT NULL THEN
+            PERFORM dml_utils_lib.complete_migration_run(i_run_id => l_run_id);
+
+            IF NOT EXISTS (SELECT 1
+                           FROM dml_utils_data.migration_run AS r
+                           WHERE r.run_id = l_run_id
+                             AND r.completed_at IS NOT NULL)
+            THEN
+                RAISE NOTICE 'migration run % for label % is paused; resume it with dml_utils.resume_migration_run', l_run_id, i_label;
+            END IF;
+            RETURN;
         END IF;
     EXCEPTION
         WHEN OTHERS THEN
@@ -440,7 +500,12 @@ COMMENT ON FUNCTION dml_utils.run_migration_chunks IS
         'by another coordinator (P0C01) is treated as benign. A run cancelled with '
         'dml_utils.cancel_migration_run stops launching, cancels the in-flight '
         'workers, marks the run and its remaining boundaries cancelled and '
-        'returns; a cancelled run is terminal. With i_partition_wise the parent is '
+        'returns; a cancelled run is terminal. A run paused with '
+        'dml_utils.pause_migration_run stops launching, waits for the in-flight '
+        'workers to commit their current chunk, leaves the remaining boundaries '
+        'pending and returns; re-calling it while paused is a no-op until '
+        'dml_utils.resume_migration_run clears the flag. Completion wins if every '
+        'chunk already finished. With i_partition_wise the parent is '
         'declarative partitioned: prepare_partition_wise_execution first finishes '
         'one-leaf-per-transaction boundary calculation, finalizes, then processes '
         'each chunk against its boundary''s leaf via next_migration_chunk. The live '
