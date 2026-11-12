@@ -37,9 +37,9 @@ REVOKE EXECUTE ON FUNCTION dml_utils_lib.claim_migration_boundary(bigint, bigint
     FROM dml_utils_caller;
 GRANT EXECUTE ON FUNCTION dml_utils_lib.claim_migration_boundary(bigint, bigint)
     TO public;
-REVOKE EXECUTE ON FUNCTION dml_utils_lib.complete_migration_boundary(bigint, bigint, timestamptz)
+REVOKE EXECUTE ON FUNCTION dml_utils_lib.complete_migration_boundary(bigint, bigint, timestamptz, bigint)
     FROM dml_utils_caller;
-GRANT EXECUTE ON FUNCTION dml_utils_lib.complete_migration_boundary(bigint, bigint, timestamptz)
+GRANT EXECUTE ON FUNCTION dml_utils_lib.complete_migration_boundary(bigint, bigint, timestamptz, bigint)
     TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.complete_migration_run(bigint)
     FROM dml_utils_caller;

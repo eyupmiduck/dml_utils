@@ -160,7 +160,7 @@ class MetadataPrivilegeTest extends PostgresTestBase {
 
     /**
      * The completion helper is idempotent: a second direct call fails without
-     * incrementing the run's counter twice.
+     * incrementing either run counter twice.
      */
     @Test
     void completeBoundaryDoesNotDoubleIncrement() {
@@ -169,14 +169,23 @@ class MetadataPrivilegeTest extends PostgresTestBase {
         long runId = populate(label);
 
         io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.completeMigrationBoundary(
-                dsl.configuration(), runId, 0L, OffsetDateTime.now());
+                dsl.configuration(), runId, 0L, OffsetDateTime.now(), 3L);
         assertEquals(1L, totalCompleted(runId));
+        assertEquals(3L, totalRowsAffected(runId));
         assertTrue(boundaryCompleted(runId, 0));
 
         assertSqlState("P0C02", () ->
                 io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.completeMigrationBoundary(
-                        dsl.configuration(), runId, 0L, OffsetDateTime.now()));
+                        dsl.configuration(), runId, 0L, OffsetDateTime.now(), 7L));
         assertEquals(1L, totalCompleted(runId), "the failed second completion must not count");
+        assertEquals(3L, totalRowsAffected(runId),
+                "the failed second completion must not change the row count");
+        assertEquals(3L, dsl.select(MIGRATION_BOUNDARY.ROWS_AFFECTED)
+                        .from(MIGRATION_BOUNDARY)
+                        .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                        .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(0L))
+                        .fetchOne(MIGRATION_BOUNDARY.ROWS_AFFECTED),
+                "the boundary keeps the first recorded count");
     }
 
     /**
@@ -194,9 +203,9 @@ class MetadataPrivilegeTest extends PostgresTestBase {
         assertFalse(runCompleted(runId), "a run with pending chunks must not complete");
 
         io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.completeMigrationBoundary(
-                dsl.configuration(), runId, 0L, OffsetDateTime.now());
+                dsl.configuration(), runId, 0L, OffsetDateTime.now(), 0L);
         io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.completeMigrationBoundary(
-                dsl.configuration(), runId, 1L, OffsetDateTime.now());
+                dsl.configuration(), runId, 1L, OffsetDateTime.now(), 0L);
         io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.completeMigrationRun(
                 dsl.configuration(), runId);
 
@@ -213,9 +222,9 @@ class MetadataPrivilegeTest extends PostgresTestBase {
         String label = uniqueLabel("cancel-completed");
         long runId = populate(label);
         io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.completeMigrationBoundary(
-                dsl.configuration(), runId, 0L, OffsetDateTime.now());
+                dsl.configuration(), runId, 0L, OffsetDateTime.now(), 0L);
         io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.completeMigrationBoundary(
-                dsl.configuration(), runId, 1L, OffsetDateTime.now());
+                dsl.configuration(), runId, 1L, OffsetDateTime.now(), 0L);
         io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines.completeMigrationRun(
                 dsl.configuration(), runId);
         assertTrue(runCompleted(runId));
@@ -305,6 +314,13 @@ class MetadataPrivilegeTest extends PostgresTestBase {
                 .from(MIGRATION_RUN)
                 .where(MIGRATION_RUN.RUN_ID.eq(runId))
                 .fetchOne(MIGRATION_RUN.TOTAL_CHUNKS_COMPLETED);
+    }
+
+    private long totalRowsAffected(long runId) {
+        return dsl.select(MIGRATION_RUN.TOTAL_ROWS_AFFECTED)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_RUN.TOTAL_ROWS_AFFECTED);
     }
 
 }

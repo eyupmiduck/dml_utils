@@ -107,6 +107,11 @@ class TransientRetryTest extends PostgresTestBase {
                     code + " should leave no error row after recovery");
             assertEquals(2L, lastProbeValue(),
                     "the first attempt fails and the retry succeeds for " + code);
+            assertEquals(1L, dsl.select(MIGRATION_RUN.TOTAL_ROWS_AFFECTED)
+                            .from(MIGRATION_RUN)
+                            .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                            .fetchOne(MIGRATION_RUN.TOTAL_ROWS_AFFECTED),
+                    "a recovered retry counts the chunk rows once for " + code);
         }
     }
 
