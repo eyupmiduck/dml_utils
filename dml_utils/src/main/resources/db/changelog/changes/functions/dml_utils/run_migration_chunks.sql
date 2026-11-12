@@ -394,8 +394,8 @@ BEGIN
                 SELECT s.o_cancelled_at, s.o_paused_at
                 INTO l_cancelled_at, l_paused_at
                 FROM dml_utils_lib.sleep_between_migration_chunks(
-                        i_run_id => l_run_id,
-                        i_sleep_ms => l_effective_sleep_ms) AS s;
+                             i_run_id => l_run_id,
+                             i_sleep_ms => l_effective_sleep_ms) AS s;
                 EXIT WHEN l_cancelled_at IS NOT NULL;
             END IF;
         END LOOP;
