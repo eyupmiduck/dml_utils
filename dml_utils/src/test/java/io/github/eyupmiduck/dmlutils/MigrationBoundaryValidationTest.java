@@ -122,6 +122,38 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     }
 
     /**
+     * A NULL retry count is rejected by the non-negative-integer domain.
+     */
+    @Test
+    void rejectsANullMaxRetries() {
+        assertDomainViolation(() -> populateWithRetryPolicy(null, 1000));
+    }
+
+    /**
+     * A negative retry count is rejected by the non-negative-integer domain.
+     */
+    @Test
+    void rejectsANegativeMaxRetries() {
+        assertDomainViolation(() -> populateWithRetryPolicy(-1, 1000));
+    }
+
+    /**
+     * A NULL retry backoff is rejected by the non-negative-integer domain.
+     */
+    @Test
+    void rejectsANullRetryBackoff() {
+        assertDomainViolation(() -> populateWithRetryPolicy(3, null));
+    }
+
+    /**
+     * A negative retry backoff is rejected by the non-negative-integer domain.
+     */
+    @Test
+    void rejectsANegativeRetryBackoff() {
+        assertDomainViolation(() -> populateWithRetryPolicy(3, -1));
+    }
+
+    /**
      * A zero chunk size is rejected by the positive-integer domain.
      */
     @Test
@@ -567,6 +599,13 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
                                  Integer threads) {
         return Routines.populateMigrationBoundaries(
                 dsl.configuration(), schema, table, label, SQL_TEXT, chunkSize, threads, ChunkingStrategy.primary_key, "t", 0, null, false, 3, 1000);
+    }
+
+    private long populateWithRetryPolicy(Integer maxRetries, Integer retryBackoff) {
+        return Routines.populateMigrationBoundaries(
+                dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), uniqueLabel(),
+                SQL_TEXT, 1, 1, ChunkingStrategy.primary_key, "t", 0, null, false,
+                maxRetries, retryBackoff);
     }
 
     private String uniqueLabel() {

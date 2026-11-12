@@ -68,6 +68,9 @@ class RunResolutionHelpersTest extends PostgresTestBase {
         assertEquals(4, dsl.fetchCount(MIGRATION_BOUNDARY,
                 MIGRATION_BOUNDARY.RUN_ID.eq(single)));
         assertNotNull(run(single).getBoundariesCalculatedAt());
+        assertEquals(3, run(single).getMaxRetries(), "the single run stores the retry count");
+        assertEquals(1000, run(single).getRetryBackoffMs(),
+                "the single run stores the retry backoff");
 
         long partitioned = Routines.createMigrationRun(dsl.configuration(),
                 "dml_utils_fixtures", "test_partitioned_range",
@@ -79,6 +82,10 @@ class RunResolutionHelpersTest extends PostgresTestBase {
                 MIGRATION_RUN_LEAF.RUN_ID.eq(partitioned)));
         assertEquals(0, dsl.fetchCount(MIGRATION_BOUNDARY,
                 MIGRATION_BOUNDARY.RUN_ID.eq(partitioned)));
+        assertEquals(3, run(partitioned).getMaxRetries(),
+                "the partition-wise run stores the retry count");
+        assertEquals(1000, run(partitioned).getRetryBackoffMs(),
+                "the partition-wise run stores the retry backoff");
     }
 
     /**
@@ -112,6 +119,27 @@ class RunResolutionHelpersTest extends PostgresTestBase {
         assertEquals(0, resumed.getOEffectiveSleepMs());
         assertEquals(ChunkingStrategy.ordered_key, resumed.getOChunkBy());
         assertFalse(resumed.getOPartitionWise());
+        assertEquals(3, resumed.getOEffectiveMaxRetries());
+        assertEquals(1000, resumed.getOEffectiveRetryBackoffMs());
+    }
+
+    /**
+     * A resumed run uses its stored retry policy, not the call's inputs.
+     */
+    @Test
+    void resumeUsesTheStoredRetryPolicy() {
+        String label = uniqueLabel("resume-retries");
+        long runId = Routines.populateMigrationBoundaries(dsl.configuration(),
+                schema(TEST_BIGINT), name(TEST_BIGINT), label, TEMPLATE, 1, 1,
+                ChunkingStrategy.primary_key, "t", 0, null, false, 7, 250);
+        MigrationRunRecord stored = run(runId);
+
+        ResumeMigrationRun resumed = Routines.resumeMigrationRun(dsl.configuration(),
+                stored, schema(TEST_BIGINT), name(TEST_BIGINT), TEMPLATE, 1, 1,
+                "t", ChunkingStrategy.primary_key, 0, null, false, 9, 500);
+
+        assertEquals(7, resumed.getOEffectiveMaxRetries(), "the stored retries win");
+        assertEquals(250, resumed.getOEffectiveRetryBackoffMs(), "the stored backoff wins");
     }
 
     /**

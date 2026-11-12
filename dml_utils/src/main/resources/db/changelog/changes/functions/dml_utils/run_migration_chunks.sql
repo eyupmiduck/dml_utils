@@ -402,7 +402,9 @@ BEGIN
                         WHERE r.run_id = l_run_id;
 
                         EXIT WHEN l_cancelled_at IS NOT NULL;
-                        EXIT WHEN l_paused_at IS NOT NULL;
+                        -- A pause stops the retry, but the main loop must still
+                        -- drain the other in-flight workers before returning.
+                        CONTINUE WHEN l_paused_at IS NOT NULL;
 
                         RAISE NOTICE 'retrying boundary % of run % after % (attempt % of %)',
                             l_boundary_no, l_run_id, l_outcome.sqlstate,
@@ -549,7 +551,22 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION dml_utils.run_migration_chunks IS
+COMMENT ON FUNCTION dml_utils.run_migration_chunks(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.positive_integer,
+    dml_utils_data.positive_integer,
+    dml_utils_data.non_null_text,
+    dml_utils_data.chunking_strategy,
+    dml_utils_data.positive_integer,
+    dml_utils_data.non_negative_integer,
+    name,
+    dml_utils_data.non_null_boolean,
+    dml_utils_data.non_negative_integer,
+    dml_utils_data.non_negative_integer
+    ) IS
     'Runs the chunk SQL for every chunk of the driving table (primary_key: fixed '
         'rows in primary-key order; ordered_key: fixed rows in the order of '
         'i_boundary_key_index, a unique index on the driving table; blocks: '

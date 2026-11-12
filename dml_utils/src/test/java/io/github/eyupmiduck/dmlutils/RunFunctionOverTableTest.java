@@ -492,6 +492,30 @@ class RunFunctionOverTableTest extends PostgresTestBase {
     }
 
     /**
+     * The wrapper forwards the initial retry policy to the base engine and stores
+     * it on the run.
+     */
+    @Test
+    void runFunctionOverTablePassesThroughTheRetryPolicy() {
+        createMixed();
+        createMarkMixed("done");
+        String label = functionTestLabel("retry-policy");
+
+        Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_COMPOSITE_MIXED),
+                name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 2, 1, label, null,
+                ChunkingStrategy.primary_key, 1, 0, null, false, 5, 250);
+
+        assertEquals(5, dsl.select(MIGRATION_RUN.MAX_RETRIES)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.LABEL.eq(label))
+                .fetchOne(MIGRATION_RUN.MAX_RETRIES), "max_retries is forwarded");
+        assertEquals(250, dsl.select(MIGRATION_RUN.RETRY_BACKOFF_MS)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.LABEL.eq(label))
+                .fetchOne(MIGRATION_RUN.RETRY_BACKOFF_MS), "retry_backoff_ms is forwarded");
+    }
+
+    /**
      * The derived label includes the filter, so two calls that differ only in
      * their filter create two runs instead of the second resuming the first.
      */

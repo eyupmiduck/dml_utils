@@ -2,6 +2,7 @@ package io.github.eyupmiduck.dmlutils;
 
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.enums.ChunkingStrategy;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.records.MigrationRunRecord;
 import org.jooq.DSLContext;
 import org.jooq.Record;
 import org.jooq.SQLDialect;
@@ -43,6 +44,7 @@ class TransientRetryTest extends PostgresTestBase {
         dsl.truncate(TEST_BIGINT).execute();
         dsl.execute("DROP FUNCTION IF EXISTS public.retry_once(text)");
         dsl.execute("DROP FUNCTION IF EXISTS public.fail_counted(text)");
+        dsl.execute("DROP FUNCTION IF EXISTS public.retry_mixed(bigint)");
         dsl.execute("DROP SEQUENCE IF EXISTS " + SEQUENCE);
         dsl.execute("CREATE SEQUENCE " + SEQUENCE);
         dsl.execute("GRANT USAGE, SELECT ON SEQUENCE " + SEQUENCE
@@ -60,6 +62,17 @@ class TransientRetryTest extends PostgresTestBase {
                 + "   PERFORM nextval('" + SEQUENCE + "');"
                 + "   RAISE EXCEPTION 'permanent' USING ERRCODE = p_code;"
                 + " END $$");
+        dsl.execute("CREATE FUNCTION public.retry_mixed(p_id bigint) RETURNS void"
+                + " LANGUAGE plpgsql AS $$"
+                + " BEGIN"
+                + "   IF p_id = 1 THEN"
+                + "     IF nextval('" + SEQUENCE + "') = 1 THEN"
+                + "       RAISE EXCEPTION 'transient' USING ERRCODE = '40P01';"
+                + "     END IF;"
+                + "   ELSE"
+                + "     PERFORM pg_sleep(1);"
+                + "   END IF;"
+                + " END $$");
     }
 
     /**
@@ -69,6 +82,7 @@ class TransientRetryTest extends PostgresTestBase {
     void dropProbe() {
         dsl.execute("DROP FUNCTION IF EXISTS public.retry_once(text)");
         dsl.execute("DROP FUNCTION IF EXISTS public.fail_counted(text)");
+        dsl.execute("DROP FUNCTION IF EXISTS public.retry_mixed(bigint)");
         dsl.execute("DROP SEQUENCE IF EXISTS " + SEQUENCE);
     }
 
@@ -200,6 +214,46 @@ class TransientRetryTest extends PostgresTestBase {
     }
 
     /**
+     * A pause during the retry backoff must drain the other in-flight workers
+     * before the coordinator returns.
+     */
+    @Test
+    void pauseDuringBackoffDrainsOtherInFlightWorkers() throws Exception {
+        seedBigint(1, 2);
+        String label = uniqueLabel("retry-pause-drain");
+
+        CompletableFuture<Void> run = CompletableFuture.runAsync(() -> {
+            try (Connection owner = openOwnerConnection()) {
+                DSLContext ownerDsl = DSL.using(owner, SQLDialect.POSTGRES);
+                Routines.runMigrationChunks(ownerDsl.configuration(),
+                        idTemplate("retry_mixed"), schema(TEST_BIGINT), name(TEST_BIGINT),
+                        label, 1, 2, "t", ChunkingStrategy.primary_key, 1, 0, null, false,
+                        3, 5_000);
+            } catch (SQLException error) {
+                throw new CompletionException(error);
+            }
+        });
+
+        long runId = awaitFirstAttempt(label);
+        assertEquals(runId, Routines.pauseMigrationRun(dsl.configuration(), label));
+        run.get(10, TimeUnit.SECONDS);
+
+        MigrationRunRecord record = run(runId);
+        assertNotNull(record.getPausedAt(), "the run is paused");
+        assertNull(record.getCompletedAt(), "the paused run is not complete");
+        assertEquals(0, dsl.fetchCount(MIGRATION_ERROR, MIGRATION_ERROR.RUN_ID.eq(runId)),
+                "the transient failure is not recorded while paused");
+        assertEquals(1, completedBoundaries(runId),
+                "the other in-flight chunk commits before the coordinator returns");
+        assertEquals(1, dsl.fetchCount(MIGRATION_BOUNDARY,
+                        MIGRATION_BOUNDARY.RUN_ID.eq(runId)
+                                .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(0L))
+                                .and(MIGRATION_BOUNDARY.COMPLETED_AT.isNull())
+                                .and(MIGRATION_BOUNDARY.CANCELLED_AT.isNull())),
+                "the failed chunk remains pending");
+    }
+
+    /**
      * A cancellation during the retry backoff is terminal and records no chunk
      * error for the interrupted attempt.
      */
@@ -261,12 +315,33 @@ class TransientRetryTest extends PostgresTestBase {
     }
 
     /**
+     * Builds the chunk template that calls the probe function with the row id.
+     *
+     * @param functionName the probe function
+     * @return the chunk template
+     */
+    private String idTemplate(String functionName) {
+        return "SELECT public." + functionName + "(t.id)"
+                + " FROM <driving_table> WHERE <chunking_clause>";
+    }
+
+    /**
      * Returns the probe sequence's last value.
      *
      * @return the last value
      */
     private long lastProbeValue() {
         return dsl.fetchOne("SELECT last_value FROM " + SEQUENCE).get(0, Long.class);
+    }
+
+    /**
+     * Whether the probe sequence has been called at least once.
+     *
+     * @return true when {@code nextval} has run
+     */
+    private boolean probeCalled() {
+        return Boolean.TRUE.equals(dsl.fetchOne("SELECT is_called FROM " + SEQUENCE)
+                .get(0, Boolean.class));
     }
 
     /**
@@ -280,7 +355,7 @@ class TransientRetryTest extends PostgresTestBase {
         for (int attempt = 0; attempt < 200; attempt++) {
             Record row = dsl.fetchOne(
                     "SELECT run_id FROM dml_utils_data.migration_run WHERE label = ?", label);
-            if (row != null && lastProbeValue() >= 1) {
+            if (row != null && probeCalled()) {
                 return row.get(0, Long.class);
             }
             Thread.sleep(50);
@@ -295,8 +370,7 @@ class TransientRetryTest extends PostgresTestBase {
      * @param runId the run id
      * @return the run record
      */
-    private io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.records.MigrationRunRecord
-    run(long runId) {
+    private MigrationRunRecord run(long runId) {
         return dsl.selectFrom(MIGRATION_RUN)
                 .where(MIGRATION_RUN.RUN_ID.eq(runId))
                 .fetchOne();

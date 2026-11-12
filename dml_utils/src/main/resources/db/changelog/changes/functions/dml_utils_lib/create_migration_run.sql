@@ -10,8 +10,8 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.create_migration_run(
     i_sleep_ms dml_utils_data.non_negative_integer,
     i_boundary_key_index name,
     i_partition_wise dml_utils_data.non_null_boolean,
-    i_max_retries dml_utils_data.non_negative_integer,
-    i_retry_backoff_ms dml_utils_data.non_negative_integer
+    i_max_retries dml_utils_data.non_negative_integer DEFAULT 3,
+    i_retry_backoff_ms dml_utils_data.non_negative_integer DEFAULT 1000
 )
     RETURNS bigint
     LANGUAGE plpgsql
