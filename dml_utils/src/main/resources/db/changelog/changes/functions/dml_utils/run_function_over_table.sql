@@ -21,7 +21,13 @@ CREATE OR REPLACE FUNCTION dml_utils.run_function_over_table(
     i_poll_timeout_ms dml_utils_data.positive_integer DEFAULT 1,
     -- Initial delay after each completed chunk for a new run; a resumed run uses
     -- its stored sleep_ms.
-    i_sleep_ms dml_utils_data.non_negative_integer DEFAULT 0
+    i_sleep_ms dml_utils_data.non_negative_integer DEFAULT 0,
+    -- The unique index whose order an ordered_key run uses. Required for
+    -- ordered_key and rejected for the other strategies.
+    i_boundary_key_index name DEFAULT NULL,
+    -- When true, the driving table is a declarative partitioned parent and the
+    -- chosen strategy is applied inside each leaf.
+    i_partition_wise dml_utils_data.non_null_boolean DEFAULT FALSE
 )
     RETURNS void
     LANGUAGE plpgsql
@@ -32,17 +38,12 @@ DECLARE
     l_function_chunk_template text;
     l_label                   text;
 BEGIN
-    -- The generated function template binds the primary-key column types, so an
-    -- ordered key would change the function contract; it is out of scope for v1.
-    IF i_chunk_by = 'ordered_key' THEN
-        RAISE EXCEPTION 'run_function_over_table does not support ordered_key chunking'
-            USING ERRCODE = '0A000';
-    END IF;
-
     -- Build and validate the template first: it resolves the driving table's
     -- primary key and checks the supplied function exists, returns void, and
     -- takes the primary-key column types in key order. A bad table or function
-    -- fails before any run or worker exists.
+    -- fails before any run or worker exists. The chunk key is independent of the
+    -- function arguments: ordered_key and partition_wise are forwarded to the
+    -- base engine.
     l_function_chunk_template := dml_utils_lib.build_function_chunk_template(
             i_table_schema_name => i_driving_table_schema_name,
             i_table_name => i_driving_table_name,
@@ -74,7 +75,9 @@ BEGIN
                                 pg_catalog.sha256(pg_catalog.convert_to(i_filter, 'UTF8')),
                                 'hex')
                         END,
-                    i_chunk_by)::text);
+                    i_chunk_by,
+                    i_boundary_key_index,
+                    i_partition_wise)::text);
 
     -- Delegate to the base engine: it owns resume, chunk scheduling, error
     -- recording and run completion. The generated template is a valid
@@ -88,18 +91,23 @@ BEGIN
             i_threads => i_threads,
             i_chunk_by => i_chunk_by,
             i_poll_timeout_ms => i_poll_timeout_ms,
-            i_sleep_ms => i_sleep_ms);
+            i_sleep_ms => i_sleep_ms,
+            i_boundary_key_index => i_boundary_key_index,
+            i_partition_wise => i_partition_wise);
 END;
 $$;
 
 COMMENT ON FUNCTION dml_utils.run_function_over_table IS
     'Runs a user-supplied void function once per row of the driving table, chunk '
-        'by chunk, resuming by label (derived from the table, function and, when '
-        'set, a SHA-256 of i_filter when i_label is NULL, so the label stays within '
-        'the btree index limit). The function must take the '
-        'primary-key column types in key order and return void. A non-NULL '
-        'i_filter is ANDed onto every chunk''s range predicate, so only the rows '
-        'it matches are passed to the function. i_chunk_by selects the chunking '
-        'strategy; blocks requires a quiescent, read-only driving table and is '
-        'unsafe when the function updates the driving table in place. i_sleep_ms '
-        'seeds a new run''s per-chunk delay; a resumed run uses its stored value.';
+        'by chunk, resuming by label (derived from the table, function, filter, '
+        'chunk key and partition flag when i_label is NULL; the filter is hashed so '
+        'the label stays within the btree index limit). The function must take the '
+        'primary-key column types in key order and return void; the chunk key is '
+        'independent. A non-NULL i_filter is ANDed onto every chunk''s range '
+        'predicate, so only the rows it matches are passed to the function. '
+        'i_chunk_by selects the chunking strategy; ordered_key uses '
+        'i_boundary_key_index, and i_partition_wise applies the strategy inside each '
+        'leaf of a declarative partitioned parent. blocks requires a quiescent, '
+        'read-only driving table and is unsafe when the function updates the '
+        'driving table in place. i_sleep_ms seeds a new run''s per-chunk delay; a '
+        'resumed run uses its stored value.';
