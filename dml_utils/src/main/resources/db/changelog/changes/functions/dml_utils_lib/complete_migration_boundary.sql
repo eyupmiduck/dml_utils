@@ -25,7 +25,9 @@ BEGIN
 
     UPDATE dml_utils_data.migration_boundary
     SET started_at   = LEAST(i_started_at, l_completed_at),
-        completed_at = l_completed_at
+        completed_at = l_completed_at,
+        -- Placeholder until the runner captures the statement row count.
+        rows_affected = 0
     WHERE run_id = i_run_id
       AND boundary_no = i_boundary_no
       AND completed_at IS NULL
@@ -49,8 +51,9 @@ END;
 $$;
 
 COMMENT ON FUNCTION dml_utils_lib.complete_migration_boundary IS
-    'Records started_at/completed_at for one pending boundary and advances the '
-        'run''s completed-chunk counter. The pending/cancelled guards make a second '
-        'call a P0C02 error without double-incrementing the counter. SECURITY '
-        'DEFINER because the caller-owned chunk worker intentionally has no metadata '
-        'write privileges.';
+    'Records started_at/completed_at and rows_affected for one pending boundary '
+        'and advances the run''s completed-chunk counter. rows_affected is a '
+        'placeholder 0 until the runner supplies the statement row count. The '
+        'pending/cancelled guards make a second call a P0C02 error without '
+        'double-incrementing the counter. SECURITY DEFINER because the '
+        'caller-owned chunk worker intentionally has no metadata write privileges.';

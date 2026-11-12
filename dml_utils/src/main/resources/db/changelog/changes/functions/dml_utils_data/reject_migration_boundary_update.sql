@@ -39,6 +39,25 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
 
+    -- rows_affected is written with completed_at, and only then. A completed
+    -- boundary cannot have its count changed later.
+    IF NEW.completed_at IS NULL AND NEW.rows_affected IS NOT NULL THEN
+        RAISE EXCEPTION 'migration_boundary.rows_affected requires completed_at'
+            USING ERRCODE = '22023';
+    END IF;
+
+    IF NEW.completed_at IS NOT NULL AND NEW.rows_affected IS NULL THEN
+        RAISE EXCEPTION 'migration_boundary.rows_affected must be set with completed_at'
+            USING ERRCODE = '22023';
+    END IF;
+
+    IF OLD.completed_at IS NOT NULL
+        AND NEW.rows_affected IS DISTINCT FROM OLD.rows_affected
+    THEN
+        RAISE EXCEPTION 'migration_boundary.rows_affected is immutable once completed'
+            USING ERRCODE = '22023';
+    END IF;
+
     RETURN NEW;
 END;
 $$;
@@ -47,4 +66,6 @@ COMMENT ON FUNCTION dml_utils_data.reject_migration_boundary_update IS
     'BEFORE UPDATE trigger that rejects any change to '
         'migration_boundary.run_id, boundary_no, boundary_id or leaf_ordinal, '
         'and rejects rewriting a migration_boundary.cancelled_at or '
-        'migration_boundary.completed_at that is already set.';
+        'migration_boundary.completed_at that is already set. It also requires '
+        'rows_affected to be set exactly when completed_at is set, and rejects '
+        'changing the count after completion.';

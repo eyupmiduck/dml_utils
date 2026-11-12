@@ -149,7 +149,8 @@ class RunMigrationChunksEdgeCasesTest extends PostgresTestBase {
     private void completeBoundary(Connection blocker, DSLContext blockerDsl, long runId) throws Exception {
         blockerDsl.execute(
                 "UPDATE dml_utils_data.migration_boundary"
-                        + " SET started_at = clock_timestamp(), completed_at = clock_timestamp()"
+                        + " SET started_at = clock_timestamp(), completed_at = clock_timestamp(),"
+                        + " rows_affected = 0"
                         + " WHERE run_id = ? AND boundary_no = 0",
                 runId);
         blockerDsl.execute(

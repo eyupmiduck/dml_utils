@@ -29,6 +29,7 @@ CREATE TABLE dml_utils_data.migration_run
     boundaries_calculated_at        timestamptz,
     total_chunks                    bigint                              NOT NULL DEFAULT 0,
     total_chunks_completed          bigint                              NOT NULL DEFAULT 0,
+    total_rows_affected             bigint                              NOT NULL DEFAULT 0,
     completed_at                    timestamptz,
     cancelled_at                    timestamptz,
     archived_at                     timestamptz,
@@ -93,6 +94,7 @@ CREATE TABLE dml_utils_data.migration_run
     -- are non-negative and a run cannot complete more chunks than it has.
     CONSTRAINT migration_run_total_chunks_check CHECK (total_chunks >= 0),
     CONSTRAINT migration_run_total_chunks_completed_check CHECK (total_chunks_completed >= 0),
+    CONSTRAINT migration_run_total_rows_affected_check CHECK (total_rows_affected >= 0),
     CONSTRAINT migration_run_progress_check CHECK (total_chunks_completed <= total_chunks)
 );
 
@@ -179,6 +181,9 @@ COMMENT ON COLUMN dml_utils_data.migration_run.total_chunks_completed IS
     'Number of chunks whose worker recorded a completion; advanced in the same '
         'transaction as the boundary completion, so it cannot drift from '
         'migration_boundary.';
+COMMENT ON COLUMN dml_utils_data.migration_run.total_rows_affected IS
+    'Sum of rows_affected over completed chunks; advanced in the same transaction '
+        'as the boundary completion, so it cannot drift from migration_boundary.';
 COMMENT ON COLUMN dml_utils_data.migration_run.completed_at IS
     'Actual server time when the run finished processing all chunks; NULL while '
         'the run is unfinished. Written in the caller''s transaction, so a failed '
@@ -346,6 +351,9 @@ CREATE TABLE dml_utils_data.migration_boundary
     started_at   timestamptz,
     completed_at timestamptz,
     cancelled_at timestamptz,
+    -- Number of rows the chunk statement affected. NULL until the chunk
+    -- completes; 0 is a completed chunk that changed no rows.
+    rows_affected bigint,
     PRIMARY KEY (run_id, boundary_no),
     CONSTRAINT migration_boundary_run_fk
         FOREIGN KEY (run_id)
@@ -369,6 +377,12 @@ CREATE TABLE dml_utils_data.migration_boundary
     CONSTRAINT migration_boundary_time_order_check CHECK (
         completed_at IS NULL
             OR (started_at IS NOT NULL AND completed_at >= started_at)
+        ),
+    -- A pending or cancelled boundary has no row count; a completed boundary
+    -- always has one, and it is never negative.
+    CONSTRAINT migration_boundary_rows_affected_check CHECK (
+        (completed_at IS NULL) = (rows_affected IS NULL)
+            AND (rows_affected IS NULL OR rows_affected >= 0)
         )
 );
 
@@ -402,6 +416,9 @@ COMMENT ON COLUMN dml_utils_data.migration_boundary.cancelled_at IS
     'Actual server time when the boundary was cancelled; NULL unless the run was '
         'cancelled before this chunk completed. A boundary with completed_at set '
         'is authoritative even if cancelled_at is also set.';
+COMMENT ON COLUMN dml_utils_data.migration_boundary.rows_affected IS
+    'Number of rows the chunk statement affected; NULL until the chunk completes, '
+        'and 0 for a completed chunk that changed no rows.';
 
 -- A partial index so the coordinator's next-chunk lookup (the first boundary
 -- with completed_at IS NULL) seeks straight to the pending rows instead of

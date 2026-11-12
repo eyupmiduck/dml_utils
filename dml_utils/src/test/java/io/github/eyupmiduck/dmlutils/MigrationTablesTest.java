@@ -89,6 +89,8 @@ class MigrationTablesTest extends PostgresTestBase {
                 "total_chunks should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "total_chunks_completed"),
                 "total_chunks_completed should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_run", "total_rows_affected"),
+                "total_rows_affected should exist");
 
         assertTrue(tableExists("dml_utils_data", "migration_boundary"), "migration_boundary should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_boundary", "run_id"), "run_id should exist");
@@ -101,6 +103,8 @@ class MigrationTablesTest extends PostgresTestBase {
         assertTrue(hasColumn("dml_utils_data", "migration_boundary", "started_at"), "started_at should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_boundary", "completed_at"), "completed_at should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_boundary", "cancelled_at"), "cancelled_at should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_boundary", "rows_affected"),
+                "rows_affected should exist");
 
         assertTrue(tableExists("dml_utils_data", "migration_run_leaf"),
                 "migration_run_leaf should exist");
@@ -188,6 +192,68 @@ class MigrationTablesTest extends PostgresTestBase {
                 .execute());
         assertDomainViolation(() -> dsl.update(MIGRATION_RUN)
                 .set(MIGRATION_RUN.RETRY_BACKOFF_MS, (Integer) null)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute());
+    }
+
+    /**
+     * A boundary's row count is set only with completion, cannot change after,
+     * and a completed boundary must carry one.
+     */
+    @Test
+    void enforcesBoundaryRowsAffectedInvariants() {
+        long runId = insertRunWithBoundary();
+        OffsetDateTime start = OffsetDateTime.parse("2020-01-01T00:00:00Z");
+        OffsetDateTime end = OffsetDateTime.parse("2020-01-02T00:00:00Z");
+
+        assertSqlState("22023", () -> dsl.update(MIGRATION_BOUNDARY)
+                .set(MIGRATION_BOUNDARY.ROWS_AFFECTED, 5L)
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .execute());
+        assertSqlState("22023", () -> dsl.update(MIGRATION_BOUNDARY)
+                .set(MIGRATION_BOUNDARY.STARTED_AT, start)
+                .set(MIGRATION_BOUNDARY.COMPLETED_AT, end)
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .execute());
+
+        dsl.update(MIGRATION_BOUNDARY)
+                .set(MIGRATION_BOUNDARY.STARTED_AT, start)
+                .set(MIGRATION_BOUNDARY.COMPLETED_AT, end)
+                .set(MIGRATION_BOUNDARY.ROWS_AFFECTED, 5L)
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .execute();
+        assertEquals(5L, dsl.select(MIGRATION_BOUNDARY.ROWS_AFFECTED)
+                .from(MIGRATION_BOUNDARY)
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_BOUNDARY.ROWS_AFFECTED));
+
+        assertSqlState("22023", () -> dsl.update(MIGRATION_BOUNDARY)
+                .set(MIGRATION_BOUNDARY.ROWS_AFFECTED, 6L)
+                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
+                .execute());
+    }
+
+    /**
+     * The run's total rows affected starts at zero and rejects a negative value.
+     */
+    @Test
+    void runTotalRowsAffectedStartsAtZeroAndIsNonNegative() {
+        Long runId = insertRun();
+
+        assertEquals(0L, dsl.select(MIGRATION_RUN.TOTAL_ROWS_AFFECTED)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_RUN.TOTAL_ROWS_AFFECTED));
+        dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.TOTAL_ROWS_AFFECTED, 5L)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute();
+        assertEquals(5L, dsl.select(MIGRATION_RUN.TOTAL_ROWS_AFFECTED)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_RUN.TOTAL_ROWS_AFFECTED));
+        assertDomainViolation(() -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.TOTAL_ROWS_AFFECTED, -1L)
                 .where(MIGRATION_RUN.RUN_ID.eq(runId))
                 .execute());
     }
@@ -742,6 +808,7 @@ class MigrationTablesTest extends PostgresTestBase {
         dsl.update(MIGRATION_BOUNDARY)
                 .set(MIGRATION_BOUNDARY.STARTED_AT, started)
                 .set(MIGRATION_BOUNDARY.COMPLETED_AT, started)
+                .set(MIGRATION_BOUNDARY.ROWS_AFFECTED, 0L)
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(run))
                 .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(0L))
                 .execute();
@@ -1180,6 +1247,7 @@ class MigrationTablesTest extends PostgresTestBase {
         dsl.update(MIGRATION_BOUNDARY)
                 .set(MIGRATION_BOUNDARY.STARTED_AT, OffsetDateTime.parse("2020-01-01T00:00:00Z"))
                 .set(MIGRATION_BOUNDARY.COMPLETED_AT, OffsetDateTime.parse("2020-01-02T00:00:00Z"))
+                .set(MIGRATION_BOUNDARY.ROWS_AFFECTED, 0L)
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
                 .execute();
 
@@ -1219,6 +1287,7 @@ class MigrationTablesTest extends PostgresTestBase {
         long boundaryRunId = insertRunWithBoundary();
         assertDomainViolation(() -> dsl.update(MIGRATION_BOUNDARY)
                 .set(MIGRATION_BOUNDARY.COMPLETED_AT, OffsetDateTime.parse("2020-01-02T00:00:00Z"))
+                .set(MIGRATION_BOUNDARY.ROWS_AFFECTED, 0L)
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(boundaryRunId))
                 .execute());
         dsl.update(MIGRATION_BOUNDARY)
@@ -1227,6 +1296,7 @@ class MigrationTablesTest extends PostgresTestBase {
                 .execute();
         assertDomainViolation(() -> dsl.update(MIGRATION_BOUNDARY)
                 .set(MIGRATION_BOUNDARY.COMPLETED_AT, OffsetDateTime.parse("2020-01-01T00:00:00Z"))
+                .set(MIGRATION_BOUNDARY.ROWS_AFFECTED, 0L)
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(boundaryRunId))
                 .execute());
     }
@@ -1355,6 +1425,7 @@ class MigrationTablesTest extends PostgresTestBase {
                 .set(MIGRATION_BOUNDARY.UPDATED_AT, old)
                 .set(MIGRATION_BOUNDARY.STARTED_AT, old)
                 .set(MIGRATION_BOUNDARY.COMPLETED_AT, OffsetDateTime.now())
+                .set(MIGRATION_BOUNDARY.ROWS_AFFECTED, 0L)
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
                 .execute();
         dsl.update(MIGRATION_ERROR)
