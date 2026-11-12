@@ -11,6 +11,8 @@ CREATE TABLE dml_utils_data.migration_run
     threads                         dml_utils_data.positive_integer     NOT NULL,
     sleep_ms                        dml_utils_data.non_negative_integer NOT NULL DEFAULT 0,
     paused_at                       timestamptz,
+    max_retries                     dml_utils_data.non_negative_integer NOT NULL DEFAULT 3,
+    retry_backoff_ms                dml_utils_data.non_negative_integer NOT NULL DEFAULT 1000,
     driving_table_schema_name       dml_utils_data.non_null_text        NOT NULL,
     driving_table_name              dml_utils_data.non_null_text        NOT NULL,
     driving_table_alias             dml_utils_data.non_null_text        NOT NULL DEFAULT 't',
@@ -125,6 +127,15 @@ COMMENT ON COLUMN dml_utils_data.migration_run.paused_at IS
     'Actual server time when the run was paused; NULL when it is not paused. A '
         'paused run is still unfinished and resumable; completing or cancelling '
         'the run clears it.';
+COMMENT ON COLUMN dml_utils_data.migration_run.max_retries IS
+    'Number of times a transient chunk failure (serialization failure, deadlock or '
+        'lock not available) is retried after the first attempt; 0 disables '
+        'retries. Set when the run is created and changed for later calls with '
+        'dml_utils.set_migration_run_retries.';
+COMMENT ON COLUMN dml_utils_data.migration_run.retry_backoff_ms IS
+    'Milliseconds to wait between transient-chunk retry attempts; 0 retries '
+        'immediately. Set when the run is created and changed for later calls with '
+        'dml_utils.set_migration_run_retries.';
 COMMENT ON COLUMN dml_utils_data.migration_run.driving_table_schema_name IS
     'Schema of the driving table whose primary-key order defines the chunks.';
 COMMENT ON COLUMN dml_utils_data.migration_run.driving_table_name IS

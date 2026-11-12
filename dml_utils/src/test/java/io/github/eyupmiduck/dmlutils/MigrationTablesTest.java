@@ -72,6 +72,10 @@ class MigrationTablesTest extends PostgresTestBase {
         assertTrue(hasColumn("dml_utils_data", "migration_run", "cancelled_at"), "cancelled_at should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "sleep_ms"), "sleep_ms should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "paused_at"), "paused_at should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_run", "max_retries"),
+                "max_retries should exist");
+        assertTrue(hasColumn("dml_utils_data", "migration_run", "retry_backoff_ms"),
+                "retry_backoff_ms should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "driving_table_schema_name"),
                 "driving_table_schema_name should exist");
         assertTrue(hasColumn("dml_utils_data", "migration_run", "driving_table_name"),
@@ -133,6 +137,57 @@ class MigrationTablesTest extends PostgresTestBase {
 
         assertDomainViolation(() -> dsl.update(MIGRATION_RUN)
                 .set(MIGRATION_RUN.SLEEP_MS, -1)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute());
+    }
+
+    /**
+     * The retry policy defaults to three retries with a one-second backoff,
+     * accepts zero (disabled/immediate), and rejects negative or NULL values.
+     */
+    @Test
+    void retryPolicyDefaultsAndRejectsNegativeValues() {
+        Long runId = insertRun();
+
+        assertEquals(3, dsl.select(MIGRATION_RUN.MAX_RETRIES)
+                        .from(MIGRATION_RUN)
+                        .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                        .fetchOne(MIGRATION_RUN.MAX_RETRIES),
+                "the default retry count is three");
+        assertEquals(1000, dsl.select(MIGRATION_RUN.RETRY_BACKOFF_MS)
+                        .from(MIGRATION_RUN)
+                        .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                        .fetchOne(MIGRATION_RUN.RETRY_BACKOFF_MS),
+                "the default backoff is one second");
+
+        dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.MAX_RETRIES, 0)
+                .set(MIGRATION_RUN.RETRY_BACKOFF_MS, 0)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute();
+        assertEquals(0, dsl.select(MIGRATION_RUN.MAX_RETRIES)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_RUN.MAX_RETRIES));
+        assertEquals(0, dsl.select(MIGRATION_RUN.RETRY_BACKOFF_MS)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_RUN.RETRY_BACKOFF_MS));
+
+        assertDomainViolation(() -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.MAX_RETRIES, -1)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute());
+        assertDomainViolation(() -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.RETRY_BACKOFF_MS, -1)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute());
+        assertDomainViolation(() -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.MAX_RETRIES, (Integer) null)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute());
+        assertDomainViolation(() -> dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.RETRY_BACKOFF_MS, (Integer) null)
                 .where(MIGRATION_RUN.RUN_ID.eq(runId))
                 .execute());
     }
