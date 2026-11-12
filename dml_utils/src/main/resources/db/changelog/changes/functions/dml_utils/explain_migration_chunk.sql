@@ -75,6 +75,11 @@ BEGIN
         LIMIT 1;
 
         IF NOT FOUND THEN
+            IF i_leaf_ordinal IS NULL THEN
+                RAISE EXCEPTION 'partitioned parent %.% has no storage leaves',
+                    i_driving_table_schema_name, i_driving_table_name
+                    USING ERRCODE = '22023';
+            END IF;
             RAISE EXCEPTION 'partition leaf ordinal % does not exist for %.%',
                 i_leaf_ordinal, i_driving_table_schema_name, i_driving_table_name
                 USING ERRCODE = '22023';
@@ -145,7 +150,19 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION dml_utils.explain_migration_chunk IS
+COMMENT ON FUNCTION dml_utils.explain_migration_chunk(
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    dml_utils_data.non_null_text,
+    text[],
+    text[],
+    boolean,
+    dml_utils_data.non_null_text,
+    dml_utils_data.chunking_strategy,
+    name,
+    dml_utils_data.non_null_boolean,
+    integer
+    ) IS
     'Returns the EXPLAIN (FORMAT JSON) plan for one explicitly supplied chunk of '
         'the template, as a single chunk_non_final or chunk_final row. The start '
         'and end values are one text value per key column, in key order; they are '

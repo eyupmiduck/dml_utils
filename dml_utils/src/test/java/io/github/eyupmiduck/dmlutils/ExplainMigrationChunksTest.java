@@ -17,6 +17,7 @@ import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeMix
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeThree.TEST_COMPOSITE_THREE;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestNumeric.TEST_NUMERIC;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestOrderedKey.TEST_ORDERED_KEY;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestPartitionedEmpty.TEST_PARTITIONED_EMPTY;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestPartitionedHash.TEST_PARTITIONED_HASH;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestPartitionedList.TEST_PARTITIONED_LIST;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestPartitionedMulti.TEST_PARTITIONED_MULTI;
@@ -550,7 +551,8 @@ class ExplainMigrationChunksTest extends PostgresTestBase {
     }
 
     /**
-     * Partition-wise blocks renders a ctid range against the selected leaf.
+     * Partition-wise blocks renders a ctid range against the selected leaf, not
+     * the parent.
      */
     @Test
     void explainsAPartitionWiseBlockLeaf() {
@@ -559,7 +561,30 @@ class ExplainMigrationChunksTest extends PostgresTestBase {
                 name(TEST_PARTITIONED_RANGE), 10, "t", ChunkingStrategy.blocks, null, true, 1);
 
         assertEquals(THREE_KINDS, planKinds(plans));
-        assertTrue(plans.get(1).getOSqlText().contains("ctid"));
+        assertEquals(1, plans.get(0).getOLeafOrdinal());
+        String leafName = plans.get(0).getOLeafName();
+        assertNotNull(leafName);
+        assertTrue(plans.get(0).getOSqlText().contains(leafName),
+                "the boundary plan targets the selected leaf");
+        assertTrue(plans.get(1).getOSqlText().contains(leafName)
+                        && plans.get(1).getOSqlText().contains("ctid"),
+                "the block chunk targets the selected leaf");
+    }
+
+    /**
+     * An empty partition tree reports that the parent has no storage leaves
+     * instead of a missing-NULL-ordinal message, on both explain forms.
+     */
+    @Test
+    void rejectsAnEmptyPartitionTree() {
+        assertSqlState("22023", () -> Routines.explainMigrationChunks(
+                dsl.configuration(), TEMPLATE, schema(TEST_PARTITIONED_EMPTY),
+                name(TEST_PARTITIONED_EMPTY), 10, "t", ChunkingStrategy.primary_key, null,
+                true, null));
+        assertSqlState("22023", () -> Routines.explainMigrationChunk(
+                dsl.configuration(), TEMPLATE, schema(TEST_PARTITIONED_EMPTY),
+                name(TEST_PARTITIONED_EMPTY), new String[]{"0"}, new String[]{"10"},
+                false, "t", ChunkingStrategy.primary_key, null, true, null));
     }
 
     /**
@@ -571,6 +596,23 @@ class ExplainMigrationChunksTest extends PostgresTestBase {
                 dsl.configuration(), TEMPLATE, schema(TEST_PARTITIONED_RANGE),
                 name(TEST_PARTITIONED_RANGE), new String[]{"0"}, new String[]{"100"},
                 false, "t", ChunkingStrategy.primary_key, null, true, 1);
+
+        assertEquals(1, plans.size());
+        assertEquals(1, plans.get(0).getOLeafOrdinal());
+        assertTrue(plans.get(0).getOSqlText().contains(plans.get(0).getOLeafName()));
+    }
+
+    /**
+     * The explicit form resolves a partition-wise ordered key through the parent
+     * index and renders the selected leaf.
+     */
+    @Test
+    void explainsAnExplicitPartitionWiseOrderedKeyChunk() {
+        List<ExplainMigrationChunkRecord> plans = Routines.explainMigrationChunk(
+                dsl.configuration(), TEMPLATE, schema(TEST_PARTITIONED_RANGE),
+                name(TEST_PARTITIONED_RANGE), new String[]{"0"}, new String[]{"100"},
+                false, "t", ChunkingStrategy.ordered_key,
+                "test_partitioned_range_ordered_key_idx", true, 1);
 
         assertEquals(1, plans.size());
         assertEquals(1, plans.get(0).getOLeafOrdinal());
