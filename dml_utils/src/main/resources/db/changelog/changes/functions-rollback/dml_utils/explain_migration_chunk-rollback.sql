@@ -7,5 +7,7 @@ DROP FUNCTION IF EXISTS dml_utils.explain_migration_chunk(
     boolean,
     dml_utils_data.non_null_text,
     dml_utils_data.chunking_strategy,
-    name
+    name,
+    dml_utils_data.non_null_boolean,
+    integer
 );
