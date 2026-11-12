@@ -74,34 +74,34 @@ BEGIN
     l_label := coalesce(
             i_label,
             'function:' || CASE
-                WHEN i_boundary_key_index IS NULL AND NOT i_partition_wise::boolean THEN
-                    pg_catalog.json_build_array(
-                            i_driving_table_schema_name,
-                            i_driving_table_name,
-                            i_function_schema_name,
-                            i_function_name,
-                            CASE
-                                WHEN i_filter IS NULL THEN NULL
-                                ELSE 'sha256:' || pg_catalog.encode(
-                                        pg_catalog.sha256(pg_catalog.convert_to(i_filter, 'UTF8')),
-                                        'hex')
-                                END,
-                            i_chunk_by)::text
-                ELSE
-                    pg_catalog.json_build_array(
-                            i_driving_table_schema_name,
-                            i_driving_table_name,
-                            i_function_schema_name,
-                            i_function_name,
-                            CASE
-                                WHEN i_filter IS NULL THEN NULL
-                                ELSE 'sha256:' || pg_catalog.encode(
-                                        pg_catalog.sha256(pg_catalog.convert_to(i_filter, 'UTF8')),
-                                        'hex')
-                                END,
-                            i_chunk_by,
-                            i_boundary_key_index,
-                            i_partition_wise)::text
+                               WHEN i_boundary_key_index IS NULL AND NOT i_partition_wise::boolean THEN
+                                   pg_catalog.json_build_array(
+                                           i_driving_table_schema_name,
+                                           i_driving_table_name,
+                                           i_function_schema_name,
+                                           i_function_name,
+                                           CASE
+                                               WHEN i_filter IS NULL THEN NULL
+                                               ELSE 'sha256:' || pg_catalog.encode(
+                                                       pg_catalog.sha256(pg_catalog.convert_to(i_filter, 'UTF8')),
+                                                       'hex')
+                                               END,
+                                           i_chunk_by)::text
+                               ELSE
+                                   pg_catalog.json_build_array(
+                                           i_driving_table_schema_name,
+                                           i_driving_table_name,
+                                           i_function_schema_name,
+                                           i_function_name,
+                                           CASE
+                                               WHEN i_filter IS NULL THEN NULL
+                                               ELSE 'sha256:' || pg_catalog.encode(
+                                                       pg_catalog.sha256(pg_catalog.convert_to(i_filter, 'UTF8')),
+                                                       'hex')
+                                               END,
+                                           i_chunk_by,
+                                           i_boundary_key_index,
+                                           i_partition_wise)::text
                 END);
 
     -- Delegate to the base engine: it owns resume, chunk scheduling, error
