@@ -31,6 +31,7 @@ SELECT run.run_id,
        run.boundaries_calculated_at,
        run.total_chunks,
        run.total_chunks_completed,
+       run.total_rows_affected,
        run.completed_at,
        run.cancelled_at,
        run.archived_at

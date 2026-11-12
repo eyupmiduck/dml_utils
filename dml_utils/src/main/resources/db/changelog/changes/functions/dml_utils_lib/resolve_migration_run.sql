@@ -77,6 +77,7 @@ BEGIN
            boundaries_calculated_at,
            total_chunks,
            total_chunks_completed,
+           total_rows_affected,
            completed_at,
            cancelled_at,
            archived_at

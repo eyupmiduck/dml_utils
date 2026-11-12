@@ -70,6 +70,7 @@ class ClaimMigrationBoundaryTest extends PostgresTestBase {
         dsl.update(MIGRATION_BOUNDARY)
                 .set(MIGRATION_BOUNDARY.STARTED_AT, OffsetDateTime.now())
                 .set(MIGRATION_BOUNDARY.COMPLETED_AT, OffsetDateTime.now())
+                .set(MIGRATION_BOUNDARY.ROWS_AFFECTED, 0L)
                 .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
                 .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(0L))
                 .execute();
