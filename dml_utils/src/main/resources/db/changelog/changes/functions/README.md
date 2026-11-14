@@ -159,8 +159,8 @@ NULL is rejected (`23514`).
 while advancing `migration_run.total_chunks_completed` and
 `migration_run.total_rows_affected` in the same transaction. A completed chunk
 that matched no rows records `0`; a failed chunk rolls the whole transaction
-back, so a retried chunk counts once. For a `run_function_over_table` template
-(`SELECT fn(...) FROM ...`), `ROW_COUNT` is the number of rows returned by the
+back, so a retried chunk counts once. For a `run_function_over_table` template (`SELECT fn(...) FROM ...`), `ROW_COUNT`
+is the number of rows returned by the
 SELECT, i.e. the number passed to the function.
 
 `dml_utils.migration_run_progress(i_run_id)` derives `status`
@@ -597,8 +597,8 @@ i_retry_backoff_ms dml_utils_data.non_negative_integer
 RETURNS void
 ```
 
-`SECURITY DEFINER`. Replaces the stored transient-retry policy of the unfinished
-(`completed_at IS NULL`), non-archived, non-cancelled run for the label:
+`SECURITY DEFINER`. Replaces the stored transient-retry policy of the unfinished (`completed_at IS NULL`), non-archived,
+non-cancelled run for the label:
 `max_retries` attempts after the first and a fixed `retry_backoff_ms` between
 attempts. Only `40001`, `40P01` and `55P03` are retryable. The setter only stores
 the policy; it takes effect when the next coordinator call reads the run, not in
@@ -1175,8 +1175,8 @@ whether it was already complete, the effective sql_text/schema/table/alias/
 threads, sleep and chunking strategy (the stored values for a resumed run,
 ignoring differing inputs with a notice), whether the run is partition-wise, and
 the effective transient-retry policy (the caller's values for a new run; the
-stored values on resume), plus the boundary key columns and kinds
-(the stored ordered-key descriptor for `ordered_key`, the real primary key for
+stored values on resume), plus the boundary key columns and kinds (the stored ordered-key descriptor for `ordered_key`,
+the real primary key for
 `primary_key`, or a single `bigint` block number for `blocks`). For a new
 partition-wise run the worker only creates the run and its pending leaf manifest;
 `run_migration_chunks` then calculates the leaves and finalizes. A resumed run

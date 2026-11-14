@@ -386,7 +386,7 @@ Negative / risks:
 | `dml-99x.18`–`dml-99x.19` | Documentation and full verification                           |
 | `dml-99x.3`               | Restore the upgrade test after the next release               |
 
-All implementation beads through `dml-99x.17` are merged. This documentation bead
-(`dml-99x.18`) records the final surface; `dml-99x.19` is the final full-verify,
+All implementation beads through `dml-99x.17` are merged. This documentation bead (`dml-99x.18`) records the final
+surface; `dml-99x.19` is the final full-verify,
 benchmark-smoke and database-recreation gate, and `dml-99x.3` stays blocked until
 a release is cut from the cleaned changelog.

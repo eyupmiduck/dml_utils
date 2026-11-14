@@ -223,29 +223,29 @@ All parameters live in [`config.env`](config.env) and are documented there; put
 personal overrides in a gitignored `config.local.env` (copy
 `config.local.env.example`). The ones you are most likely to change:
 
-| parameter                                 | default                           | purpose                                                                             |
-|-------------------------------------------|-----------------------------------|-------------------------------------------------------------------------------------|
-| `BENCH_ROWS`                              | `1000000`                         | synthetic source rows                                                               |
-| `BENCH_PK_COLUMNS`                        | `1`                               | number of bigint primary-key columns (1 to 3)                                       |
-| `BENCH_ORDERED_SOURCE_TABLE`              | `bench_ordered_source`            | UUIDv4-keyed ordered-key source                                                     |
-| `BENCH_ORDERED_TARGET_TABLE`              | `bench_ordered_target`            | throwaway ordered-key destination                                                   |
-| `BENCH_ORDERED_INDEX`                     | `bench_ordered_created_at_id_idx` | the `(created_at, id)` unique index                                                 |
-| `BENCH_PARTITIONED_SOURCE_TABLE`          | `bench_partitioned_source`        | range-partitioned source for partition-wise `primary_key`/`blocks`                  |
-| `BENCH_PARTITIONED_TARGET_TABLE`          | `bench_partitioned_target`        | throwaway partition-wise destination                                                |
-| `BENCH_PARTITIONED_ORDERED_SOURCE_TABLE`  | `bench_partitioned_ordered_source` | hash-partitioned source for partition-wise `ordered_key`                           |
-| `BENCH_PARTITIONED_ORDERED_TARGET_TABLE`  | `bench_partitioned_ordered_target` | throwaway partition-wise ordered-key destination                                   |
-| `BENCH_PARTITIONED_ORDERED_INDEX`         | `bench_partitioned_ordered_created_at_id_idx` | the partition-wise `(created_at, id)` unique index                     |
-| `BENCH_PARTITIONED_LEAVES`                | `4`                               | leaves in both partitioned sources (the range copy needs at most the distinct `k1` values) |
-| `BENCH_PARTITION_WISE`                    | `0`                               | `1` runs the configured strategy inside its partitioned fixture                      |
-| `BENCH_CHUNK_SIZE`                        | `1000`                            | chunk size, in the unit of `BENCH_CHUNK_BY`                                         |
-| `BENCH_CHUNK_BY`                          | `primary_key`                     | chunking strategy: `primary_key`, `ordered_key` or `blocks`                         |
-| `BENCH_THREADS_FROM` / `BENCH_THREADS_TO` | `1` / `20`                        | thread sweep                                                                        |
-| `BENCH_RUNS`                              | `10`                              | measured runs per thread value (the mean is over these)                             |
-| `BENCH_WARMUP_RUNS`                       | `1`                               | unrecorded warm-up runs per thread value                                            |
-| `BENCH_SQL`                               | INSERT into the target            | the workload run once per chunk                                                     |
-| `BENCH_ORDERED_SQL`                       | INSERT into the ordered target    | the ordered-key workload                                                            |
-| `BENCH_MAX_WORKER_PROCESSES`              | `30`                              | must cover `BENCH_THREADS_TO`                                                       |
-| `BENCH_SHARED_BUFFERS`                    | `512MB`                           | server setting for the run                                                          |
+| parameter                                 | default                                       | purpose                                                                                    |
+|-------------------------------------------|-----------------------------------------------|--------------------------------------------------------------------------------------------|
+| `BENCH_ROWS`                              | `1000000`                                     | synthetic source rows                                                                      |
+| `BENCH_PK_COLUMNS`                        | `1`                                           | number of bigint primary-key columns (1 to 3)                                              |
+| `BENCH_ORDERED_SOURCE_TABLE`              | `bench_ordered_source`                        | UUIDv4-keyed ordered-key source                                                            |
+| `BENCH_ORDERED_TARGET_TABLE`              | `bench_ordered_target`                        | throwaway ordered-key destination                                                          |
+| `BENCH_ORDERED_INDEX`                     | `bench_ordered_created_at_id_idx`             | the `(created_at, id)` unique index                                                        |
+| `BENCH_PARTITIONED_SOURCE_TABLE`          | `bench_partitioned_source`                    | range-partitioned source for partition-wise `primary_key`/`blocks`                         |
+| `BENCH_PARTITIONED_TARGET_TABLE`          | `bench_partitioned_target`                    | throwaway partition-wise destination                                                       |
+| `BENCH_PARTITIONED_ORDERED_SOURCE_TABLE`  | `bench_partitioned_ordered_source`            | hash-partitioned source for partition-wise `ordered_key`                                   |
+| `BENCH_PARTITIONED_ORDERED_TARGET_TABLE`  | `bench_partitioned_ordered_target`            | throwaway partition-wise ordered-key destination                                           |
+| `BENCH_PARTITIONED_ORDERED_INDEX`         | `bench_partitioned_ordered_created_at_id_idx` | the partition-wise `(created_at, id)` unique index                                         |
+| `BENCH_PARTITIONED_LEAVES`                | `4`                                           | leaves in both partitioned sources (the range copy needs at most the distinct `k1` values) |
+| `BENCH_PARTITION_WISE`                    | `0`                                           | `1` runs the configured strategy inside its partitioned fixture                            |
+| `BENCH_CHUNK_SIZE`                        | `1000`                                        | chunk size, in the unit of `BENCH_CHUNK_BY`                                                |
+| `BENCH_CHUNK_BY`                          | `primary_key`                                 | chunking strategy: `primary_key`, `ordered_key` or `blocks`                                |
+| `BENCH_THREADS_FROM` / `BENCH_THREADS_TO` | `1` / `20`                                    | thread sweep                                                                               |
+| `BENCH_RUNS`                              | `10`                                          | measured runs per thread value (the mean is over these)                                    |
+| `BENCH_WARMUP_RUNS`                       | `1`                                           | unrecorded warm-up runs per thread value                                                   |
+| `BENCH_SQL`                               | INSERT into the target                        | the workload run once per chunk                                                            |
+| `BENCH_ORDERED_SQL`                       | INSERT into the ordered target                | the ordered-key workload                                                                   |
+| `BENCH_MAX_WORKER_PROCESSES`              | `30`                                          | must cover `BENCH_THREADS_TO`                                                              |
+| `BENCH_SHARED_BUFFERS`                    | `512MB`                                       | server setting for the run                                                                 |
 
 `BENCH_SQL` must contain `<driving_table>` and `<chunking_clause>` exactly once;
 the driving table is aliased `t`. The default keeps the source table untouched by

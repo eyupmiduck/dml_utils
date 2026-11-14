@@ -29,8 +29,8 @@ Liquibase loads three application schemas, layered so nothing lower depends on
 anything above it:
 
 - **`dml_utils`** — the caller-facing API: `dml_utils.run_migration_chunks` and
-  the `run_function_over_table` wrapper, plus the run controls
-  (`set_migration_run_sql_text`, `set_migration_run_function`,
+  the `run_function_over_table` wrapper, plus the run controls (`set_migration_run_sql_text`,
+  `set_migration_run_function`,
   `set_migration_run_threads`, `set_migration_run_sleep_ms`,
   `set_migration_run_retries`, `pause_migration_run`, `resume_migration_run`,
   `archive_migration_run`, `cancel_migration_run`), the read-only explain
@@ -46,8 +46,8 @@ anything above it:
   errors. It may use `dml_utils_data`, never `dml_utils`.
 - **`dml_utils_data`** — the data layer: the shared domains (`non_null_text`,
   `positive_integer`, `non_negative_integer`, `non_null_boolean`), the
-  `migration_key` composite type that packs a boundary's key value
-  (position-aligned arrays, one per key kind, including `timestamptz`), and the
+  `migration_key` composite type that packs a boundary's key value (position-aligned arrays, one per key kind, including
+  `timestamptz`), and the
   fixed-row chunk migration tables `migration_run` / `migration_boundary` /
   `migration_run_leaf` (`migration_error` records failed chunks), plus their
   trigger functions.
