@@ -532,7 +532,9 @@ RETURNS TABLE
 ( run_id, label, chunk_size, chunk_by, threads, sleep_ms,
     driving_table_schema_name, driving_table_name, driving_table_relation_filepath,
     created_at, started_at, boundaries_calculated_at, completed_at, cancelled_at, archived_at,
-    boundary_count, completed_boundary_count, error_count)
+    boundary_count, completed_boundary_count, error_count,
+    partition_wise, total_chunks, total_chunks_completed,
+    leaf_count, leaves_calculated, leaves_failed, leaves_pending)
 ```
 
 `STABLE`, `SECURITY INVOKER`. Returns one high-level row per run for the label,
@@ -541,6 +543,32 @@ sleep, the block run's physical filepath (`driving_table_relation_filepath`), th
 number of boundaries (chunk starts plus
 the terminal boundary), how many are completed, and the number of recorded
 errors. Use `migration_errors` to list the errors themselves.
+
+For a partition-wise run it also reports the stored `partition_wise` flag, the
+run's `total_chunks`/`total_chunks_completed` counters, and the manifest leaf
+counts: `leaf_count`, `leaves_calculated`, `leaves_failed` and
+`leaves_pending` (the latter includes leaves left `calculating` by a failed
+worker). A non-partition-wise run has no manifest, so its leaf counts are zero.
+Use `migration_run_leaves` for the manifest rows.
+
+### `dml_utils.migration_run_leaves(i_run_id)`
+
+```sql
+i_run_id bigint
+RETURNS TABLE
+    (run_id, leaf_ordinal, leaf_schema_name, leaf_name, leaf_oid, leaf_bound,
+     relation_filepath, state, boundary_count, terminal_boundary_id,
+     calculated_at, error_sqlstate, error_message, created_at, updated_at)
+```
+
+`STABLE`, `SECURITY INVOKER`. Returns one row per manifest leaf of a
+partition-wise run, ordered by `leaf_ordinal`. Each row carries the deterministic
+leaf order, the identity snapshot taken when the run was created (schema, name,
+partition bound, and for `blocks` the leaf's physical filepath), the calculation
+`state` (`pending`, `calculating`, `calculated` or `failed`), the leaf's boundary
+count and high-water `terminal_boundary_id`, and any calculation error. An empty
+leaf is still a row, with `boundary_count = 0`. A non-partition-wise run has no
+manifest and returns no rows.
 
 ### `dml_utils.migration_errors(i_run_id)`
 

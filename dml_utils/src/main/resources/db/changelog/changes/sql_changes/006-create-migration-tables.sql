@@ -339,18 +339,18 @@ COMMENT ON INDEX dml_utils_data.migration_run_leaf_pending_idx IS
 
 CREATE TABLE dml_utils_data.migration_boundary
 (
-    run_id       bigint                       NOT NULL,
-    boundary_no  bigint                       NOT NULL,
-    boundary_id  dml_utils_data.migration_key NOT NULL,
+    run_id        bigint                       NOT NULL,
+    boundary_no   bigint                       NOT NULL,
+    boundary_id   dml_utils_data.migration_key NOT NULL,
     -- For a partition-wise run, the leaf this boundary belongs to. The
     -- migration_boundary_leaf trigger requires it for partition-wise runs and
     -- rejects it otherwise; the composite FK resolves it to the manifest.
-    leaf_ordinal integer,
-    created_at   timestamptz                  NOT NULL DEFAULT pg_catalog.now(),
-    updated_at   timestamptz                  NOT NULL DEFAULT pg_catalog.now(),
-    started_at   timestamptz,
-    completed_at timestamptz,
-    cancelled_at timestamptz,
+    leaf_ordinal  integer,
+    created_at    timestamptz                  NOT NULL DEFAULT pg_catalog.now(),
+    updated_at    timestamptz                  NOT NULL DEFAULT pg_catalog.now(),
+    started_at    timestamptz,
+    completed_at  timestamptz,
+    cancelled_at  timestamptz,
     -- Number of rows the chunk statement affected. NULL until the chunk
     -- completes; 0 is a completed chunk that changed no rows.
     rows_affected bigint,
