@@ -97,13 +97,17 @@ class MigrationRunProgressTest extends PartitionTestBase {
         assertEquals(10L, progress.getTotalRowsAffected());
         assertTrue(progress.getElapsedMs() >= 1900,
                 "the elapsed time is measured from started_at");
-        assertEquals(0.5, progress.getChunksPerSecond(), 0.1);
-        assertEquals(5.0, progress.getRowsPerSecond(), 1.0);
+        // The rate and the ETA are derived from the reported elapsed time, so
+        // derive the expected values the same way instead of pinning them to a
+        // wall-clock assumption that a CI stall could break.
+        double expectedChunkRate = 1.0 / (progress.getElapsedMs() / 1000.0);
+        assertEquals(expectedChunkRate, progress.getChunksPerSecond(), 1e-9);
+        assertEquals(10.0 * expectedChunkRate, progress.getRowsPerSecond(), 1e-9);
         assertNotNull(progress.getEstimatedRemainingMs(),
                 "an active run with a rate has an ETA");
-        assertTrue(progress.getEstimatedRemainingMs() >= 3000,
-                "two remaining chunks at ~0.5 chunks/s take ~4s");
-        assertTrue(progress.getEstimatedRemainingMs() <= 5000);
+        assertEquals(2 * 1000.0 / expectedChunkRate,
+                progress.getEstimatedRemainingMs().doubleValue(), 1.0,
+                "two remaining chunks at the measured rate");
         assertNotNull(progress.getEstimatedCompletionAt());
     }
 
