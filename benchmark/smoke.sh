@@ -3,7 +3,7 @@
 #
 # Creates an isolated benchmark database, runs one measured run per chunking
 # strategy (primary_key, blocks and ordered_key) with two threads, then one
-# partition-wise run for primary_key and blocks, and removes the database again.
+# partition-wise run for each strategy, and removes the database again.
 # The dataset is tiny and deterministic, and config.local.env is ignored, so the
 # result does not depend on a developer's personal sweep.
 #
@@ -77,10 +77,11 @@ for strategy in primary_key blocks ordered_key; do
         "$here/run.sh" --reset
 done
 
-# One run per partition-wise-capable strategy, inside the range-partitioned
-# fixture, so the leaf manifest, per-leaf calculation and leaf rendering are
+# One run per strategy inside its partitioned fixture (the range-partitioned
+# bigint copy for primary_key/blocks, the hash-partitioned UUID copy for
+# ordered_key), so the leaf manifest, per-leaf calculation and leaf rendering are
 # exercised end to end too.
-for strategy in primary_key blocks; do
+for strategy in primary_key blocks ordered_key; do
     BENCH_PARTITION_WISE=1 BENCH_CHUNK_BY="$strategy" \
         BENCH_CSV="smoke-partitioned-$strategy.csv" "$here/run.sh" --reset
 done
@@ -94,16 +95,21 @@ mkdir -p "$report_dir"
     head -n 1 "$results_dir/smoke-primary_key.csv"
     tail -n +2 "$results_dir/smoke-primary_key.csv"
     tail -n +2 "$results_dir/smoke-partitioned-primary_key.csv"
+    tail -n +2 "$results_dir/smoke-ordered_key.csv"
+    tail -n +2 "$results_dir/smoke-partitioned-ordered_key.csv"
 } > "$report_dir/combined.csv"
 BENCH_RESULTS_DIR="$BENCH_RESULTS_DIR/smoke-report" BENCH_CSV=combined.csv \
     "$here/report.sh" >/dev/null
 grep -q '^### strategy `primary_key`' "$report_dir/report.md"
 grep -q '(partition-wise)' "$report_dir/report.md"
+grep -q '^### strategy `ordered_key`, key created_at+id, chunk_size 500 rows (partition-wise)' \
+    "$report_dir/report.md"
 grep -q '^| 2 |' "$report_dir/report.md"
 rm -rf "$report_dir"
 
 rm -f "$results_dir/smoke-primary_key.csv" "$results_dir/smoke-blocks.csv" \
     "$results_dir/smoke-ordered_key.csv" \
     "$results_dir/smoke-partitioned-primary_key.csv" \
-    "$results_dir/smoke-partitioned-blocks.csv"
+    "$results_dir/smoke-partitioned-blocks.csv" \
+    "$results_dir/smoke-partitioned-ordered_key.csv"
 echo "benchmark smoke test passed" >&2

@@ -84,9 +84,16 @@ if command -v docker >/dev/null 2>&1 \
         UNION ALL
         SELECT 'partitioned_rows', count(*)::text FROM ${BENCH_SCHEMA}.${BENCH_PARTITIONED_SOURCE_TABLE}
         UNION ALL
+        SELECT 'partitioned_ordered_rows', count(*)::text FROM ${BENCH_SCHEMA}.${BENCH_PARTITIONED_ORDERED_SOURCE_TABLE}
+        UNION ALL
         SELECT 'partitioned_blocks',
                ((SELECT coalesce(sum(pg_relation_size(leaf.relid)), 0)::bigint
                  FROM pg_partition_tree('${BENCH_SCHEMA}.${BENCH_PARTITIONED_SOURCE_TABLE}'::regclass) AS leaf
+                 WHERE leaf.isleaf) / current_setting('block_size')::bigint)::text
+        UNION ALL
+        SELECT 'partitioned_ordered_blocks',
+               ((SELECT coalesce(sum(pg_relation_size(leaf.relid)), 0)::bigint
+                 FROM pg_partition_tree('${BENCH_SCHEMA}.${BENCH_PARTITIONED_ORDERED_SOURCE_TABLE}'::regclass) AS leaf
                  WHERE leaf.isleaf) / current_setting('block_size')::bigint)::text
         UNION ALL
         SELECT 'partitioned_leaves', count(*)::text
@@ -105,6 +112,8 @@ src_blocks="$(awk -F'|' '{ gsub(/ /, "", $1); if ($1 == "blocks") { gsub(/ /, ""
 ordered_rows="$(awk -F'|' '{ gsub(/ /, "", $1); if ($1 == "ordered_rows") { gsub(/ /, "", $2); print $2 } }' \
     "$dataset_file" 2>/dev/null || true)"
 partitioned_rows="$(awk -F'|' '{ gsub(/ /, "", $1); if ($1 == "partitioned_rows") { gsub(/ /, "", $2); print $2 } }' \
+    "$dataset_file" 2>/dev/null || true)"
+partitioned_ordered_rows="$(awk -F'|' '{ gsub(/ /, "", $1); if ($1 == "partitioned_ordered_rows") { gsub(/ /, "", $2); print $2 } }' \
     "$dataset_file" 2>/dev/null || true)"
 partitioned_blocks="$(awk -F'|' '{ gsub(/ /, "", $1); if ($1 == "partitioned_blocks") { gsub(/ /, "", $2); print $2 } }' \
     "$dataset_file" 2>/dev/null || true)"
@@ -152,6 +161,9 @@ done
     echo "| ordered key index | \`$BENCH_ORDERED_INDEX\` |"
     echo "| partitioned source table | \`$BENCH_SCHEMA.$BENCH_PARTITIONED_SOURCE_TABLE\` |"
     echo "| partitioned target table | \`$BENCH_SCHEMA.$BENCH_PARTITIONED_TARGET_TABLE\` |"
+    echo "| partitioned ordered source table | \`$BENCH_SCHEMA.$BENCH_PARTITIONED_ORDERED_SOURCE_TABLE\` |"
+    echo "| partitioned ordered target table | \`$BENCH_SCHEMA.$BENCH_PARTITIONED_ORDERED_TARGET_TABLE\` |"
+    echo "| partitioned ordered key index | \`$BENCH_PARTITIONED_ORDERED_INDEX\` |"
     echo "| partitioned leaves | $BENCH_PARTITIONED_LEAVES |"
     echo "| rows | $BENCH_ROWS |"
     echo "| chunk_by (current config) | \`$BENCH_CHUNK_BY\` |"
@@ -180,6 +192,12 @@ done
     echo
     echo '```sql'
     echo "$BENCH_PARTITIONED_SQL"
+    echo '```'
+    echo
+    echo "Partition-wise ordered-key workload SQL (the same copy into its own target):"
+    echo
+    echo '```sql'
+    echo "$BENCH_PARTITIONED_ORDERED_SQL"
     echo '```'
     echo
     echo "## Hardware and software"
@@ -223,7 +241,8 @@ done
         echo "| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
         awk -F, -v s="$s" -v c="$cs" -v key="$pk" -v pw="$pw" \
             -v src_rows="$src_rows" -v src_blocks="$src_blocks" -v ordered_rows="$ordered_rows" \
-            -v partitioned_rows="$partitioned_rows" -v partitioned_blocks="$partitioned_blocks" '
+            -v partitioned_rows="$partitioned_rows" -v partitioned_blocks="$partitioned_blocks" \
+            -v partitioned_ordered_rows="$partitioned_ordered_rows" '
             NR == 1 { next }
             $1 != s || $3 != c || $10 != key { next }
             {
@@ -248,7 +267,8 @@ done
                 for (i = 1; i <= cnt; i++) {
                     t = order[i]
                     mc = ch[t] / n[t]
-                    rows_for_chunk = (pw == "yes") ? partitioned_rows \
+                    rows_for_chunk = (pw == "yes") \
+                        ? ((s == "ordered_key") ? partitioned_ordered_rows : partitioned_rows) \
                         : ((s == "ordered_key") ? ordered_rows : src_rows)
                     blocks_for_chunk = (pw == "yes") ? partitioned_blocks : src_blocks
                     rpc = (rows_for_chunk + 0 > 0 && mc > 0) ? sprintf("%.0f", rows_for_chunk / mc) : "-"
@@ -293,13 +313,17 @@ done
     echo "- \`primary_key\` and \`blocks\` are not directly comparable at the same numeric"
     echo "  chunk size: \`primary_key\` chunks a fixed number of rows, \`blocks\` a fixed"
     echo "  number of heap blocks, and a block holds a variable number of rows."
-    echo "- The partition-wise variant uses a range-partitioned copy of the same"
-    echo "  synthetic data, so compare each partition-wise row with the non-partitioned"
-    echo "  row of the same strategy, key and chunk size. Partition-aware plans prune to"
-    echo "  the leaf, but a run pays one boundary calculation and transaction per leaf."
+    echo "- The partition-wise variant uses a partitioned copy of the same synthetic"
+    echo "  data: the range-partitioned bigint copy for \`primary_key\`/\`blocks\`, so"
+    echo "  compare each partition-wise row with the non-partitioned row of the same"
+    echo "  strategy, key and chunk size. \`ordered_key\` uses the hash-partitioned UUID"
+    echo "  copy. Partition-aware plans prune to the leaf, but a run pays one boundary"
+    echo "  calculation and transaction per leaf."
     echo "- \`ordered_key\` chunks a fixed number of rows like \`primary_key\`, so compare"
     echo "  those two by \`rows/chunk\`; it uses its own UUID-keyed source and target, so"
-    echo "  its absolute times also include that table's shape."
+    echo "  its absolute times also include that table's shape. The partition-wise"
+    echo "  ordered run hashes on the UUID key, so its leaves do not partition by"
+    echo "  \`created_at\`."
     echo "- Autovacuum, checkpoints and other background activity can add noise; run more"
     echo "  measured runs (increase \`BENCH_RUNS\`) to tighten the mean."
     echo "- Each thread is one \`pg_background\` worker; the count is capped by"

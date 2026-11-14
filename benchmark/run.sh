@@ -5,9 +5,10 @@
 # BENCH_WARMUP_RUNS unrecorded warm-ups, then BENCH_RUNS measured runs of
 # dml_utils.run_migration_chunks, and appends one CSV row per measured run to
 # results/<BENCH_CSV>. BENCH_CHUNK_BY selects the strategy; set
-# BENCH_PARTITION_WISE=1 to run primary_key or blocks inside the range-partitioned
-# fixture instead. Results accumulate across invocations; pass --reset to start a
-# fresh CSV. Format it with report.sh.
+# BENCH_PARTITION_WISE=1 to run it inside the matching partitioned fixture
+# instead (the range-partitioned bigint copy for primary_key/blocks, the
+# hash-partitioned UUID copy for ordered_key). Results accumulate across
+# invocations; pass --reset to start a fresh CSV. Format it with report.sh.
 #
 # Usage: benchmark/run.sh [--reset]
 
@@ -57,6 +58,12 @@ case "$BENCH_ORDERED_INDEX" in
         exit 2
         ;;
 esac
+case "$BENCH_PARTITIONED_ORDERED_INDEX" in
+    ''|*[!a-z0-9_]*)
+        echo "BENCH_PARTITIONED_ORDERED_INDEX must be a plain lowercase identifier: $BENCH_PARTITIONED_ORDERED_INDEX" >&2
+        exit 2
+        ;;
+esac
 
 # The chunk-size unit and source/target/workload are determined by the strategy.
 case "$BENCH_CHUNK_BY" in
@@ -89,9 +96,9 @@ case "$BENCH_CHUNK_BY" in
         ;;
 esac
 
-# The partition-wise modifier runs the configured strategy inside each leaf of
-# the range-partitioned fixture. ordered_key keeps its dedicated single-relation
-# fixture, so it has no partitioned variant.
+# The partition-wise modifier runs the configured strategy inside each leaf of a
+# partitioned fixture. primary_key/blocks use the range-partitioned bigint copy;
+# ordered_key uses the hash-partitioned UUID copy and its own ordered index.
 partition_wise=0
 case "$BENCH_PARTITION_WISE" in
     0|no|false) ;;
@@ -104,15 +111,21 @@ esac
 partition_clause=""
 partition_flag="no"
 if [ "$partition_wise" = 1 ]; then
-    if [ "$BENCH_CHUNK_BY" = ordered_key ]; then
-        echo "BENCH_PARTITION_WISE=1 supports primary_key and blocks; ordered_key uses its own fixture" >&2
-        exit 2
-    fi
-    run_table="$BENCH_PARTITIONED_SOURCE_TABLE"
-    run_target="$BENCH_PARTITIONED_TARGET_TABLE"
-    run_sql="$BENCH_PARTITIONED_SQL"
     partition_clause=", i_partition_wise => true"
     partition_flag="yes"
+    case "$BENCH_CHUNK_BY" in
+        primary_key|blocks)
+            run_table="$BENCH_PARTITIONED_SOURCE_TABLE"
+            run_target="$BENCH_PARTITIONED_TARGET_TABLE"
+            run_sql="$BENCH_PARTITIONED_SQL"
+            ;;
+        ordered_key)
+            run_table="$BENCH_PARTITIONED_ORDERED_SOURCE_TABLE"
+            run_target="$BENCH_PARTITIONED_ORDERED_TARGET_TABLE"
+            run_sql="$BENCH_PARTITIONED_ORDERED_SQL"
+            boundary_clause=", i_boundary_key_index => '$BENCH_PARTITIONED_ORDERED_INDEX'"
+            ;;
+    esac
 fi
 
 # The key column names, joined by '+' so a report group key has no spaces.
