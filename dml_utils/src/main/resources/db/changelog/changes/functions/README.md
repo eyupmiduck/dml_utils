@@ -121,7 +121,8 @@ NULL is rejected (`23514`).
   schema/name/OID, partition bound, per-leaf block filepath, state, boundary
   count, high-water snapshot). An empty leaf is a row with `boundary_count = 0`,
   never an omission; an all-empty tree finalizes with `total_chunks = 0` and no
-  terminal boundary.
+  terminal boundary. Read it through `dml_utils.migration_run_leaves(i_run_id)`
+  rather than querying the internal table.
 - **Calculation:** one leaf per committed worker transaction, in ordinal order,
   serialized by a run-keyed advisory lock (a concurrent calculation raises
   `55000`). A failure records `state = 'failed'` with the SQLSTATE/message on the
@@ -133,6 +134,10 @@ NULL is rejected (`23514`).
   partition bound, and per-leaf block filepath). Any difference raises `55000`;
   earlier progress stays committed. Archive the run and start a new label
   instead of reconciling.
+- **Pause:** pausing while leaves are calculating stops launching new leaves;
+  calculated leaves keep their boundaries, the rest stay `pending`,
+  `boundaries_calculated_at` stays NULL, and the run is resumable. Resume
+  continues at the first `pending`/`failed` leaf.
 - **Cancellation:** cancelling while leaves are calculating stops launching new
   leaves; calculated leaves keep their boundaries, the rest stay `pending`, and
   the run is terminal. Archive it before reusing the label.
@@ -140,9 +145,38 @@ NULL is rejected (`23514`).
   template needs (`UPDATE` in the
   usual case) when its chunks run. A privilege lost after creation surfaces when
   that leaf's chunk runs, with earlier chunks committed; restore it and retry.
-- **Explain:** a rendered chunk targets its leaf; for a primary-key run the leaf
-  exposes the same key columns, so a plan check can pass the leaf to the
-  renderer/EXPLAIN helpers. `blocks` leaf chunks are ctid ranges on that heap.
+- **Explain:** a rendered chunk targets its leaf.
+  `explain_migration_chunks`/`explain_migration_chunk` accept
+  `i_partition_wise` and `i_leaf_ordinal` and return the leaf identity;
+  `explain_migration_run_chunk(run_id, boundary_no)` explains a real stored
+  chunk from its boundary's leaf and high-water snapshot. `blocks` leaf chunks
+  are ctid ranges on that heap.
+
+### Rows affected, progress and retries
+
+`process_migration_chunk` captures the executed statement's `ROW_COUNT` and
+`complete_migration_boundary` writes it to `migration_boundary.rows_affected`
+while advancing `migration_run.total_chunks_completed` and
+`migration_run.total_rows_affected` in the same transaction. A completed chunk
+that matched no rows records `0`; a failed chunk rolls the whole transaction
+back, so a retried chunk counts once. For a `run_function_over_table` template
+(`SELECT fn(...) FROM ...`), `ROW_COUNT` is the number of rows returned by the
+SELECT, i.e. the number passed to the function.
+
+`dml_utils.migration_run_progress(i_run_id)` derives `status`
+(`archived`/`cancelled`/`completed`/`paused`/`calculating`/`active`), percent
+complete, elapsed time, chunk and row rates, and an estimated finish. Rates are
+NULL until the boundaries are calculated and at least one chunk has completed;
+the estimate is NULL while work remains and the run is calculating, paused or
+cancelled, and is 0 with a terminal time when no chunks remain. An empty
+calculated run reports 100%.
+
+The coordinator retries a chunk that fails with `40001`, `40P01` or `55P03` up to
+the run's `max_retries` times (default 3) after a fixed `retry_backoff_ms`
+(default 1000) delay. Other SQLSTATEs, including `57014`, are recorded
+immediately. A pause or cancellation during the backoff follows the normal
+pause/cancel path. Change the stored policy between calls with
+`set_migration_run_retries`.
 
 ### Workaround for idempotent transformations
 
@@ -156,9 +190,9 @@ heap rewrites safe; it does not replace a quiescent source.
 
 ## `dml_utils`
 
-###
+### `dml_utils.run_migration_chunks(...)`
 
-`dml_utils.run_migration_chunks(i_sql_text, i_driving_table_schema_name, i_driving_table_name, i_label, i_chunk_size [, i_threads, i_driving_table_alias, i_chunk_by, i_poll_timeout_ms, i_sleep_ms, i_boundary_key_index, i_partition_wise])`
+`dml_utils.run_migration_chunks(i_sql_text, i_driving_table_schema_name, i_driving_table_name, i_label, i_chunk_size [, i_threads, i_driving_table_alias, i_chunk_by, i_poll_timeout_ms, i_sleep_ms, i_boundary_key_index, i_partition_wise, i_max_retries, i_retry_backoff_ms])`
 
 ```sql
 i_sql_text                  dml_utils_data.non_null_text
@@ -173,6 +207,8 @@ i_poll_timeout_ms           dml_utils_data.positive_integer DEFAULT 1
 i_sleep_ms                  dml_utils_data.non_negative_integer DEFAULT 0
 i_boundary_key_index        name DEFAULT NULL
 i_partition_wise            dml_utils_data.non_null_boolean DEFAULT FALSE
+i_max_retries               dml_utils_data.non_negative_integer DEFAULT 3
+i_retry_backoff_ms          dml_utils_data.non_negative_integer DEFAULT 1000
 RETURNS void
 ```
 
@@ -200,7 +236,8 @@ run-keyed advisory lock, so a concurrent resume fails closed rather than
 duplicating boundaries. Each
 worker runs one chunk in its own transaction; the coordinator only schedules
 and holds no locks on the driving table. On a failed chunk the coordinator
-records it, stops launching new chunks, lets the workers already in flight
+records it after any configured transient retries are exhausted, stops launching
+new chunks, lets the workers already in flight
 commit their current chunk, and then re-raises the error, leaving the run
 incomplete so it can be resumed. `i_threads` must not exceed
 `max_worker_processes` (`22023` otherwise), and parallel execution is not
@@ -244,11 +281,20 @@ worker before re-checking (`pg_background_wait_any`): the default `1` keeps
 per-chunk detection latency low, and a larger value polls less often, cutting
 coordinator CPU for chunks that run in non-trivial time. It must be positive:
 `0` is rejected because `pg_background_wait_any` treats a non-positive timeout
-as wait-forever.
+as wait-forever. A chunk that fails with `40001`, `40P01` or `55P03` is retried
+up to `i_max_retries` times after the first attempt, waiting
+`i_retry_backoff_ms` between attempts; any other SQLSTATE is recorded
+immediately. A successful retry leaves no error row. When `pause_migration_run`
+is observed, the coordinator stops launching new chunks, waits for the in-flight
+workers to commit their current chunk, leaves the run unfinished and resumable,
+and returns with a notice; calling again while paused is a no-op. Cancellation
+wins over pause. Each completed boundary records the statement's `ROW_COUNT` in
+`migration_boundary.rows_affected` and advances `migration_run.total_rows_affected`
+in the same transaction.
 
-###
+### `dml_utils.explain_migration_chunks(...)`
 
-`dml_utils.explain_migration_chunks(i_sql_text, i_driving_table_schema_name, i_driving_table_name [, i_chunk_size, i_driving_table_alias, i_chunk_by, i_boundary_key_index])`
+`dml_utils.explain_migration_chunks(i_sql_text, i_driving_table_schema_name, i_driving_table_name [, i_chunk_size, i_driving_table_alias, i_chunk_by, i_boundary_key_index, i_partition_wise, i_leaf_ordinal])`
 
 ```sql
 i_sql_text                  dml_utils_data.non_null_text
@@ -258,8 +304,11 @@ i_chunk_size                dml_utils_data.positive_integer DEFAULT 1000
 i_driving_table_alias       dml_utils_data.non_null_text DEFAULT 't'
 i_chunk_by                  dml_utils_data.chunking_strategy DEFAULT 'primary_key'
 i_boundary_key_index        name DEFAULT NULL
+i_partition_wise            dml_utils_data.non_null_boolean DEFAULT FALSE
+i_leaf_ordinal              integer DEFAULT NULL
 RETURNS TABLE
-    (o_plan_kind text, o_sql_text text, o_plan json)
+    (o_plan_kind text, o_sql_text text, o_plan json,
+     o_leaf_schema_name text, o_leaf_name text, o_leaf_ordinal integer)
 ```
 
 `VOLATILE`, `SECURITY INVOKER`. The read-only companion to
@@ -273,14 +322,18 @@ without evaluating the foreign key. For `primary_key` and `ordered_key` the chun
 ranges come from `dml_utils_lib.synthetic_chunk_boundary_values` (a `<` non-final
 and a `<=` final range); for `blocks` they are two representative half-open ctid
 ranges. `ordered_key` requires `i_boundary_key_index`; the other strategies reject
-it (`22023`). Either way the ranges are synthetic, so their row estimates may
-differ from a real chunk. It is `VOLATILE` because PostgreSQL forbids `EXPLAIN` in
-a non-volatile function. Use it to inspect the plans before running
-`run_migration_chunks`.
+it (`22023`). With `i_partition_wise` the plans are rendered against one leaf of
+the declarative partitioned parent, selected by `i_leaf_ordinal` (NULL means the
+first leaf; a selector on a non-partition-wise call is rejected); the returned
+`o_leaf_schema_name`/`o_leaf_name`/`o_leaf_ordinal` identify it. Either way the
+ranges are synthetic, so their row estimates may differ from a real chunk. It is
+`VOLATILE` because PostgreSQL forbids `EXPLAIN` in a non-volatile function. Use
+it to inspect the plans before running `run_migration_chunks`; use
+`explain_migration_run_chunk` to explain a real stored chunk.
 
-###
+### `dml_utils.explain_migration_chunk(...)`
 
-`dml_utils.explain_migration_chunk(i_sql_text, i_driving_table_schema_name, i_driving_table_name, i_start_values, i_end_values, i_is_final [, i_driving_table_alias, i_chunk_by, i_boundary_key_index])`
+`dml_utils.explain_migration_chunk(i_sql_text, i_driving_table_schema_name, i_driving_table_name, i_start_values, i_end_values, i_is_final [, i_driving_table_alias, i_chunk_by, i_boundary_key_index, i_partition_wise, i_leaf_ordinal])`
 
 ```sql
 i_sql_text                  dml_utils_data.non_null_text
@@ -292,8 +345,11 @@ i_is_final                  boolean
 i_driving_table_alias       dml_utils_data.non_null_text DEFAULT 't'
 i_chunk_by                  dml_utils_data.chunking_strategy DEFAULT 'primary_key'
 i_boundary_key_index        name DEFAULT NULL
+i_partition_wise            dml_utils_data.non_null_boolean DEFAULT FALSE
+i_leaf_ordinal              integer DEFAULT NULL
 RETURNS TABLE
-    (o_plan_kind text, o_sql_text text, o_plan json)
+    (o_plan_kind text, o_sql_text text, o_plan json,
+     o_leaf_schema_name text, o_leaf_name text, o_leaf_ordinal integer)
 ```
 
 `VOLATILE`, `SECURITY INVOKER`. The explicit-boundary companion to
@@ -311,10 +367,13 @@ boundaries. Block chunks are rejected with `feature_not_supported` (`0A000`): a
 `explain_migration_chunks` for those synthetic plans. The values are validated
 and cast by their column's kind, and a reversed range, an empty non-final range,
 or an array whose length does not match the key is rejected with
-`invalid_parameter_value` (`22023`). It resolves no run, reads no boundaries and
-writes nothing.
+`invalid_parameter_value` (`22023`). With `i_partition_wise` the chunk is
+rendered against one leaf of the declarative partitioned parent, selected by
+`i_leaf_ordinal` (NULL means the first leaf; a selector on a non-partition-wise
+call is rejected), and the returned leaf schema/name/ordinal identify it. It
+resolves no run, reads no boundaries and writes nothing.
 
-###
+### `dml_utils.explain_migration_run_chunk(i_run_id, i_boundary_no)`
 
 `dml_utils.explain_migration_run_chunk(i_run_id, i_boundary_no)`
 
@@ -352,7 +411,7 @@ i_sql_text dml_utils_data.non_null_text
 RETURNS void
 ```
 
-`SECURITY INVOKER`. Replaces the recorded `sql_text` of the unfinished (`completed_at IS NULL`) run for the label, so
+`SECURITY DEFINER`. Replaces the recorded `sql_text` of the unfinished (`completed_at IS NULL`) run for the label, so
 the next `run_migration_chunks`
 call uses the adjusted SQL. Validates the new SQL as a chunking template (raising `invalid_parameter_value`, `22023`, if
 it is not), and raises
@@ -361,9 +420,9 @@ this to adjust the SQL of an existing run (for example to fix a bad execution
 plan) instead of passing a changed template to a resumed `run_migration_chunks`
 call, which would ignore it.
 
-###
+### `dml_utils.run_function_over_table(...)`
 
-`dml_utils.run_function_over_table(i_driving_table_schema_name, i_driving_table_name, i_function_schema_name, i_function_name [, i_chunk_size, i_threads, i_label, i_filter, i_chunk_by, i_poll_timeout_ms, i_sleep_ms])`
+`dml_utils.run_function_over_table(i_driving_table_schema_name, i_driving_table_name, i_function_schema_name, i_function_name [, i_chunk_size, i_threads, i_label, i_filter, i_chunk_by, i_poll_timeout_ms, i_sleep_ms, i_boundary_key_index, i_partition_wise, i_max_retries, i_retry_backoff_ms])`
 
 ```sql
 i_driving_table_schema_name dml_utils_data.non_null_text
@@ -377,6 +436,10 @@ i_filter                    text DEFAULT NULL
 i_chunk_by                  dml_utils_data.chunking_strategy DEFAULT 'primary_key'
 i_poll_timeout_ms           dml_utils_data.positive_integer DEFAULT 1
 i_sleep_ms                  dml_utils_data.non_negative_integer DEFAULT 0
+i_boundary_key_index        name DEFAULT NULL
+i_partition_wise            dml_utils_data.non_null_boolean DEFAULT FALSE
+i_max_retries               dml_utils_data.non_negative_integer DEFAULT 3
+i_retry_backoff_ms          dml_utils_data.non_negative_integer DEFAULT 1000
 RETURNS void
 ```
 
@@ -403,10 +466,15 @@ run uses the recorded SQL text and strategy, use `set_migration_run_function` to
 point an unfinished run at a different function or filter. `i_poll_timeout_ms` and
 `i_sleep_ms` are passed through to `run_migration_chunks` (see there for their
 meaning); `i_sleep_ms` seeds a new run and a resumed run uses the stored value.
+`i_boundary_key_index` and `i_partition_wise` are forwarded to the base engine,
+so an ordered-key or partition-wise function run works like a template run; the
+function still receives the primary-key columns in key order. `i_max_retries` and
+`i_retry_backoff_ms` seed a new run's transient-retry policy; a resumed run uses
+the stored values.
 
-###
+### `dml_utils.explain_function_over_table(...)`
 
-`dml_utils.explain_function_over_table(i_driving_table_schema_name, i_driving_table_name, i_function_schema_name, i_function_name [, i_chunk_size, i_filter, i_chunk_by])`
+`dml_utils.explain_function_over_table(i_driving_table_schema_name, i_driving_table_name, i_function_schema_name, i_function_name [, i_chunk_size, i_filter, i_chunk_by, i_boundary_key_index, i_partition_wise, i_leaf_ordinal])`
 
 ```sql
 i_driving_table_schema_name dml_utils_data.non_null_text
@@ -416,8 +484,12 @@ i_function_name             dml_utils_data.non_null_text
 i_chunk_size                dml_utils_data.positive_integer DEFAULT 1000
 i_filter                    text DEFAULT NULL
 i_chunk_by                  dml_utils_data.chunking_strategy DEFAULT 'primary_key'
+i_boundary_key_index        name DEFAULT NULL
+i_partition_wise            dml_utils_data.non_null_boolean DEFAULT FALSE
+i_leaf_ordinal              integer DEFAULT NULL
 RETURNS TABLE
-    (o_plan_kind text, o_sql_text text, o_plan json)
+    (o_plan_kind text, o_sql_text text, o_plan json,
+     o_leaf_schema_name text, o_leaf_name text, o_leaf_ordinal integer)
 ```
 
 `VOLATILE`, `SECURITY INVOKER`. The read-only companion to
@@ -429,10 +501,12 @@ return or mismatched argument types raise `invalid_parameter_value` (`22023`)
 before any plan is produced. A non-NULL `i_filter` is ANDed onto the chunk plans'
 range predicate; the boundary-population plan (which does not use the template)
 is unaffected. For `blocks`, the driving table must be a plain heap.
+`i_boundary_key_index` selects an ordered-key plan; `i_partition_wise` with
+`i_leaf_ordinal` renders against one leaf and returns its identity.
 
-###
+### `dml_utils.explain_function_over_table_chunk(...)`
 
-`dml_utils.explain_function_over_table_chunk(i_driving_table_schema_name, i_driving_table_name, i_function_schema_name, i_function_name, i_start_values, i_end_values, i_is_final [, i_filter])`
+`dml_utils.explain_function_over_table_chunk(i_driving_table_schema_name, i_driving_table_name, i_function_schema_name, i_function_name, i_start_values, i_end_values, i_is_final [, i_filter, i_chunk_by, i_boundary_key_index, i_partition_wise, i_leaf_ordinal])`
 
 ```sql
 i_driving_table_schema_name dml_utils_data.non_null_text
@@ -443,8 +517,13 @@ i_start_values              text[]
 i_end_values                text[]
 i_is_final                  boolean
 i_filter                    text DEFAULT NULL
+i_chunk_by                  dml_utils_data.chunking_strategy DEFAULT 'primary_key'
+i_boundary_key_index        name DEFAULT NULL
+i_partition_wise            dml_utils_data.non_null_boolean DEFAULT FALSE
+i_leaf_ordinal              integer DEFAULT NULL
 RETURNS TABLE
-    (o_plan_kind text, o_sql_text text, o_plan json)
+    (o_plan_kind text, o_sql_text text, o_plan json,
+     o_leaf_schema_name text, o_leaf_name text, o_leaf_ordinal integer)
 ```
 
 `VOLATILE`, `SECURITY INVOKER`. The explicit-boundary companion to
@@ -469,7 +548,7 @@ i_filter              text DEFAULT NULL
 RETURNS void
 ```
 
-`SECURITY INVOKER`. Replaces the recorded `sql_text` of the unfinished run for
+`SECURITY DEFINER`. Replaces the recorded `sql_text` of the unfinished run for
 the label with the template that calls the given function over the run's driving
 table (which is immutable), so the next `run_function_over_table` call uses the
 adjusted function. Validates the function against the driving table's primary
@@ -486,7 +565,7 @@ i_threads dml_utils_data.positive_integer
 RETURNS void
 ```
 
-`SECURITY INVOKER`. Replaces the recorded `threads` of the unfinished (`completed_at IS NULL`) run for the label, so the
+`SECURITY DEFINER`. Replaces the recorded `threads` of the unfinished (`completed_at IS NULL`) run for the label, so the
 next `run_migration_chunks`
 call uses the adjusted worker count. Raises `no_data_found` (`P0002`) when there
 is no unfinished run for the label. Use this to tune the parallelism of an
@@ -501,13 +580,63 @@ i_sleep_ms dml_utils_data.non_negative_integer
 RETURNS void
 ```
 
-`SECURITY INVOKER`. Replaces the recorded per-chunk sleep of the unfinished (`completed_at IS NULL`) run for the label,
+`SECURITY DEFINER`. Replaces the recorded per-chunk sleep of the unfinished (`completed_at IS NULL`) run for the label,
 so the next `run_migration_chunks`
 call waits that many milliseconds after each successful chunk before launching
 another. Raises a domain violation (`23514`) for a NULL or negative value and
 `no_data_found` (`P0002`) when there is no unfinished run for the label. A
 coordinator already processing the run keeps the value it read at its start, so
 this changes the next call (a restart/resume), not a run in progress.
+
+### `dml_utils.set_migration_run_retries(i_label, i_max_retries, i_retry_backoff_ms)`
+
+```sql
+i_label            dml_utils_data.non_null_text
+i_max_retries      dml_utils_data.non_negative_integer
+i_retry_backoff_ms dml_utils_data.non_negative_integer
+RETURNS void
+```
+
+`SECURITY DEFINER`. Replaces the stored transient-retry policy of the unfinished
+(`completed_at IS NULL`), non-archived, non-cancelled run for the label:
+`max_retries` attempts after the first and a fixed `retry_backoff_ms` between
+attempts. Only `40001`, `40P01` and `55P03` are retryable. The setter only stores
+the policy; it takes effect when the next coordinator call reads the run, not in
+a coordinator already processing it. Raises a domain violation (`23514`) for a
+NULL or negative value and `no_data_found` (`P0002`) when there is no unfinished
+run for the label. Use it to tune an existing run instead of passing changed
+`i_max_retries`/`i_retry_backoff_ms` to a resumed call, which would ignore them.
+
+### `dml_utils.pause_migration_run(i_label)`
+
+```sql
+i_label dml_utils_data.non_null_text
+RETURNS bigint
+```
+
+`SECURITY DEFINER`. Sets `paused_at` on the active (not archived, unfinished,
+non-cancelled) run for the label, if any, and returns its `run_id`; a second
+pause returns the same run without moving the timestamp, and a terminal or
+absent run returns NULL. Pause is a durable, reversible flag: the coordinator
+stops launching new chunks or leaves, waits for the in-flight workers to commit
+their current chunk, and leaves the run unfinished and resumable. It does not
+mark boundaries or leaves cancelled. Calling `run_migration_chunks` while paused
+is a no-op with a notice; completion wins if the pause races the last chunk. A
+terminal run cannot be paused.
+
+### `dml_utils.resume_migration_run(i_label)`
+
+```sql
+i_label dml_utils_data.non_null_text
+RETURNS bigint
+```
+
+`SECURITY DEFINER`. Clears `paused_at` on the active unfinished, non-cancelled
+run for the label, if any, and returns its `run_id`. Resuming a run that is not
+paused is a no-op that still returns its id; a terminal or absent run returns
+NULL. Call `run_migration_chunks` again with the same label to continue; a
+partition-wise run resumes at its first `pending`/`failed` leaf and an
+already-calculated leaf is never recalculated.
 
 ### `dml_utils.archive_migration_run(i_label)`
 
@@ -1012,7 +1141,7 @@ fixed alias `t`.
 
 ###
 
-`dml_utils_lib.resolve_migration_run(i_sql_text, i_driving_table_schema_name, i_driving_table_name, i_label, i_chunk_size, i_threads, i_driving_table_alias [, i_chunk_by, i_sleep_ms, i_boundary_key_index])`
+`dml_utils_lib.resolve_migration_run(i_sql_text, i_driving_table_schema_name, i_driving_table_name, i_label, i_chunk_size, i_threads, i_driving_table_alias [, i_chunk_by, i_sleep_ms, i_boundary_key_index, i_partition_wise, i_max_retries, i_retry_backoff_ms])`
 
 ```sql
 i_sql_text                  dml_utils_data.non_null_text
@@ -1026,10 +1155,14 @@ i_chunk_by                  dml_utils_data.chunking_strategy DEFAULT 'primary_ke
 i_sleep_ms                  dml_utils_data.non_negative_integer DEFAULT 0
 i_boundary_key_index        name DEFAULT NULL
 i_partition_wise            dml_utils_data.non_null_boolean DEFAULT FALSE
+i_max_retries               dml_utils_data.non_negative_integer DEFAULT 3
+i_retry_backoff_ms          dml_utils_data.non_negative_integer DEFAULT 1000
 RETURNS record (o_run_id bigint, o_already_completed boolean,
                 o_effective_sql_text text, o_effective_schema_name text,
                 o_effective_table_name text, o_effective_alias text,
                 o_effective_threads integer, o_effective_sleep_ms integer,
+                o_effective_max_retries integer,
+                o_effective_retry_backoff_ms integer,
                 o_chunk_by dml_utils_data.chunking_strategy,
                 o_partition_wise boolean,
                 o_key_columns name[], o_key_kinds text[])
@@ -1040,7 +1173,9 @@ the active run for the label or creates one (populating its boundaries in a
 `pg_background` worker so they commit autonomously), then returns the run id,
 whether it was already complete, the effective sql_text/schema/table/alias/
 threads, sleep and chunking strategy (the stored values for a resumed run,
-ignoring differing inputs with a notice), and whether the run is partition-wise, plus the boundary key columns and kinds
+ignoring differing inputs with a notice), whether the run is partition-wise, and
+the effective transient-retry policy (the caller's values for a new run; the
+stored values on resume), plus the boundary key columns and kinds
 (the stored ordered-key descriptor for `ordered_key`, the real primary key for
 `primary_key`, or a single `bigint` block number for `blocks`). For a new
 partition-wise run the worker only creates the run and its pending leaf manifest;
@@ -1184,7 +1319,7 @@ migration run already exists for the label.
 
 ###
 
-`dml_utils_lib.populate_migration_boundaries(i_schema_name, i_table_name, i_label, i_sql_text, i_chunk_size [, i_threads, i_chunk_by, i_driving_table_alias, i_sleep_ms, i_boundary_key_index])`
+`dml_utils_lib.populate_migration_boundaries(i_schema_name, i_table_name, i_label, i_sql_text, i_chunk_size [, i_threads, i_chunk_by, i_driving_table_alias, i_sleep_ms, i_boundary_key_index, i_partition_wise, i_max_retries, i_retry_backoff_ms])`
 
 ```sql
 i_schema_name dml_utils_data.non_null_text
@@ -1198,6 +1333,8 @@ i_driving_table_alias dml_utils_data.non_null_text DEFAULT 't'
 i_sleep_ms    dml_utils_data.non_negative_integer DEFAULT 0
 i_boundary_key_index name DEFAULT NULL
 i_partition_wise dml_utils_data.non_null_boolean DEFAULT FALSE
+i_max_retries dml_utils_data.non_negative_integer DEFAULT 3
+i_retry_backoff_ms dml_utils_data.non_negative_integer DEFAULT 1000
 RETURNS bigint
 ```
 
@@ -1205,7 +1342,9 @@ RETURNS bigint
 `dml_utils_data.migration_run` row for the label, with the recorded SQL text,
 chunk size, strategy, threads, per-chunk sleep, driving table and driving table
 alias (storing the alias and sleep at creation so a resume uses the same values),
-records the run's `started_at` (the run start, when the calculation begins), then
+records the run's `started_at` (the run start, when the calculation begins), and
+stores the transient-retry policy (`i_max_retries`, `i_retry_backoff_ms`) for the
+next coordinator call, then
 populates the boundaries for the strategy and records `boundaries_calculated_at`
 (when the range calculation finishes) and `total_chunks` (the boundary count minus
 the terminal high-water boundary, clamped to 0 for an empty source); returns the
@@ -1615,14 +1754,18 @@ RETURNS void
 `SECURITY INVOKER` for the chunk SQL. Claims one boundary through the
 owner-owned `claim_migration_boundary` helper (which locks the row for the
 caller's transaction and returns the claim timestamp), runs the fully-formed
-chunk SQL as the caller, then completes the boundary through the owner-owned
-`complete_migration_boundary` helper, which writes both timestamps and advances
-the run's `total_chunks_completed` in that same transaction. Raises
+chunk SQL as the caller, captures `ROW_COUNT` with `GET DIAGNOSTICS`, then
+completes the boundary through the owner-owned `complete_migration_boundary`
+helper, which writes both timestamps and `rows_affected` and advances the run's
+`total_chunks_completed` and `total_rows_affected` in that same transaction.
+`ROW_COUNT` is the affected-row count for `UPDATE`/`DELETE`/`INSERT ... SELECT`
+and the returned-row count for a `SELECT fn(...) FROM ...` template. Raises
 `P0C01` when the boundary does not exist, is already completed or was cancelled.
 If the chunk SQL fails, the transaction aborts and the claim rolls back —
-including `started_at` — so the chunk is retried on the next run. A boundary
-therefore reports `started_at` only for a chunk that actually completed; this is
-intended. Intended to run inside a `pg_background` worker, one call per chunk.
+including `started_at`, `rows_affected` and both counters — so the chunk is
+retried on the next run. A boundary therefore reports `started_at` only for a
+chunk that actually completed; this is intended. Intended to run inside a
+`pg_background` worker, one call per chunk.
 
 ### `dml_utils_lib.record_migration_error(i_run_id, i_boundary_no, i_sqlstate, i_message)`
 
@@ -2073,7 +2216,7 @@ or no row.
 
 ###
 
-`dml_utils_lib.resume_migration_run(i_run, i_driving_table_schema_name, i_driving_table_name, i_sql_text, i_chunk_size, i_threads, i_driving_table_alias, i_chunk_by, i_sleep_ms, i_boundary_key_index, i_partition_wise)`
+`dml_utils_lib.resume_migration_run(i_run, i_driving_table_schema_name, i_driving_table_name, i_sql_text, i_chunk_size, i_threads, i_driving_table_alias, i_chunk_by, i_sleep_ms, i_boundary_key_index, i_partition_wise, i_max_retries, i_retry_backoff_ms)`
 
 ```sql
 i_run                        dml_utils_data.migration_run
@@ -2087,10 +2230,13 @@ i_chunk_by                   dml_utils_data.chunking_strategy
 i_sleep_ms                   dml_utils_data.non_negative_integer
 i_boundary_key_index         name
 i_partition_wise             dml_utils_data.non_null_boolean
+i_max_retries                dml_utils_data.non_negative_integer
+i_retry_backoff_ms           dml_utils_data.non_negative_integer
 RETURNS record
     (o_effective_sql_text text, o_effective_schema_name text,
      o_effective_table_name text, o_effective_alias text,
      o_effective_threads integer, o_effective_sleep_ms integer,
+     o_effective_max_retries integer, o_effective_retry_backoff_ms integer,
      o_chunk_by dml_utils_data.chunking_strategy, o_partition_wise boolean)
 ```
 
@@ -2101,7 +2247,7 @@ blocks relation filepath.
 
 ###
 
-`dml_utils_lib.create_migration_run(i_schema_name, i_table_name, i_label, i_sql_text, i_chunk_size, i_threads, i_chunk_by, i_driving_table_alias, i_sleep_ms, i_boundary_key_index, i_partition_wise)`
+`dml_utils_lib.create_migration_run(i_schema_name, i_table_name, i_label, i_sql_text, i_chunk_size, i_threads, i_chunk_by, i_driving_table_alias, i_sleep_ms, i_boundary_key_index, i_partition_wise [, i_max_retries, i_retry_backoff_ms])`
 
 ```sql
 i_schema_name        dml_utils_data.non_null_text
@@ -2115,6 +2261,8 @@ i_driving_table_alias dml_utils_data.non_null_text
 i_sleep_ms           dml_utils_data.non_negative_integer
 i_boundary_key_index name
 i_partition_wise     dml_utils_data.non_null_boolean
+i_max_retries        dml_utils_data.non_negative_integer DEFAULT 3
+i_retry_backoff_ms   dml_utils_data.non_negative_integer DEFAULT 1000
 RETURNS bigint
 ```
 
@@ -2225,7 +2373,10 @@ granted to no one). The `BEFORE UPDATE ... FOR EACH ROW` trigger on
 `driving_table_relation_filepath`), all fixed when the run is created or (for the
 filepath) when its boundaries are computed, and to `total_chunks` once
 `boundaries_calculated_at` is set (the two are written together);
-`total_chunks_completed` stays mutable for the chunk workers.
+`total_chunks_completed` and `total_rows_affected` stay mutable for the chunk
+workers. It allows `paused_at` to be set or cleared on an unfinished,
+non-cancelled run, rejects pausing a terminal run and rejects rewriting a
+non-NULL `paused_at`, and rejects rewriting a `cancelled_at` that is already set.
 
 ### `dml_utils_data.reject_migration_boundary_update()`
 
@@ -2236,7 +2387,10 @@ RETURNS trigger
 `SECURITY INVOKER`, not callable by users (PUBLIC `EXECUTE` is revoked and it is
 granted to no one). The `BEFORE UPDATE ... FOR EACH ROW` trigger on
 `migration_boundary` that rejects any change to `run_id`, `boundary_no`,
-`boundary_id` or `leaf_ordinal`, all fixed when the boundaries are computed.
+`boundary_id` or `leaf_ordinal`, all fixed when the boundaries are computed. It
+rejects rewriting a `cancelled_at` or `completed_at` that is already set,
+requires `rows_affected` to be set exactly when `completed_at` is set, and
+rejects changing the count after completion.
 
 ### `dml_utils_data.check_migration_run_leaf()`
 
@@ -2247,10 +2401,12 @@ RETURNS trigger
 `SECURITY INVOKER`, not callable by users (PUBLIC `EXECUTE` is revoked and it is
 granted to no one). The `BEFORE INSERT OR UPDATE ... FOR EACH ROW` trigger on
 `migration_run_leaf` that requires the run to exist and be partition-wise,
-requires a `relation_filepath` exactly when the run's `chunk_by` is `blocks`, and
-rejects any change to the snapshotted leaf identity (`run_id`, `leaf_ordinal`,
+requires a `relation_filepath` exactly when the run's `chunk_by` is `blocks`,
+and rejects any change to the snapshotted leaf identity (`run_id`, `leaf_ordinal`,
 `leaf_schema_name`, `leaf_name`, `leaf_oid`, `leaf_bound`, `relation_filepath`)
-on update. The calculation state, count, timestamp and error fields stay mutable.
+on update. It rejects adding a leaf to a finalized or cancelled run and freezes
+`terminal_boundary_id` once set; the calculation state, count, timestamp and
+error fields stay mutable.
 
 ### `dml_utils_data.check_migration_boundary_leaf()`
 

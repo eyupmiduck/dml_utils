@@ -243,9 +243,11 @@ dml_utils.migration_run_progress(i_run_id bigint) RETURNS TABLE (...)
 ```
 
 `migration_run_summary` gains `partition_wise`, `total_chunks`,
-`total_chunks_completed`, `total_rows_affected`, `paused_at`, `max_retries`,
-`retry_backoff_ms`, and leaf counts (`leaf_count`, `leaves_calculated`,
-`leaves_failed`, `leaves_pending`).
+`total_chunks_completed`, and leaf counts (`leaf_count`, `leaves_calculated`,
+`leaves_failed`, `leaves_pending`). `migration_run_progress` owns the
+rows-affected, pause and retry-policy fields so the summary stays a per-label run
+index; it reports `total_rows_affected`, `paused_at`, `max_retries` and
+`retry_backoff_ms` alongside its derived progress values.
 
 `migration_boundaries` gains `leaf_ordinal`, `rows_affected`, `cancelled_at` and
 `duration_ms` (NULL while unfinished). It remains ordered by `boundary_no`.
@@ -383,3 +385,8 @@ Negative / risks:
 | `dml-99x.15`–`dml-99x.17` | Retry policy schema, setter and runner                        |
 | `dml-99x.18`–`dml-99x.19` | Documentation and full verification                           |
 | `dml-99x.3`               | Restore the upgrade test after the next release               |
+
+All implementation beads through `dml-99x.17` are merged. This documentation bead
+(`dml-99x.18`) records the final surface; `dml-99x.19` is the final full-verify,
+benchmark-smoke and database-recreation gate, and `dml-99x.3` stays blocked until
+a release is cut from the cleaned changelog.
