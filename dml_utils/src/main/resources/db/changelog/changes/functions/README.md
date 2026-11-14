@@ -314,6 +314,36 @@ or an array whose length does not match the key is rejected with
 `invalid_parameter_value` (`22023`). It resolves no run, reads no boundaries and
 writes nothing.
 
+###
+
+`dml_utils.explain_migration_run_chunk(i_run_id, i_boundary_no)`
+
+```sql
+i_run_id      bigint
+i_boundary_no bigint
+RETURNS TABLE
+    (o_plan_kind text, o_sql_text text, o_plan json,
+     o_leaf_schema_name text, o_leaf_name text, o_leaf_ordinal integer)
+```
+
+`VOLATILE`, `SECURITY INVOKER`. Explains one real chunk of a stored run by run
+id and boundary number, without the caller decoding the `migration_key` arrays
+or selecting a leaf. It reads the boundary and its successor with the same rules
+as the coordinator: the end key is the next boundary's key, the last chunk is
+inclusive, and for a partition-wise run the last chunk of each leaf ends at the
+manifest high-water snapshot. The SQL is rendered from the run's stored template,
+alias and key descriptor, so it matches what the runner would execute.
+`o_plan_kind` is `chunk_non_final` or `chunk_final`; a `blocks` chunk is always
+`chunk_non_final` because its ctid range is half-open. The resolved
+`o_leaf_schema_name`/`o_leaf_name`/`o_leaf_ordinal` identify the partition leaf
+and are `NULL` for a single-relation run.
+
+A boundary without a successor (the run's terminal boundary, or the last
+committed boundary of a partially calculated run) is rejected with `22023`; a
+missing run or boundary raises `P0002`; a changed partition tree raises `55000`
+before a plan is produced. It resolves no run, writes nothing and reads no user
+rows.
+
 ### `dml_utils.set_migration_run_sql_text(i_label, i_sql_text)`
 
 ```sql
