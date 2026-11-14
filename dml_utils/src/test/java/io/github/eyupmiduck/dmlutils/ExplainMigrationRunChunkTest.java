@@ -6,6 +6,7 @@ import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.MigrationBoun
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.enums.ChunkingStrategy;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.records.MigrationRunRecord;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.routines.NextMigrationChunk;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.routines.PrepareChunkSqlRender;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.tables.records.MigrationRunBoundaryKeyRecord;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -131,6 +132,31 @@ class ExplainMigrationRunChunkTest extends PartitionTestBase {
     }
 
     /**
+     * A partition-wise block chunk is rendered against its manifest leaf as a
+     * half-open ctid range, with the leaf's own block snapshot.
+     */
+    @Test
+    void explainsAPartitionWiseBlockChunk() {
+        insertRangeRows(0L, 1L, 2L, 100L, 101L, 200L, 201L, 202L);
+        long runId = populate(TEST_PARTITIONED_RANGE, uniqueLabel("explain-run-partition-blocks"),
+                ChunkingStrategy.blocks, null, true, 1);
+        calculate(runId);
+
+        ExplainMigrationRunChunkRecord plan = explain(runId, 0L);
+
+        assertEquals("chunk_non_final", plan.getOPlanKind());
+        assertEquals(runnerSql(runId, 0L), plan.getOSqlText(),
+                "the partition-wise block chunk matches the coordinator's render");
+        assertEquals(PARTITION_SCHEMA, plan.getOLeafSchemaName());
+        assertEquals("test_partitioned_range_low", plan.getOLeafName());
+        assertEquals(1, plan.getOLeafOrdinal());
+        assertTrue(plan.getOSqlText().contains("ctid"),
+                "a block chunk filters on the physical ctid range");
+        assertTrue(plan.getOSqlText().contains("test_partitioned_range_low"),
+                "the SQL targets the manifest leaf, not the parent");
+    }
+
+    /**
      * A composite key renders both key columns and matches the runner's
      * prefix-equality predicate.
      */
@@ -235,6 +261,17 @@ class ExplainMigrationRunChunkTest extends PartitionTestBase {
     @Test
     void rejectsAMissingRun() {
         assertSqlState("P0002", () -> explain(999_999L, 0L));
+    }
+
+    /**
+     * A NULL run id or boundary number is rejected before any lookup.
+     */
+    @Test
+    void rejectsNullArguments() {
+        assertSqlState("22023", () -> Routines.explainMigrationRunChunk(
+                dsl.configuration(), (Long) null, 0L));
+        assertSqlState("22023", () -> Routines.explainMigrationRunChunk(
+                dsl.configuration(), 1L, (Long) null));
     }
 
     /**
@@ -343,11 +380,18 @@ class ExplainMigrationRunChunkTest extends PartitionTestBase {
                             Long.parseLong(chunk.getOStartValues()[0]),
                             Long.parseLong(chunk.getOEndValues()[0]));
         }
+        PrepareChunkSqlRender prepared = io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines
+                .prepareChunkSqlRender(dsl.configuration(), run.getSqlText(),
+                        run.getDrivingTableSchemaName(), run.getDrivingTableName(),
+                        run.getDrivingTableAlias(), keyColumns, keyKinds);
         return io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines
-                .renderChunkSql(dsl.configuration(), run.getSqlText(),
+                .renderPreparedChunkSql(dsl.configuration(),
+                        prepared.getOTemplate(),
                         chunk.getOChunkSchemaName(), chunk.getOChunkTableName(),
-                        run.getDrivingTableAlias(), keyColumns, keyKinds,
-                        chunk.getOStartValues(), chunk.getOEndValues(), chunk.getOIsFinal());
+                        run.getDrivingTableAlias(), prepared.getOColumnNames(),
+                        keyKinds, prepared.getOKeyCollations(),
+                        chunk.getOStartValues(), chunk.getOEndValues(),
+                        chunk.getOIsFinal());
     }
 
     /**

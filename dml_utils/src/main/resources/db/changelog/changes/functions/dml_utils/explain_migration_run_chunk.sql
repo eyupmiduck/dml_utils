@@ -102,6 +102,10 @@ BEGIN
     l_next_leaf_ordinal := l_next_boundary.leaf_ordinal;
 
     -- The runner marks a chunk final when its end boundary is the run's last.
+    -- These selection rules must stay in lockstep with
+    -- dml_utils_lib/next_migration_chunk.sql (its o_is_final computation and the
+    -- leaf-terminal high-water replacement below); the SQL-equality tests compare
+    -- this function with that selector.
     SELECT pg_catalog.max(b.boundary_no)
     INTO l_last_boundary_no
     FROM dml_utils_data.migration_boundary AS b
