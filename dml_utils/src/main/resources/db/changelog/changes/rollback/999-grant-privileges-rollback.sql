@@ -861,6 +861,12 @@ REVOKE EXECUTE ON FUNCTION dml_utils.migration_run_leaves(
 GRANT EXECUTE ON FUNCTION dml_utils.migration_run_leaves(
     bigint
     ) TO public;
+REVOKE EXECUTE ON FUNCTION dml_utils.migration_run_progress(
+    bigint
+    ) FROM dml_utils_caller;
+GRANT EXECUTE ON FUNCTION dml_utils.migration_run_progress(
+    bigint
+    ) TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils.migration_errors(
     bigint
     ) FROM dml_utils_caller;
