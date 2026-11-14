@@ -17,36 +17,36 @@ CREATE OR REPLACE FUNCTION dml_utils.explain_migration_run_chunk(
 AS
 $$
 DECLARE
-    l_schema_name            text;
-    l_table_name             text;
-    l_table_alias            text;
-    l_sql_text               text;
-    l_chunk_by               dml_utils_data.chunking_strategy;
-    l_partition_wise         boolean;
-    l_boundary               record;
-    l_next_boundary          record;
-    l_start_key              dml_utils_data.migration_key;
-    l_end_key                dml_utils_data.migration_key;
-    l_boundary_leaf_ordinal  integer;
-    l_next_leaf_ordinal      integer;
-    l_last_boundary_no       bigint;
-    l_is_final               boolean;
-    l_leaf_schema_name       text;
-    l_leaf_name              text;
-    l_plan_schema_name       text;
-    l_plan_table_name        text;
-    l_key_columns            name[];
-    l_key_kinds              text[];
-    l_start_values           text[];
-    l_end_values             text[];
-    l_terminal_bigint        bigint[];
-    l_terminal_text          text[];
-    l_terminal_uuid          uuid[];
-    l_terminal_timestamptz   timestamptz[];
-    l_terminal_key           dml_utils_data.migration_key;
-    l_prepared               record;
-    l_sql                    text;
-    l_plan                   json;
+    l_schema_name           text;
+    l_table_name            text;
+    l_table_alias           text;
+    l_sql_text              text;
+    l_chunk_by              dml_utils_data.chunking_strategy;
+    l_partition_wise        boolean;
+    l_boundary              record;
+    l_next_boundary         record;
+    l_start_key             dml_utils_data.migration_key;
+    l_end_key               dml_utils_data.migration_key;
+    l_boundary_leaf_ordinal integer;
+    l_next_leaf_ordinal     integer;
+    l_last_boundary_no      bigint;
+    l_is_final              boolean;
+    l_leaf_schema_name      text;
+    l_leaf_name             text;
+    l_plan_schema_name      text;
+    l_plan_table_name       text;
+    l_key_columns           name[];
+    l_key_kinds             text[];
+    l_start_values          text[];
+    l_end_values            text[];
+    l_terminal_bigint       bigint[];
+    l_terminal_text         text[];
+    l_terminal_uuid         uuid[];
+    l_terminal_timestamptz  timestamptz[];
+    l_terminal_key          dml_utils_data.migration_key;
+    l_prepared              record;
+    l_sql                   text;
+    l_plan                  json;
 BEGIN
     IF i_run_id IS NULL OR i_boundary_no IS NULL THEN
         RAISE EXCEPTION 'run id and boundary number must not be NULL'
