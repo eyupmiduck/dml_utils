@@ -6,10 +6,11 @@
 # creates the deterministic synthetic source table and the throwaway target
 # table. The bigint-keyed source is a plain heap, so it supports both the
 # primary_key and blocks chunking strategies; a second UUIDv4-keyed source with a
-# (created_at, id) unique index supports ordered_key, and a range-partitioned
-# copy of the bigint-keyed source supports the partition-wise variant. The
-# default workload (an INSERT into the target) leaves the source read-only, which
-# blocks requires.
+# (created_at, id) unique index supports ordered_key. A range-partitioned copy of
+# the bigint-keyed source supports partition-wise primary_key/blocks, and a
+# hash-partitioned copy of the UUIDv4 source supports partition-wise ordered_key.
+# The default workload (an INSERT into the target) leaves the source read-only,
+# which blocks requires.
 # Safe to re-run; pass --refresh to drop the container and its data volume first
 # (required after changing the server settings or the image).
 #
@@ -243,9 +244,9 @@ case "$BENCH_SCHEMA" in
 esac
 # A target that collides with any source would make create-target.sql drop the
 # freshly populated source and turn the benchmark into a self-insert.
-_sources=" $BENCH_SOURCE_TABLE $BENCH_ORDERED_SOURCE_TABLE $BENCH_PARTITIONED_SOURCE_TABLE "
+_sources=" $BENCH_SOURCE_TABLE $BENCH_ORDERED_SOURCE_TABLE $BENCH_PARTITIONED_SOURCE_TABLE $BENCH_PARTITIONED_ORDERED_SOURCE_TABLE "
 for _target in "$BENCH_TARGET_TABLE" "$BENCH_ORDERED_TARGET_TABLE" \
-    "$BENCH_PARTITIONED_TARGET_TABLE"; do
+    "$BENCH_PARTITIONED_TARGET_TABLE" "$BENCH_PARTITIONED_ORDERED_TARGET_TABLE"; do
     case "$_sources" in
         *" $_target "*)
             echo "benchmark target '$_target' collides with a source table" >&2
@@ -322,6 +323,22 @@ psql_stdin -v ON_ERROR_STOP=1 \
     -v pk_def="$pk_def" \
     -f - < "$here/sql/create-target.sql"
 
+# The partition-wise ordered_key variant: a hash-partitioned copy of the
+# UUIDv4-keyed ordered fixture with BENCH_PARTITIONED_LEAVES leaves and its own
+# (created_at, id) unique index, plus its throwaway target.
+echo "creating partition-wise ordered-key benchmark tables ($BENCH_ROWS source rows, $BENCH_PARTITIONED_LEAVES leaves) ..." >&2
+psql_stdin -v ON_ERROR_STOP=1 \
+    -v schema="$BENCH_SCHEMA" \
+    -v source_table="$BENCH_PARTITIONED_ORDERED_SOURCE_TABLE" \
+    -v rows="$BENCH_ROWS" \
+    -v index="$BENCH_PARTITIONED_ORDERED_INDEX" \
+    -v leaves="$BENCH_PARTITIONED_LEAVES" \
+    -f - < "$here/sql/create-partitioned-ordered-source.sql"
+psql_stdin -v ON_ERROR_STOP=1 \
+    -v schema="$BENCH_SCHEMA" \
+    -v target_table="$BENCH_PARTITIONED_ORDERED_TARGET_TABLE" \
+    -f - < "$here/sql/create-ordered-target.sql"
+
 # dml_utils_lib.populate_migration_boundaries is SECURITY DEFINER: it writes the
 # run metadata as the owner, and its boundary query scans the driving table in
 # that definer context. The fixture schema is created outside the
@@ -334,12 +351,14 @@ psql_stdin -q -v ON_ERROR_STOP=1 \
     -v source_table="$BENCH_SOURCE_TABLE" \
     -v ordered_source="$BENCH_ORDERED_SOURCE_TABLE" \
     -v partitioned_source="$BENCH_PARTITIONED_SOURCE_TABLE" \
+    -v partitioned_ordered_source="$BENCH_PARTITIONED_ORDERED_SOURCE_TABLE" \
     -v owner="$BENCH_OWNER_USER" \
     -f - <<'SQL'
 GRANT USAGE ON SCHEMA :"schema" TO :"owner";
 GRANT SELECT ON :"schema".:"source_table" TO :"owner";
 GRANT SELECT ON :"schema".:"ordered_source" TO :"owner";
 GRANT SELECT ON :"schema".:"partitioned_source" TO :"owner";
+GRANT SELECT ON :"schema".:"partitioned_ordered_source" TO :"owner";
 SQL
 
 # A partition-wise boundary scan reads each leaf, and the definer needs SELECT on
@@ -347,12 +366,14 @@ SQL
 psql_stdin -q -v ON_ERROR_STOP=1 \
     -v schema="$BENCH_SCHEMA" \
     -v partitioned_source="$BENCH_PARTITIONED_SOURCE_TABLE" \
+    -v partitioned_ordered_source="$BENCH_PARTITIONED_ORDERED_SOURCE_TABLE" \
     -v owner="$BENCH_OWNER_USER" \
     -f - <<'SQL'
 SELECT pg_catalog.format('GRANT SELECT ON %I.%I TO %I',
                          n.nspname, c.relname, :'owner')
-FROM pg_catalog.pg_partition_tree(
-             (:'schema' || '.' || :'partitioned_source')::regclass) AS leaf
+FROM (VALUES (:'schema' || '.' || :'partitioned_source'),
+             (:'schema' || '.' || :'partitioned_ordered_source')) AS parents(rel)
+         CROSS JOIN LATERAL pg_catalog.pg_partition_tree(parents.rel::regclass) AS leaf
          JOIN pg_catalog.pg_class c ON c.oid = leaf.relid
          JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
 WHERE leaf.isleaf
