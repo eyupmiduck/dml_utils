@@ -226,8 +226,10 @@ class MigrationMaintenanceTest extends PostgresTestBase {
 
     /**
      * The boundary listing returns the run's boundaries in order, with the
-     * packed key and the start/completion timestamps of each. A pending chunk
-     * has null {@code started_at} and {@code completed_at}.
+     * packed key, row count, duration and the start/completion timestamps of
+     * each. A pending chunk has null {@code started_at}, {@code completed_at},
+     * {@code rows_affected} and {@code duration_ms}; a non-partitioned boundary
+     * has no leaf.
      */
     @Test
     void migrationBoundariesReturnsTheRunsBoundaries() {
@@ -254,8 +256,20 @@ class MigrationMaintenanceTest extends PostgresTestBase {
         assertTrue(started.isEqual(boundaries.get(0).getStartedAt()),
                 "the boundary start value comes through");
         assertNotNull(boundaries.get(0).getCompletedAt(), "the completed chunk has a timestamp");
+        assertEquals(0L, boundaries.get(0).getRowsAffected().longValue(),
+                "the completed chunk records its row count");
+        assertNotNull(boundaries.get(0).getDurationMs(),
+                "a completed chunk records its duration");
+        assertNull(boundaries.get(0).getLeafOrdinal(),
+                "a non-partitioned boundary has no leaf");
+        assertNull(boundaries.get(0).getCancelledAt(),
+                "a completed boundary is not cancelled");
         assertNull(boundaries.get(1).getStartedAt(), "a pending chunk has not started");
         assertNull(boundaries.get(1).getCompletedAt(), "a pending chunk has no timestamp");
+        assertNull(boundaries.get(1).getRowsAffected(),
+                "a pending chunk has no row count");
+        assertNull(boundaries.get(1).getDurationMs(),
+                "a pending chunk has no duration");
         assertNull(boundaries.get(2).getCompletedAt(), "the terminal boundary is pending");
     }
 

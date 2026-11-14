@@ -1,0 +1,480 @@
+package io.github.eyupmiduck.dmlutils;
+
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.MigrationBoundariesRecord;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.MigrationRunProgressRecord;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.enums.ChunkingStrategy;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.records.MigrationRunRecord;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.time.OffsetDateTime;
+import java.util.List;
+
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestPartitionedRange.TEST_PARTITIONED_RANGE;
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * Verifies {@code dml_utils.migration_run_progress} across every run state and
+ * the extended {@code dml_utils.migration_boundaries}: the derived status,
+ * percent complete, throughput rates, ETA and the division-by-zero guards, plus
+ * the boundary leaf, row-count and duration columns.
+ */
+class MigrationRunProgressTest extends PartitionTestBase {
+
+    private static final String SCHEMA = "dml_utils_fixtures";
+    private static final String TABLE = "test_partitioned_range";
+    private static final String TEMPLATE =
+            "UPDATE <driving_table> SET payload = 'done' WHERE <chunking_clause>";
+
+    /**
+     * Resets the migration metadata and both driving fixtures between tests.
+     */
+    @BeforeEach
+    void reset() {
+        dsl.deleteFrom(MIGRATION_RUN).execute();
+        dsl.truncate(TEST_BIGINT).execute();
+        dsl.truncate(TEST_PARTITIONED_RANGE).execute();
+    }
+
+    /**
+     * A partition-wise run whose leaves are not calculated reports
+     * {@code calculating} with no rates or ETA.
+     */
+    @Test
+    void reportsACalculatingRun() {
+        insertRangeRows(0L, 1L, 100L);
+        String label = uniqueLabel("progress-calculating");
+        long runId = populatePartitionWise(label, 2);
+
+        MigrationRunProgressRecord progress = progress(runId);
+
+        assertEquals("calculating", progress.getStatus());
+        assertTrue(progress.getPartitionWise());
+        assertEquals("primary_key", progress.getChunkBy());
+        assertEquals(0L, progress.getTotalChunks());
+        assertEquals(0L, progress.getCompletedChunks());
+        assertEquals(0L, progress.getRemainingChunks());
+        assertEquals(0.0, progress.getPercentComplete(), 0.001,
+                "an unfinished, uncalculated run has no progress");
+        assertNotNull(progress.getStartedAt());
+        assertNull(progress.getBoundariesCalculatedAt());
+        assertNull(progress.getChunksPerSecond(),
+                "a calculating run has no chunk rate");
+        assertNull(progress.getRowsPerSecond(),
+                "a calculating run has no row rate");
+        assertNull(progress.getEstimatedRemainingMs(),
+                "a calculating run has no ETA");
+        assertNull(progress.getEstimatedCompletionAt());
+        assertNull(progress.getPausedAt());
+        assertEquals(3, progress.getMaxRetries());
+        assertEquals(1000, progress.getRetryBackoffMs());
+        assertNull(progress.getCompletedAt());
+        assertNull(progress.getCancelledAt());
+        assertNull(progress.getArchivedAt());
+    }
+
+    /**
+     * An in-flight run reports its completed fraction, rates and a forward ETA.
+     */
+    @Test
+    void reportsAnActiveRun() {
+        String label = uniqueLabel("progress-active");
+        long runId = populateSingle(label, 2, 1L, 2L, 3L, 4L, 5L);
+        completeBoundary(runId, 0L, 10L);
+        setStartedAt(runId, OffsetDateTime.now().minusSeconds(2));
+
+        MigrationRunProgressRecord progress = progress(runId);
+
+        assertEquals("active", progress.getStatus());
+        assertFalse(progress.getPartitionWise());
+        assertEquals(3L, progress.getTotalChunks());
+        assertEquals(1L, progress.getCompletedChunks());
+        assertEquals(2L, progress.getRemainingChunks());
+        assertEquals(33.33, progress.getPercentComplete(), 0.01);
+        assertEquals(10L, progress.getTotalRowsAffected());
+        assertTrue(progress.getElapsedMs() >= 1900,
+                "the elapsed time is measured from started_at");
+        // The rate and the ETA are derived from the reported elapsed time, so
+        // derive the expected values the same way instead of pinning them to a
+        // wall-clock assumption that a CI stall could break.
+        double expectedChunkRate = 1.0 / (progress.getElapsedMs() / 1000.0);
+        assertEquals(expectedChunkRate, progress.getChunksPerSecond(), 1e-9);
+        assertEquals(10.0 * expectedChunkRate, progress.getRowsPerSecond(), 1e-9);
+        assertNotNull(progress.getEstimatedRemainingMs(),
+                "an active run with a rate has an ETA");
+        assertEquals(2 * 1000.0 / expectedChunkRate,
+                progress.getEstimatedRemainingMs().doubleValue(), 1.0,
+                "two remaining chunks at the measured rate");
+        assertNotNull(progress.getEstimatedCompletionAt());
+    }
+
+    /**
+     * A calculated run that has not completed a chunk yet reports no rate or ETA
+     * instead of dividing by zero completed chunks.
+     */
+    @Test
+    void reportsZeroCompletedChunksWithoutRates() {
+        String label = uniqueLabel("progress-no-completions");
+        long runId = populateSingle(label, 2, 1L, 2L, 3L, 4L, 5L);
+
+        MigrationRunProgressRecord progress = progress(runId);
+
+        assertEquals("active", progress.getStatus());
+        assertEquals(3L, progress.getTotalChunks());
+        assertEquals(0L, progress.getCompletedChunks());
+        assertEquals(3L, progress.getRemainingChunks());
+        assertEquals(0.0, progress.getPercentComplete(), 0.001);
+        assertNull(progress.getChunksPerSecond());
+        assertNull(progress.getRowsPerSecond());
+        assertNull(progress.getEstimatedRemainingMs());
+        assertNull(progress.getEstimatedCompletionAt());
+    }
+
+    /**
+     * A zero-length run (start and finish at the same instant) reports no rates
+     * instead of dividing by zero elapsed time.
+     */
+    @Test
+    void avoidsDivisionByZeroWhenElapsedIsZero() {
+        String label = uniqueLabel("progress-zero-elapsed");
+        long runId = populateSingle(label, 2, 1L, 2L);
+        completeBoundary(runId, 0L, 5L);
+        completeRun(runId);
+        MigrationRunRecord run = run(runId);
+        assertNotNull(run.getCompletedAt());
+        // Finish at the same instant the run started, so the elapsed time is zero
+        // (the milestone ordering still allows this because the boundaries were
+        // calculated after the start).
+        dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.COMPLETED_AT, run.getStartedAt())
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute();
+
+        MigrationRunProgressRecord progress = progress(runId);
+
+        assertEquals("completed", progress.getStatus());
+        assertEquals(0L, progress.getElapsedMs());
+        assertEquals(100.0, progress.getPercentComplete(), 0.001);
+        assertNull(progress.getChunksPerSecond(),
+                "a zero elapsed time has no chunk rate");
+        assertNull(progress.getRowsPerSecond(),
+                "a zero elapsed time has no row rate");
+        assertEquals(0L, progress.getEstimatedRemainingMs());
+    }
+
+    /**
+     * A paused run keeps its rates but reports no forward ETA, and clears the
+     * estimate instead of pretending it is still progressing.
+     */
+    @Test
+    void reportsAPausedRun() {
+        String label = uniqueLabel("progress-paused");
+        long runId = populateSingle(label, 2, 1L, 2L, 3L, 4L);
+        completeBoundary(runId, 0L, 5L);
+        setStartedAt(runId, OffsetDateTime.now().minusSeconds(2));
+        assertEquals(runId, Routines.pauseMigrationRun(dsl.configuration(), label));
+
+        MigrationRunProgressRecord progress = progress(runId);
+
+        assertEquals("paused", progress.getStatus());
+        assertNotNull(progress.getPausedAt());
+        assertEquals(2L, progress.getTotalChunks());
+        assertEquals(1L, progress.getCompletedChunks());
+        assertEquals(1L, progress.getRemainingChunks());
+        assertEquals(50.0, progress.getPercentComplete(), 0.01);
+        assertNotNull(progress.getChunksPerSecond(),
+                "the completed chunks still have a historical rate");
+        assertNull(progress.getEstimatedRemainingMs(),
+                "a paused run has no forward ETA");
+        assertNull(progress.getEstimatedCompletionAt());
+    }
+
+    /**
+     * A completed run reports 100%, the final throughput and its completion
+     * timestamp as the estimated finish.
+     */
+    @Test
+    void reportsACompletedRun() {
+        String label = uniqueLabel("progress-completed");
+        long runId = populateSingle(label, 2, 1L, 2L, 3L, 4L, 5L);
+        completeBoundary(runId, 0L, 10L);
+        completeBoundary(runId, 1L, 10L);
+        completeBoundary(runId, 2L, 10L);
+        completeRun(runId);
+        MigrationRunRecord run = run(runId);
+        assertNotNull(run.getCompletedAt());
+        // Freeze a ten-second run so the rates are exact.
+        setStartedAt(runId, run.getCompletedAt().minusSeconds(10));
+
+        MigrationRunProgressRecord progress = progress(runId);
+
+        assertEquals("completed", progress.getStatus());
+        assertEquals(3L, progress.getTotalChunks());
+        assertEquals(3L, progress.getCompletedChunks());
+        assertEquals(0L, progress.getRemainingChunks());
+        assertEquals(100.0, progress.getPercentComplete(), 0.001);
+        assertEquals(30L, progress.getTotalRowsAffected());
+        assertEquals(10_000L, progress.getElapsedMs());
+        assertEquals(0.3, progress.getChunksPerSecond(), 0.001);
+        assertEquals(3.0, progress.getRowsPerSecond(), 0.001);
+        assertEquals(0L, progress.getEstimatedRemainingMs(),
+                "a finished run has nothing remaining");
+        assertEquals(run.getCompletedAt(), progress.getEstimatedCompletionAt(),
+                "the estimate for a finished run is its completion time");
+    }
+
+    /**
+     * A single-chunk run that changed no rows reports a zero row rate rather
+     * than dividing by zero or returning NULL.
+     */
+    @Test
+    void reportsACompletedSingleZeroRowChunk() {
+        String label = uniqueLabel("progress-zero-rows");
+        long runId = populateSingle(label, 2, 7L, 8L);
+        completeBoundary(runId, 0L, 0L);
+        completeRun(runId);
+        MigrationRunRecord run = run(runId);
+        assertNotNull(run.getCompletedAt());
+        setStartedAt(runId, run.getCompletedAt().minusSeconds(10));
+
+        MigrationRunProgressRecord progress = progress(runId);
+
+        assertEquals("completed", progress.getStatus());
+        assertEquals(1L, progress.getTotalChunks());
+        assertEquals(1L, progress.getCompletedChunks());
+        assertEquals(100.0, progress.getPercentComplete(), 0.001);
+        assertEquals(0L, progress.getTotalRowsAffected());
+        assertEquals(0.1, progress.getChunksPerSecond(), 0.001);
+        assertEquals(0.0, progress.getRowsPerSecond(), 0.001,
+                "a productive chunk with zero rows reports a zero rate");
+        assertEquals(0L, progress.getEstimatedRemainingMs());
+    }
+
+    /**
+     * An empty run whose boundaries are calculated reports 100% on the way to
+     * completion, and stays 100% once completed.
+     */
+    @Test
+    void reportsAZeroChunkRun() {
+        String label = uniqueLabel("progress-zero-chunks");
+        long runId = populateSingle(label, 2);
+
+        MigrationRunProgressRecord active = progress(runId);
+        assertEquals("active", active.getStatus());
+        assertEquals(0L, active.getTotalChunks());
+        assertEquals(0L, active.getCompletedChunks());
+        assertEquals(0L, active.getRemainingChunks());
+        assertEquals(100.0, active.getPercentComplete(), 0.001,
+                "an empty run with calculated boundaries has nothing left");
+        assertNull(active.getChunksPerSecond(),
+                "zero completed chunks cannot produce a rate");
+        assertNull(active.getRowsPerSecond());
+        assertEquals(0L, active.getEstimatedRemainingMs());
+        assertNotNull(active.getEstimatedCompletionAt());
+
+        completeRun(runId);
+        MigrationRunProgressRecord completed = progress(runId);
+        assertEquals("completed", completed.getStatus());
+        assertEquals(100.0, completed.getPercentComplete(), 0.001);
+        assertEquals(run(runId).getCompletedAt(), completed.getEstimatedCompletionAt());
+    }
+
+    /**
+     * A cancelled run reports its completed fraction, no forward ETA, and the
+     * cancelled state on the unclaimed boundaries.
+     */
+    @Test
+    void reportsACancelledRun() {
+        String label = uniqueLabel("progress-cancelled");
+        long runId = populateSingle(label, 2, 1L, 2L, 3L, 4L, 5L);
+        completeBoundary(runId, 0L, 4L);
+        assertEquals(runId, Routines.cancelMigrationRun(dsl.configuration(), label));
+
+        MigrationRunProgressRecord progress = progress(runId);
+
+        assertEquals("cancelled", progress.getStatus());
+        assertNotNull(progress.getCancelledAt());
+        assertEquals(3L, progress.getTotalChunks());
+        assertEquals(1L, progress.getCompletedChunks());
+        assertEquals(2L, progress.getRemainingChunks());
+        assertEquals(33.33, progress.getPercentComplete(), 0.01);
+        assertNotNull(progress.getChunksPerSecond());
+        assertNull(progress.getEstimatedRemainingMs(),
+                "a cancelled run will not make more progress");
+        assertNull(progress.getEstimatedCompletionAt());
+
+        List<MigrationBoundariesRecord> boundaries = Routines.migrationBoundaries(
+                dsl.configuration(), runId);
+        assertNull(boundaries.get(0).getCancelledAt(),
+                "the completed chunk keeps its completion");
+        for (int i = 1; i < boundaries.size(); i++) {
+            assertNotNull(boundaries.get(i).getCancelledAt(),
+                    "unclaimed boundaries are marked cancelled");
+        }
+    }
+
+    /**
+     * An archived run reports the archived status, 100% and its completion time.
+     */
+    @Test
+    void reportsAnArchivedRun() {
+        String label = uniqueLabel("progress-archived");
+        long runId = populateSingle(label, 2, 1L, 2L);
+        completeBoundary(runId, 0L, 2L);
+        completeRun(runId);
+        MigrationRunRecord run = run(runId);
+        assertEquals(runId, Routines.archiveMigrationRun(dsl.configuration(), label));
+
+        MigrationRunProgressRecord progress = progress(runId);
+
+        assertEquals("archived", progress.getStatus());
+        assertNotNull(progress.getArchivedAt());
+        assertEquals(100.0, progress.getPercentComplete(), 0.001);
+        assertEquals(0L, progress.getEstimatedRemainingMs());
+        assertEquals(run.getCompletedAt(), progress.getEstimatedCompletionAt());
+    }
+
+    /**
+     * A partition-wise run reports its aggregate progress, and the public
+     * boundary listing exposes the leaf, row count and duration of each chunk.
+     */
+    @Test
+    void reportsAPartitionWiseRunAndItsBoundaries() {
+        insertRangeRows(0L, 1L, 2L, 100L, 101L, 200L, 201L, 202L);
+        String label = uniqueLabel("progress-partition-wise");
+        long runId = populatePartitionWise(label, 2);
+        calculate(runId);
+        Routines.runMigrationChunks(dsl.configuration(), TEMPLATE, SCHEMA, TABLE, label,
+                2, 1, "t", ChunkingStrategy.primary_key, 1, 0, null, true, 3, 1000);
+
+        MigrationRunProgressRecord progress = progress(runId);
+        assertEquals("completed", progress.getStatus());
+        assertTrue(progress.getPartitionWise());
+        assertEquals(5L, progress.getTotalChunks());
+        assertEquals(5L, progress.getCompletedChunks());
+        assertEquals(8L, progress.getTotalRowsAffected(),
+                "each partition row is updated exactly once");
+        assertEquals(100.0, progress.getPercentComplete(), 0.001);
+
+        List<MigrationBoundariesRecord> boundaries = Routines.migrationBoundaries(
+                dsl.configuration(), runId);
+        assertEquals(6, boundaries.size(), "five chunks plus the terminal boundary");
+        long rows = 0;
+        for (MigrationBoundariesRecord boundary : boundaries) {
+            assertNotNull(boundary.getLeafOrdinal(),
+                    "every partition-wise boundary names its leaf");
+            if (boundary.getCompletedAt() == null) {
+                assertNull(boundary.getRowsAffected(),
+                        "the terminal boundary has no row count");
+                assertNull(boundary.getDurationMs());
+            } else {
+                assertNotNull(boundary.getRowsAffected());
+                assertNotNull(boundary.getDurationMs());
+                rows += boundary.getRowsAffected();
+            }
+        }
+        assertEquals(8L, rows, "the boundary row counts add up to the run total");
+    }
+
+    /**
+     * Creates a non-partition-wise run over the bigint fixture and returns its id.
+     *
+     * @param label     the run label
+     * @param chunkSize the chunk size
+     * @param ids       the driving-table ids to seed
+     * @return the run id
+     */
+    private long populateSingle(String label, int chunkSize, long... ids) {
+        dsl.truncate(TEST_BIGINT).execute();
+        seedBigint(ids);
+        return io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines
+                .populateMigrationBoundaries(dsl.configuration(), SCHEMA, TEST_BIGINT.getName(),
+                        label, TEMPLATE, chunkSize, 1, ChunkingStrategy.primary_key, "t", 0,
+                        null, false, 3, 1000);
+    }
+
+    /**
+     * Creates a partition-wise run over the range fixture and returns its id.
+     *
+     * @param label     the run label
+     * @param chunkSize the chunk size
+     * @return the run id
+     */
+    private long populatePartitionWise(String label, int chunkSize) {
+        return io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines
+                .populateMigrationBoundaries(dsl.configuration(), SCHEMA, TABLE, label,
+                        TEMPLATE, chunkSize, 1, ChunkingStrategy.primary_key, "t", 0, null,
+                        true, 3, 1000);
+    }
+
+    /**
+     * Calculates and finalizes every leaf boundary of the run.
+     *
+     * @param runId the run id
+     */
+    private void calculate(long runId) {
+        io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines
+                .calculateMigrationRunBoundaries(dsl.configuration(), runId);
+    }
+
+    /**
+     * Completes one chunk boundary with a row count.
+     *
+     * @param runId        the run id
+     * @param boundaryNo   the chunk boundary
+     * @param rowsAffected the recorded row count
+     */
+    private void completeBoundary(long runId, long boundaryNo, long rowsAffected) {
+        io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines
+                .completeMigrationBoundary(dsl.configuration(), runId, boundaryNo,
+                        OffsetDateTime.now(), rowsAffected);
+    }
+
+    /**
+     * Marks the run complete once all its chunks are completed.
+     *
+     * @param runId the run id
+     */
+    private void completeRun(long runId) {
+        io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines
+                .completeMigrationRun(dsl.configuration(), runId);
+    }
+
+    /**
+     * Moves the run start so elapsed-time assertions are deterministic.
+     *
+     * @param runId     the run id
+     * @param startedAt the new start timestamp
+     */
+    private void setStartedAt(long runId, OffsetDateTime startedAt) {
+        dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.STARTED_AT, startedAt)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute();
+    }
+
+    /**
+     * Reads the single progress row for a run.
+     *
+     * @param runId the run id
+     * @return the progress row
+     */
+    private MigrationRunProgressRecord progress(long runId) {
+        return Routines.migrationRunProgress(dsl.configuration(), runId).getFirst();
+    }
+
+    /**
+     * Reads the run row.
+     *
+     * @param runId the run id
+     * @return the run record
+     */
+    private MigrationRunRecord run(long runId) {
+        return dsl.selectFrom(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne();
+    }
+}

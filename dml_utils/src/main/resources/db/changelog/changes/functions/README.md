@@ -570,6 +570,35 @@ count and high-water `terminal_boundary_id`, and any calculation error. An empty
 leaf is still a row, with `boundary_count = 0`. A non-partition-wise run has no
 manifest and returns no rows.
 
+### `dml_utils.migration_run_progress(i_run_id)`
+
+```sql
+i_run_id bigint
+RETURNS TABLE
+    (run_id, label, chunk_by, partition_wise, status,
+     total_chunks, completed_chunks, remaining_chunks, percent_complete,
+     total_rows_affected, elapsed_ms, chunks_per_second, rows_per_second,
+     estimated_remaining_ms, estimated_completion_at, paused_at, max_retries,
+     retry_backoff_ms, started_at, boundaries_calculated_at, completed_at,
+     cancelled_at, archived_at)
+```
+
+`STABLE`, `SECURITY INVOKER`. Returns one progress row for the run. `status` is
+the derived run state, with this precedence: `archived`, `cancelled`,
+`completed`, `paused`, `calculating` (boundaries not yet finalized) and
+`active`.
+
+`percent_complete` is the completed fraction of `total_chunks`: an empty run
+whose boundaries are calculated reports `100`, and a run whose boundaries are
+not yet calculated reports `0`. `elapsed_ms` is the wall-clock time from
+`started_at` to the terminal timestamp, or to `now()` while the run is
+unfinished. `chunks_per_second` and `rows_per_second` are `NULL` until the
+boundaries are calculated and at least one chunk has completed with a non-zero
+elapsed time. `estimated_remaining_ms` and `estimated_completion_at` are `NULL`
+while calculating, paused, or cancelled with work left; they are `0` / the
+terminal timestamp for a run with no remaining chunks. The estimate assumes the
+current throughput continues on an active run.
+
 ### `dml_utils.migration_errors(i_run_id)`
 
 ```sql
@@ -586,15 +615,19 @@ RETURNS TABLE
 ```sql
 i_run_id bigint
 RETURNS TABLE
-    (boundary_no, boundary_id, started_at, completed_at)
+    (boundary_no, boundary_id, leaf_ordinal, rows_affected,
+     started_at, completed_at, cancelled_at, duration_ms)
 ```
 
 `STABLE`, `SECURITY INVOKER`. Returns the run's chunk boundaries in order.
 `boundary_id` is a `dml_utils_data.migration_key`: position-aligned arrays, one
 per key kind. Index i is the i-th key column, so a bigint key's first
-column is `(boundary_id).bigint_values[1]`. A `started_at` of `NULL` means the
-chunk has not been claimed; a `completed_at` of `NULL` (with `started_at` set)
-means it is in progress.
+column is `(boundary_id).bigint_values[1]`. `leaf_ordinal` is the partition
+leaf for a partition-wise run and `NULL` otherwise; `rows_affected` is the
+statement's `ROW_COUNT`; `duration_ms` is `completed_at - started_at` in
+milliseconds. A `started_at` of `NULL` means the chunk has not been claimed; a
+`completed_at` of `NULL` (with `started_at` set) means it is in progress;
+`cancelled_at` is set for a boundary cancelled by `cancel_migration_run`.
 
 ## `dml_utils_lib`
 
