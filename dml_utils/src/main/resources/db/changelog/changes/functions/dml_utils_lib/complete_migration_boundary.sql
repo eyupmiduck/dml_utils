@@ -51,7 +51,7 @@ BEGIN
     -- they cannot drift from the completed boundaries.
     UPDATE dml_utils_data.migration_run
     SET total_chunks_completed = total_chunks_completed + 1,
-        total_rows_affected = total_rows_affected + i_rows_affected
+        total_rows_affected    = total_rows_affected + i_rows_affected
     WHERE run_id = i_run_id;
 END;
 $$;

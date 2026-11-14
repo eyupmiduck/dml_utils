@@ -263,8 +263,8 @@ class MigrationRunLeavesTest extends PartitionTestBase {
     /**
      * Completes the given chunk boundaries with a zero row count.
      *
-     * @param runId        the run id
-     * @param boundaryNos  the chunk boundaries to complete
+     * @param runId       the run id
+     * @param boundaryNos the chunk boundaries to complete
      */
     private void completeBoundaries(long runId, long... boundaryNos) {
         for (long boundaryNo : boundaryNos) {

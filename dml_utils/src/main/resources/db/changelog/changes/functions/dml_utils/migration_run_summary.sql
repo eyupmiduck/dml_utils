@@ -64,9 +64,9 @@ SELECT r.run_id,
 FROM dml_utils_data.migration_run AS r
          LEFT JOIN dml_utils_data.migration_boundary AS b ON b.run_id = r.run_id
          LEFT JOIN LATERAL (
-    SELECT pg_catalog.count(*)                                            AS leaf_count,
-           pg_catalog.count(*) FILTER (WHERE l.state = 'calculated')      AS leaves_calculated,
-           pg_catalog.count(*) FILTER (WHERE l.state = 'failed')          AS leaves_failed,
+    SELECT pg_catalog.count(*)                                                      AS leaf_count,
+           pg_catalog.count(*) FILTER (WHERE l.state = 'calculated')                AS leaves_calculated,
+           pg_catalog.count(*) FILTER (WHERE l.state = 'failed')                    AS leaves_failed,
            pg_catalog.count(*) FILTER (WHERE l.state IN ('pending', 'calculating')) AS leaves_pending
     FROM dml_utils_data.migration_run_leaf AS l
     WHERE l.run_id = r.run_id
