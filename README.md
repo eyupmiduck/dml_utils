@@ -9,7 +9,9 @@ applies that template over the table in fixed-row chunks, each committed in its
 own background worker, so a multi-million-row backfill makes durable progress
 and a re-run resumes where it stopped (see
 [Processing a table in chunks](#processing-a-table-in-chunks)). Chunks can be
-processed in parallel by more than one worker.
+processed in parallel by more than one worker, a run can be paused and resumed
+without losing progress, and each completed chunk records the rows it changed so
+progress and an ETA are queryable.
 
 It works on a table with a **primary key of up to three columns**, each of type
 `smallint`, `integer`, `bigint`, `text`, `uuid` or `timestamptz` (the column names
@@ -27,24 +29,28 @@ Liquibase loads three application schemas, layered so nothing lower depends on
 anything above it:
 
 - **`dml_utils`** — the caller-facing API: `dml_utils.run_migration_chunks` and
-  the `run_function_over_table` wrapper, plus the run controls (`set_migration_run_sql_text`,
-  `set_migration_run_function`,
-  `set_migration_run_threads`, `set_migration_run_sleep_ms`, `archive_migration_run`,
-  `cancel_migration_run`), the read-only explain
-  helpers (`explain_migration_chunks`/`explain_migration_chunk` and
+  the `run_function_over_table` wrapper, plus the run controls
+  (`set_migration_run_sql_text`, `set_migration_run_function`,
+  `set_migration_run_threads`, `set_migration_run_sleep_ms`,
+  `set_migration_run_retries`, `pause_migration_run`, `resume_migration_run`,
+  `archive_migration_run`, `cancel_migration_run`), the read-only explain
+  helpers (`explain_migration_chunks`/`explain_migration_chunk`,
+  `explain_migration_run_chunk`, and
   `explain_function_over_table`/`explain_function_over_table_chunk`) and the
-  inspection and cleanup helpers (`migration_run_summary`, `migration_boundaries`,
+  inspection and cleanup helpers (`migration_run_summary`,
+  `migration_run_leaves`, `migration_run_progress`, `migration_boundaries`,
   `migration_errors`, `delete_archived_migration_runs`). It depends on the two
   schemas below.
 - **`dml_utils_lib`** — the engine: the generic catalog and template helpers and
   the internal routines that populate boundaries, run one chunk and record
   errors. It may use `dml_utils_data`, never `dml_utils`.
 - **`dml_utils_data`** — the data layer: the shared domains (`non_null_text`,
-  `positive_integer`), the `migration_key` composite type that packs a
-  boundary's key value (position-aligned arrays, one per key kind, including
-  `timestamptz`), and the fixed-row chunk migration tables
-  `migration_run` / `migration_boundary` (`migration_error` records failed
-  chunks), plus their trigger functions.
+  `positive_integer`, `non_negative_integer`, `non_null_boolean`), the
+  `migration_key` composite type that packs a boundary's key value
+  (position-aligned arrays, one per key kind, including `timestamptz`), and the
+  fixed-row chunk migration tables `migration_run` / `migration_boundary` /
+  `migration_run_leaf` (`migration_error` records failed chunks), plus their
+  trigger functions.
 
 Liquibase's own tracking tables are kept out of all three schemas: they live in
 a dedicated `liquibase` schema as `liquibase.dml_utils_databasechangelog` and
@@ -117,8 +123,10 @@ same `label` is safe: it resumes at the first unprocessed chunk using the SQL,
 chunk size and driving table recorded when the run was created (a differing
 `i_sql_text`, `i_chunk_size` or `i_driving_table_*` is ignored, with a notice),
 and a run that is already complete is a no-op. To change the SQL of an existing run deliberately, use
-`dml_utils.set_migration_run_sql_text`. Progress and completion are visible in
-`dml_utils_data.migration_run` and `dml_utils_data.migration_boundary`.
+`dml_utils.set_migration_run_sql_text`. Progress, rows affected and completion are visible through
+`dml_utils.migration_run_summary`, `dml_utils.migration_run_progress` and
+`dml_utils.migration_boundaries` (see
+[Inspecting, pausing and restarting a run](#inspecting-pausing-and-restarting-a-run)).
 
 ### Choosing the chunking key
 
@@ -176,7 +184,7 @@ was dropped, redefined or is no longer usable.
 
 Non-goals: chunking by hash value, non-unique keys without a composite unique
 index, expression/partial/exclusion indexes, non-default operator classes,
-`DESC`/`NULLS FIRST`, `date`/`numeric` keys and `run_function_over_table`.
+`DESC`/`NULLS FIRST`, and `date`/`numeric` keys.
 Partition-wise chunking supports range, list, hash and multi-level partitioned
 parents (see below).
 
@@ -208,9 +216,9 @@ SELECT dml_utils.run_migration_chunks(
 `i_boundary_key_index` is required for `ordered_key` and rejected for the other
 strategies. To inspect the plan without running anything, pass the same
 `i_chunk_by` and `i_boundary_key_index` to
-`dml_utils.explain_migration_chunks`; for one real chunk, use
-`dml_utils.explain_migration_chunk` with the chunk's boundary values and the
-same key selection. See `docs/adr/0001-ordered-key-chunking.md` for the design.
+`dml_utils.explain_migration_chunks`; for one real chunk of a run, use
+`dml_utils.explain_migration_run_chunk(i_run_id, i_boundary_no)`. See
+`docs/adr/0001-ordered-key-chunking.md` for the design.
 
 ### Partition-wise chunking
 
@@ -269,7 +277,8 @@ after the previous leaf's, and its high-water key is snapshotted. A failure
 leaves the earlier leaves committed and the failed leaf marked `failed` with its
 SQLSTATE and message; `boundaries_calculated_at` stays NULL. Re-running the same
 label resumes at the first `pending` or `failed` leaf instead of processing; a
-`calculated` leaf is never recalculated. Inspect progress with:
+`calculated` leaf is never recalculated. Inspect calculation progress with the
+public helper rather than querying the internal table:
 
 ```sql
 SELECT leaf_ordinal,
@@ -280,9 +289,7 @@ SELECT leaf_ordinal,
        calculated_at,
        error_sqlstate,
        error_message
-FROM dml_utils_data.migration_run_leaf
-WHERE run_id = 42
-ORDER BY leaf_ordinal;
+FROM dml_utils.migration_run_leaves(i_run_id => 42);
 ```
 
 **Changed tree.** Before continuing calculation and before processing, the live
@@ -293,20 +300,25 @@ stale, so archive the run and start a new one with a new label. Do not try to
 attach/detach or rebind a partition while a partition-wise run is calculating or
 processing.
 
-**Cancellation.** `cancel_migration_run` during calculation stops launching new
-leaves; leaves already calculated keep their boundaries and the remaining leaves
-stay `pending`. The run is terminal — archive it and start a new one rather than
-resuming it.
+**Pause and cancellation.** `pause_migration_run` during calculation stops
+launching new leaves; leaves already calculated keep their boundaries, the
+remaining leaves stay `pending`, and `boundaries_calculated_at` stays NULL. The
+run is resumable: `resume_migration_run` continues at the first
+`pending`/`failed` leaf. `cancel_migration_run` is terminal — archive the run and
+start a new one rather than resuming it.
 
-**Explain.** A rendered chunk targets exactly its leaf (no parent `Append`). For
-a primary-key run the leaf has the same key columns, so
-`explain_migration_chunk` can be given the leaf's schema/name. Ordered-key and
-blocks leaf plans use the renderer/EXPLAIN helpers with the leaf; the public
-explain calls do not yet take a partition-wise selector. A `blocks` leaf chunk is
-a ctid range on that leaf's heap.
+**Explain.** A rendered chunk targets exactly its leaf (no parent `Append`).
+`explain_migration_chunks` and `explain_migration_chunk` accept
+`i_partition_wise` and an `i_leaf_ordinal` selector (NULL means the first leaf);
+the returned rows identify the resolved leaf schema/name/ordinal. To explain a
+real stored chunk without decoding its key or choosing a leaf, use
+`explain_migration_run_chunk(run_id, boundary_no)`; it uses the boundary's stored
+leaf and high-water snapshot and fails closed (`55000`) if the tree changed. A
+`blocks` leaf chunk is a ctid range on that leaf's heap.
 
-`run_function_over_table` is not partition-wise in this version; use
-`run_migration_chunks` with an `UPDATE`/`DELETE` template for partitioned tables.
+`run_function_over_table` supports the same `i_boundary_key_index` and
+`i_partition_wise` arguments; the function still receives the driving table's
+primary-key column types in key order, and the chunk key is independent.
 
 ### Example: backfill a column
 
@@ -360,6 +372,18 @@ The sleep is per completed chunk, not a global rate limit: with `i_threads`
 workers, up to that many chunks can still be in flight, and a large chunk still
 generates its WAL in one burst. For strict pacing, use a small thread count
 and/or smaller chunks in addition to the sleep. A sleep of `0` is a no-op.
+
+A chunk that fails with a transient SQLSTATE — `40001` (serialization failure),
+`40P01` (deadlock detected) or `55P03` (lock not available) — is retried
+automatically. A new run stores `i_max_retries` (default `3`, retries after the
+first attempt; `0` disables retries) and `i_retry_backoff_ms` (default `1000`, a
+fixed delay between attempts; `0` retries immediately). A resumed run uses the
+stored policy; change it on an unfinished run with
+`dml_utils.set_migration_run_retries(i_label, i_max_retries, i_retry_backoff_ms)`
+before the next call. A pause or cancellation during the backoff stops retrying
+and follows the normal pause/cancel path. Any other SQLSTATE is recorded
+immediately, and a successful retry leaves no error row and counts the chunk
+once.
 
 The worker SQL for the first chunk is:
 
@@ -418,9 +442,12 @@ SELECT dml_utils.run_function_over_table(
 The wrapper validates the function up front (it must return `void` and take the
 primary-key column types in key order, raising `22023` otherwise), derives a
 resume label from the table and function, and delegates to
-`run_migration_chunks`. Point an unfinished run at a different function with
-`dml_utils.set_migration_run_function`. See `examples/dog_breeds_function/` for a
-full runnable script.
+`run_migration_chunks`. It accepts the same `i_chunk_by`,
+`i_boundary_key_index` and `i_partition_wise` arguments as the template runner,
+so an ordered-key or partition-wise function run works the same way; the function
+arguments remain the primary-key columns. Point an unfinished run at a different
+function with `dml_utils.set_migration_run_function`. See
+`examples/dog_breeds_function/` for a full runnable script.
 
 ### Requirements and behavior
 
@@ -463,24 +490,52 @@ full runnable script.
   cannot make progress.
 - The chunk SQL should be idempotent: a chunk whose worker failed is retried on
   the next run, and a chunk that committed is not run again.
+- A failed chunk is retried automatically when its SQLSTATE is transient:
+  `40001` (serialization failure), `40P01` (deadlock detected) or `55P03` (lock
+  not available). The run stores `max_retries` (default `3`, retries after the
+  first attempt) and `retry_backoff_ms` (default `1000`, fixed delay between
+  attempts); set them when creating a run with `i_max_retries` /
+  `i_retry_backoff_ms`, or change them on an unfinished run with
+  `dml_utils.set_migration_run_retries`. Any other SQLSTATE, including `57014`
+  (`query_canceled`), is recorded immediately. A recovered retry leaves no error
+  row and counts the chunk once.
+- Each completed boundary records the statement's `ROW_COUNT` as
+  `rows_affected` (0 for a productive chunk that matched no rows) and advances
+  the run's `total_rows_affected` in the same transaction. Failed chunks roll
+  back both, so a retry cannot double-count. For a `run_function_over_table`
+  template, `ROW_COUNT` is the number of rows passed to the function.
 
-### Inspecting and restarting a run
+### Inspecting, pausing and restarting a run
 
-Helper functions summarise a label's runs, and list a run's boundaries and
-errors by run id:
+Helper functions summarise a label's runs and report a run's progress,
+boundaries, leaf manifest and errors by run id:
 
 ```sql
--- One row per run for the label, with boundary and error counts, and whether it
--- is done (completed_at), cancelled (cancelled_at) or archived (archived_at).
--- Take the run_id from here.
-SELECT *
+-- One row per run for the label, with boundary/error counts, the stored
+-- partition and chunk totals, leaf counts, and whether it is done, cancelled or
+-- archived. Take the run_id from here.
+SELECT run_id, partition_wise, total_chunks, total_chunks_completed,
+       boundary_count, completed_boundary_count,
+       leaf_count, leaves_calculated, leaves_failed, leaves_pending,
+       completed_at, cancelled_at, archived_at
 FROM dml_utils.migration_run_summary(i_label => 'events-region-backfill');
+
+-- One row for the run's derived status, percent complete, throughput, rows and
+-- ETA, including the pause and retry policy. Rates and the ETA are NULL while
+-- calculating, paused, cancelled, or when no chunk has completed yet.
+SELECT status, total_chunks, completed_chunks, remaining_chunks,
+       percent_complete, total_rows_affected, elapsed_ms,
+       chunks_per_second, rows_per_second,
+       estimated_remaining_ms, estimated_completion_at,
+       paused_at, max_retries, retry_backoff_ms
+FROM dml_utils.migration_run_progress(i_run_id => 42);
 
 -- Per-chunk progress (completed_at IS NULL means still to do). boundary_id is a
 -- migration_key: position-aligned arrays, one per key kind. Index i is the i-th
 -- key column, so (boundary_id).bigint_values[1] reads the first column
 -- of a bigint key.
-SELECT boundary_no, (boundary_id).bigint_values[1], completed_at
+SELECT boundary_no, (boundary_id).bigint_values[1], leaf_ordinal,
+       rows_affected, started_at, completed_at, cancelled_at, duration_ms
 FROM dml_utils.migration_boundaries(i_run_id => 42);
 
 -- The errors recorded for the run, so it can be diagnosed without the worker
@@ -489,9 +544,28 @@ SELECT boundary_no, sqlstate, message, created_at
 FROM dml_utils.migration_errors(i_run_id => 42);
 ```
 
-To inspect the plan for one real chunk (rather than the synthetic representative
-ranges), supply its start and end boundary values — one text value per key
-column, in key order — and whether it is the final chunk:
+For a partition-wise run, `migration_run_leaves(i_run_id => 42)` returns the
+manifest rows (ordinal, schema/name/OID, bound, state, boundary count,
+calculated/updated timestamps and any error); use it instead of querying
+`dml_utils_data.migration_run_leaf`.
+
+To explain a real chunk of a stored run, give the run id and boundary number; no
+key decoding or leaf selection is needed:
+
+```sql
+SELECT o_plan_kind, o_sql_text, o_plan,
+       o_leaf_schema_name, o_leaf_name, o_leaf_ordinal
+FROM dml_utils.explain_migration_run_chunk(i_run_id => 42, i_boundary_no => 0);
+```
+
+It renders the same SQL the runner would execute, ends the last chunk of a
+partition-wise leaf at the manifest high-water snapshot, and rejects a terminal
+or missing boundary; a changed partition tree fails with `55000`.
+
+To explain a template that is not tied to a stored run, `explain_migration_chunks`
+returns the synthetic representative plans, and `explain_migration_chunk` takes
+explicit start/end boundary values — one text value per key column, in key order
+— plus whether it is the final chunk:
 
 ```sql
 SELECT o_plan_kind, o_sql_text, o_plan
@@ -505,17 +579,32 @@ FROM dml_utils.explain_migration_chunk(
 ```
 
 For an ordered-key chunk, pass the same `i_chunk_by => 'ordered_key'` and
-`i_boundary_key_index` used by the run.
-
-For a partition-wise run, the query above shows chunk progress; the leaf
-manifest shows calculation progress. Re-calling `run_migration_chunks` with the
-same label resumes a partially calculated run at its first `pending`/`failed`
-leaf; a changed partition tree is rejected with `55000`, so archive the run and
-use a new label (see [Partition-wise chunking](#partition-wise-chunking)).
-
+`i_boundary_key_index` used by the run. Both explain helpers also accept
+`i_partition_wise` and `i_leaf_ordinal` for a synthetic partition-wise plan.
 `dml_utils.explain_function_over_table_chunk` is the equivalent for a
-`run_function_over_table` call. Neither has a `blocks` form: a block chunk is a
-ctid range, so the synthetic explain already shows the same shape.
+`run_function_over_table` call. Block chunks render a ctid range; use the
+run-based helper for a real one.
+
+To pause a run without losing progress, from another session:
+
+```sql
+SELECT dml_utils.pause_migration_run(i_label => 'events-region-backfill');
+```
+
+The coordinator stops launching new chunks (or leaves), waits for the in-flight
+ones to commit, and returns. The run stays unfinished and resumable; it is not
+cancelled, and pending boundaries/leaves remain pending. A paused partition-wise
+run whose boundaries are not finalized keeps `boundaries_calculated_at` NULL, so
+the next call continues the leaf calculation. Re-calling `run_migration_chunks`
+while paused is a no-op with a notice; resume first:
+
+```sql
+SELECT dml_utils.resume_migration_run(i_label => 'events-region-backfill');
+```
+
+Then call `run_migration_chunks` with the same label. Completion wins over a
+pause that races the last chunk: if every chunk is done, the coordinator records
+completion and returns instead of leaving the run paused.
 
 To stop an in-flight run, cancel it from another session:
 
@@ -523,9 +612,9 @@ To stop an in-flight run, cancel it from another session:
 SELECT dml_utils.cancel_migration_run(i_label => 'events-region-backfill');
 ```
 
-The coordinator stops launching, cancels the chunks already running, and marks
-the run and its remaining boundaries cancelled. A cancelled run is terminal:
-archive it before starting a new run with the same label.
+Cancellation is terminal and wins over pause: the coordinator stops launching,
+cancels the chunks already running, and marks the run and its remaining
+boundaries cancelled. Archive it before starting a new run with the same label.
 
 To re-run a label from scratch (for example after changing the chunk size),
 archive the current run first; then the label is free again:
@@ -606,8 +695,9 @@ benchmark/report.sh   # summarise the accumulated results
 ```
 
 `BENCH_CHUNK_BY` selects `primary_key`, `ordered_key` or `blocks`, and
-`BENCH_PARTITION_WISE=1` runs `primary_key` or `blocks` inside a range-partitioned
-fixture with `BENCH_PARTITIONED_LEAVES` leaves. See
+`BENCH_PARTITION_WISE=1` runs the configured strategy inside its partitioned
+fixture with `BENCH_PARTITIONED_LEAVES` leaves (the range-partitioned bigint copy
+for `primary_key`/`blocks`, the hash-partitioned UUID copy for `ordered_key`). See
 [`benchmark/README.md`](benchmark/README.md) for the parameters, the
 partition-wise variant and a worked example.
 
