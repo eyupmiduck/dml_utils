@@ -303,8 +303,9 @@ Nothing is deployed, so this epic edits the baseline in place:
   signature;
 - brand-new routines still use the normal one-changeset-per-routine convention
   in `changes/functions.xml`;
-- visibly disable `LiquibaseUpgradeTest` for the duration of the baseline rewrite
-  and restore it after a release is cut from the cleaned changelog;
+- `LiquibaseUpgradeTest` was disabled for the baseline rewrite and was restored
+  in `dml-99x.3` against `v1.19.0`, the first release cut from the cleaned
+  changelog;
 - recreate local/dev/benchmark databases after the edits.
 
 ## Alternatives considered
@@ -358,8 +359,8 @@ Negative / risks:
 - A retry still consumes a worker slot and delays the next chunk; it is not
   free.
 - The pause/complete/cancel race needs explicit tests.
-- The baseline rewrite temporarily suspends the upgrade test; it must be
-  restored after the next release.
+- The baseline rewrite required suspending the upgrade test until `v1.19.0` was
+  released; `dml-99x.3` restored it.
 
 ## Non-goals
 
@@ -386,7 +387,6 @@ Negative / risks:
 | `dml-99x.18`–`dml-99x.19` | Documentation and full verification                           |
 | `dml-99x.3`               | Restore the upgrade test after the next release               |
 
-All implementation beads through `dml-99x.17` are merged. This documentation bead (`dml-99x.18`) records the final
-surface; `dml-99x.19` is the final full-verify,
-benchmark-smoke and database-recreation gate, and `dml-99x.3` stays blocked until
-a release is cut from the cleaned changelog.
+All implementation beads through `dml-99x.19` are merged and `v1.19.0` was cut
+from the cleaned changelog. `dml-99x.3` restores the upgrade test against that
+release, completing the epic.

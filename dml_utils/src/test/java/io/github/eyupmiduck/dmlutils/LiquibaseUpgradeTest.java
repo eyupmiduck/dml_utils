@@ -2,7 +2,6 @@ package io.github.eyupmiduck.dmlutils;
 
 import io.github.eyupmiduck.changelogvalidator.testing.PublishedRelease;
 import io.github.eyupmiduck.changelogvalidator.testing.UpgradeContract;
-import org.junit.jupiter.api.Disabled;
 
 import java.util.Collection;
 import java.util.List;
@@ -20,17 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * upgrade configuration shares every value with the regular test base except the
  * master changelog: the upgrade test must apply the plain dml_utils changelog,
  * not the install changelog that bundles ddl_utils.
- *
- * <p>This runs against the v1.16.0 baseline, the first release cut from the
- * cleaned changelog. A release is a prerequisite for a meaningful upgrade test:
- * editing an existing changeset in place changes its Liquibase checksum, so the
- * test must be re-pointed only after the cleaned baseline is published.
- *
- * <p>This test is temporarily disabled while the pre-deployment baseline is
- * edited in place under {@code dml-99x}; restore it in {@code dml-99x.3} after a
- * release is cut from the cleaned changelog.
  */
-@Disabled("pre-deployment baseline edit; restore in dml-99x.3 after a release is cut from the cleaned changelog")
 class LiquibaseUpgradeTest extends UpgradeContract {
 
     /**
@@ -93,12 +82,16 @@ class LiquibaseUpgradeTest extends UpgradeContract {
                         .get(0, Integer.class),
                 "the upgraded database should have the dml_utils schemas");
 
-        assertEquals(5, upgradeDsl().fetchOne(
+        assertEquals(13, upgradeDsl().fetchOne(
                                 "SELECT count(*) FROM pg_catalog.pg_proc AS p"
                                         + " JOIN pg_catalog.pg_namespace AS n ON n.oid = p.pronamespace"
                                         + " WHERE (n.nspname = 'dml_utils'"
                                         + "   AND p.proname IN ('run_migration_chunks', 'run_function_over_table',"
-                                        + "                        'set_migration_run_sleep_ms'))"
+                                        + "                        'set_migration_run_sleep_ms', 'pause_migration_run',"
+                                        + "                        'resume_migration_run', 'set_migration_run_retries',"
+                                        + "                        'migration_run_leaves', 'migration_run_progress',"
+                                        + "                        'explain_migration_run_chunk',"
+                                        + "                        'migration_run_summary', 'migration_boundaries'))"
                                         + " OR (n.nspname = 'dml_utils_lib'"
                                         + "   AND p.proname IN ('resolve_migration_run', 'populate_migration_boundaries'))")
                         .get(0, Integer.class),
