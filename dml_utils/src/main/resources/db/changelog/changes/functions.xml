@@ -634,6 +634,16 @@
         </rollback>
     </changeSet>
 
+    <changeSet id="function-dml_utils.explain_migration_run_chunk" author="lee.horner"
+               dbms="postgresql" runOnChange="true">
+        <createProcedure path="functions/dml_utils/explain_migration_run_chunk.sql"
+                         relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="functions-rollback/dml_utils/explain_migration_run_chunk-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
     <changeSet id="function-dml_utils_lib.process_migration_chunk" author="lee.horner"
                dbms="postgresql" runOnChange="true">
         <createProcedure path="functions/dml_utils_lib/process_migration_chunk.sql"
