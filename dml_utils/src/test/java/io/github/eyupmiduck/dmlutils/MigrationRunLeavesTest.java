@@ -72,7 +72,8 @@ class MigrationRunLeavesTest extends PartitionTestBase {
             assertEquals(runId, leaf.getRunId().longValue());
             assertEquals(SCHEMA, leaf.getLeafSchemaName());
             assertEquals("calculated", leaf.getState());
-            assertNotNull(leaf.getCalculatedAt(), "a calculated leaf records when");
+            assertNotNull(leaf.getCalculatedAt(),
+                    "a calculated leaf records when it was calculated");
             assertNotNull(leaf.getCreatedAt(), "the manifest row records its creation");
             assertNotNull(leaf.getUpdatedAt(), "the manifest row records its last update");
             assertNotNull(leaf.getLeafBound(), "the partition bound is snapshotted");
