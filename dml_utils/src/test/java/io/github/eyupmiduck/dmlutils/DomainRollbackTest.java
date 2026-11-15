@@ -29,6 +29,22 @@ class DomainRollbackTest {
             "^\\s*DROP\\s+(TYPE|DOMAIN)\\s+IF\\s+EXISTS\\s+(dml_utils_data\\.[a-z0-9_]+)",
             Pattern.MULTILINE | Pattern.CASE_INSENSITIVE);
 
+    private static Set<String> matches(Pattern pattern, String text) {
+        Set<String> found = new LinkedHashSet<>();
+        Matcher matcher = pattern.matcher(text);
+        while (matcher.find()) {
+            found.add(matcher.group(1).toUpperCase(java.util.Locale.ROOT) + " "
+                    + matcher.group(2).toLowerCase(java.util.Locale.ROOT));
+        }
+        return found;
+    }
+
+    private static Set<String> difference(Set<String> left, Set<String> right) {
+        Set<String> missing = new LinkedHashSet<>(left);
+        missing.removeAll(right);
+        return missing;
+    }
+
     /**
      * Every {@code CREATE TYPE}/{@code CREATE DOMAIN} in the forward changeset has
      * a matching {@code DROP ... IF EXISTS} in its rollback.
@@ -49,21 +65,5 @@ class DomainRollbackTest {
         assertTrue(dropped.containsAll(created),
                 "the rollback must drop every created object; missing "
                         + difference(created, dropped));
-    }
-
-    private static Set<String> matches(Pattern pattern, String text) {
-        Set<String> found = new LinkedHashSet<>();
-        Matcher matcher = pattern.matcher(text);
-        while (matcher.find()) {
-            found.add(matcher.group(1).toUpperCase(java.util.Locale.ROOT) + " "
-                    + matcher.group(2).toLowerCase(java.util.Locale.ROOT));
-        }
-        return found;
-    }
-
-    private static Set<String> difference(Set<String> left, Set<String> right) {
-        Set<String> missing = new LinkedHashSet<>(left);
-        missing.removeAll(right);
-        return missing;
     }
 }

@@ -32,9 +32,9 @@ class FixtureDefaultPrivilegesTest extends PostgresTestBase {
                 for (String privilege : new String[]{
                         "SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE"}) {
                     assertEquals(Boolean.TRUE, dsl.fetchOne(
-                                    "SELECT pg_catalog.has_table_privilege(?::text::regrole, ?, ?)",
-                                    TEST_USER, PROBE, privilege)
-                            .get(0, Boolean.class),
+                                            "SELECT pg_catalog.has_table_privilege(?::text::regrole, ?, ?)",
+                                            TEST_USER, PROBE, privilege)
+                                    .get(0, Boolean.class),
                             "the test role should hold " + privilege);
                 }
 

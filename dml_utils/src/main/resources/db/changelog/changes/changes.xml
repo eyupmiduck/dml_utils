@@ -13,9 +13,9 @@
                    onFailMessage="dml_utils requires PostgreSQL 14 or newer: CREATE OR REPLACE TRIGGER is unavailable on this server">
         <sqlCheck expectedResult="1">
             SELECT CASE
-                       WHEN current_setting('server_version_num')::integer >= 140000 THEN 1
-                       ELSE 0
-                   END
+            WHEN current_setting('server_version_num')::integer >= 140000 THEN 1
+            ELSE 0
+            END
         </sqlCheck>
     </preConditions>
 
