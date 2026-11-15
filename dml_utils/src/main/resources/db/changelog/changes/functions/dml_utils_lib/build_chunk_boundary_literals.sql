@@ -64,11 +64,14 @@ BEGIN
             l_kind := i_key_kinds[l_position];
 
             -- A collation is interpolated raw into a COLLATE clause below, so it
-            -- must be a plain identifier or a schema-qualified quoted identifier;
-            -- anything else (a quote plus SQL, a comment) is rejected before use.
+            -- must be exactly one (optionally schema-qualified) identifier as
+            -- quote_ident/format('%I') renders it: an unquoted lower-case
+            -- identifier, or a quoted one with doubled quotes. Both the schema and
+            -- the name may be quoted (a schema like "My Schema"), and the value as
+            -- a whole cannot leave the identifier position.
             IF i_key_collations[l_position] IS NOT NULL
                 AND i_key_collations[l_position] !~
-                    '^([A-Za-z_][A-Za-z0-9_]*\.)?("[^"]*"|[A-Za-z_][A-Za-z0-9_]*)$'
+                    '^(([a-z_][a-z0-9_$]*|"([^"]|"")*")\.)?("([^"]|"")*"|[a-z_][a-z0-9_$]*)$'
             THEN
                 RAISE EXCEPTION 'collation for column % is not a safe identifier: %',
                     i_column_names[l_position], i_key_collations[l_position]
