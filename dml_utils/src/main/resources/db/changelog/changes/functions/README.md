@@ -1676,7 +1676,7 @@ in the run's key order, or the one-past-end block number for `blocks`. Used by
 ### `dml_utils_lib.calculate_migration_leaf(i_run_id)`
 
 ```sql
-i_run_id bigint
+i_run_id dml_utils_data.non_null_bigint
 RETURNS integer
 ```
 

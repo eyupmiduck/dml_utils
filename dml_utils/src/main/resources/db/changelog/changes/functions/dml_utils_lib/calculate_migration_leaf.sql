@@ -1,5 +1,5 @@
 CREATE OR REPLACE FUNCTION dml_utils_lib.calculate_migration_leaf(
-    i_run_id bigint
+    i_run_id dml_utils_data.non_null_bigint
 )
     RETURNS integer
     LANGUAGE plpgsql
@@ -45,6 +45,17 @@ BEGIN
             i_run_id => i_run_id,
             i_leaf_ordinal => l_leaf.o_leaf_ordinal);
 
+    -- The population and the terminal snapshot are separate statements, so under
+    -- READ COMMITTED they do not share a snapshot: a concurrent delete or
+    -- truncate can leave starts without a terminal. Fail with a descriptive error
+    -- instead of the bare migration_run_leaf_terminal_check violation.
+    IF l_boundary_count > 0 AND l_terminal_key IS NULL THEN
+        RAISE EXCEPTION
+            'leaf % of run % gained boundaries but has no terminal snapshot; retry the calculation',
+            l_leaf.o_leaf_ordinal, i_run_id
+            USING ERRCODE = '55000';
+    END IF;
+
     UPDATE dml_utils_data.migration_run_leaf
     SET state                = 'calculated',
         boundary_count       = l_boundary_count,
@@ -61,7 +72,9 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION dml_utils_lib.calculate_migration_leaf(bigint) IS
+COMMENT ON FUNCTION dml_utils_lib.calculate_migration_leaf(
+    dml_utils_data.non_null_bigint
+    ) IS
     'Calculates one partition-wise leaf in the caller''s transaction: '
         'claim_next_migration_leaf claims and authorizes the first pending/failed/'
         'stale-calculating leaf, leaf_boundary_population_sql appends its chunk '
