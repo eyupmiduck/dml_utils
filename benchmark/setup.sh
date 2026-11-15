@@ -75,8 +75,15 @@ docker network inspect "$BENCH_NETWORK" >/dev/null 2>&1 \
 
 if [ "$refresh" = 1 ]; then
     echo "removing container $BENCH_CONTAINER and volume $BENCH_VOLUME" >&2
-    docker rm -f "$BENCH_CONTAINER" >/dev/null 2>&1 || true
-    docker volume rm "$BENCH_VOLUME" >/dev/null 2>&1 || true
+    # Only "not present" is acceptable here: a volume still in use by another
+    # container would otherwise be kept silently and the "refreshed" database
+    # would mount the old data.
+    if docker container inspect "$BENCH_CONTAINER" >/dev/null 2>&1; then
+        docker rm -f "$BENCH_CONTAINER" >/dev/null
+    fi
+    if docker volume inspect "$BENCH_VOLUME" >/dev/null 2>&1; then
+        docker volume rm "$BENCH_VOLUME" >/dev/null
+    fi
 fi
 
 if ! docker inspect "$BENCH_CONTAINER" >/dev/null 2>&1; then
@@ -94,7 +101,12 @@ if ! docker inspect "$BENCH_CONTAINER" >/dev/null 2>&1; then
         -c shared_buffers="$BENCH_SHARED_BUFFERS" \
         -c max_connections="$BENCH_MAX_CONNECTIONS" >/dev/null
 else
-    docker start "$BENCH_CONTAINER" >/dev/null 2>&1 || true
+    if ! docker start "$BENCH_CONTAINER" >/dev/null 2>&1 \
+        || [ "$(docker inspect -f '{{.State.Running}}' "$BENCH_CONTAINER" 2>/dev/null)" != "true" ]; then
+        echo "could not start the existing container $BENCH_CONTAINER" >&2
+        docker logs "$BENCH_CONTAINER" >&2 || true
+        exit 1
+    fi
 fi
 
 # Talk to the container through docker exec, so no host client is needed.
@@ -139,59 +151,59 @@ done
 # Install ddl_utils first: dml_utils assumes it is present in the same database,
 # and dml_utils_data migrations call its DDL helpers. The versioned ddl_utils
 # Maven artifact is unpacked into the build output at initialize.
-module_dir="$repo_root/$(basename "$repo_root")"
+module_dir="$repo_root/dml_utils"
 ddl_utils_changelog_dir="$module_dir/target/classes/db/changelog-install/ddl-utils/db/changelog"
 if [ ! -f "$ddl_utils_changelog_dir/db.changelog-master.xml" ]; then
     echo "unpacking the ddl_utils changelog ..." >&2
-    (cd "$repo_root" && ./mvnw -q -pl "$(basename "$repo_root")" -am initialize)
+    (cd "$repo_root" && ./mvnw -q -pl dml_utils -am initialize)
 fi
 [ -f "$ddl_utils_changelog_dir/db.changelog-master.xml" ] || {
-    echo "ddl_utils changelog is missing; run ./mvnw -pl $(basename "$repo_root") -am initialize" >&2
+    echo "ddl_utils changelog is missing; run ./mvnw -pl dml_utils -am initialize" >&2
     exit 1
 }
-if ! psql_run -At -c "SELECT 1 FROM pg_catalog.pg_proc p
-        JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
-        WHERE n.nspname = 'ddl_utils' AND p.proname = 'add_column'" \
-        | grep -q 1; then
-    echo "installing ddl_utils ..." >&2
-    psql_run -q -v ON_ERROR_STOP=1 -c \
-        "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'ddl_utils_caller') THEN CREATE ROLE ddl_utils_caller; END IF; END \$\$;"
-    psql_run -q -v ON_ERROR_STOP=1 -c "GRANT ddl_utils_caller TO $BENCH_OWNER_USER"
-    docker run --rm --network "$BENCH_NETWORK" \
-        -v "$ddl_utils_changelog_dir:/liquibase/ddl-utils-changelog" \
-        "$BENCH_LIQUIBASE_IMAGE" sh -c \
-        "lpm add postgresql --global && liquibase \
-            --url=jdbc:postgresql://${BENCH_CONTAINER}:5432/${BENCH_DB} \
-            --username=${BENCH_OWNER_USER} \
-            --password=${BENCH_OWNER_PASSWORD} \
-            --changelog-file=ddl-utils-changelog/db.changelog-master.xml \
-            --liquibase-schema-name=liquibase \
-            --database-changelog-table-name=ddl_utils_databasechangelog \
-            --database-changelog-lock-table-name=ddl_utils_databasechangeloglock \
-            update"
-fi
+# The caller role and its membership are prerequisites for every ddl_utils
+# helper, and both statements are idempotent, so run them on every invocation. A
+# marker check used to skip them, which silently accepted a database whose
+# membership had been lost (for example after BENCH_OWNER_USER changed).
+psql_run -q -v ON_ERROR_STOP=1 -c \
+    "DO \$\$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'ddl_utils_caller') THEN CREATE ROLE ddl_utils_caller; END IF; END \$\$;"
+psql_run -q -v ON_ERROR_STOP=1 -c "GRANT ddl_utils_caller TO $BENCH_OWNER_USER"
 
-# Apply the dml_utils changelog once (the routines are what we benchmark). The
-# marker is the routine under test, so a re-run skips the driver download.
-if ! psql_run -At -c "SELECT 1 FROM pg_catalog.pg_proc p
-        JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
-        WHERE n.nspname = 'dml_utils' AND p.proname = 'run_migration_chunks'" \
-        | grep -q 1; then
-    echo "applying the changelog ..." >&2
-    changelog_dir="$repo_root/$(basename "$repo_root")/src/main/resources/db/changelog"
-    docker run --rm --network "$BENCH_NETWORK" \
-        -v "$changelog_dir:/liquibase/changelog" \
-        "$BENCH_LIQUIBASE_IMAGE" sh -c \
-        "lpm add postgresql --global && liquibase \
-            --url=jdbc:postgresql://${BENCH_CONTAINER}:5432/${BENCH_DB} \
-            --username=${BENCH_OWNER_USER} \
-            --password=${BENCH_OWNER_PASSWORD} \
-            --changelog-file=changelog/db.changelog-master.xml \
-            --liquibase-schema-name=liquibase \
-            --database-changelog-table-name=${BENCH_DB}_databasechangelog \
-            --database-changelog-lock-table-name=${BENCH_DB}_databasechangeloglock \
-            update"
-fi
+# Install ddl_utils first: dml_utils assumes it is present in the same database,
+# and dml_utils_data migrations call its DDL helpers. Liquibase skips changesets
+# it has already applied, so run update unconditionally: a single routine's
+# presence does not prove the changelog finished, and a stale schema would
+# otherwise be benchmarked silently.
+echo "installing ddl_utils ..." >&2
+docker run --rm --network "$BENCH_NETWORK" \
+    -e LIQUIBASE_COMMAND_PASSWORD="$BENCH_OWNER_PASSWORD" \
+    -v "$ddl_utils_changelog_dir:/liquibase/ddl-utils-changelog" \
+    "$BENCH_LIQUIBASE_IMAGE" sh -c \
+    "lpm add postgresql --global && liquibase \
+        --url=jdbc:postgresql://${BENCH_CONTAINER}:5432/${BENCH_DB} \
+        --username=${BENCH_OWNER_USER} \
+        --changelog-file=ddl-utils-changelog/db.changelog-master.xml \
+        --liquibase-schema-name=liquibase \
+        --database-changelog-table-name=ddl_utils_databasechangelog \
+        --database-changelog-lock-table-name=ddl_utils_databasechangeloglock \
+        update"
+
+# Apply the dml_utils changelog (the routines are what we benchmark), also
+# unconditionally: Liquibase skips applied changesets and picks up new ones.
+echo "applying the changelog ..." >&2
+changelog_dir="$repo_root/dml_utils/src/main/resources/db/changelog"
+docker run --rm --network "$BENCH_NETWORK" \
+    -e LIQUIBASE_COMMAND_PASSWORD="$BENCH_OWNER_PASSWORD" \
+    -v "$changelog_dir:/liquibase/changelog" \
+    "$BENCH_LIQUIBASE_IMAGE" sh -c \
+    "lpm add postgresql --global && liquibase \
+        --url=jdbc:postgresql://${BENCH_CONTAINER}:5432/${BENCH_DB} \
+        --username=${BENCH_OWNER_USER} \
+        --changelog-file=changelog/db.changelog-master.xml \
+        --liquibase-schema-name=liquibase \
+        --database-changelog-table-name=${BENCH_DB}_databasechangelog \
+        --database-changelog-lock-table-name=${BENCH_DB}_databasechangeloglock \
+        update"
 
 # Build the primary-key SQL fragments from BENCH_PK_COLUMNS, the number of key
 # columns (1 to 3; all bigint, named k1..kN). The row number g maps to a unique
@@ -259,11 +271,33 @@ for _target in "$BENCH_TARGET_TABLE" "$BENCH_ORDERED_TARGET_TABLE" \
             ;;
     esac
 done
-unset _sources _target
+unset _sources _target _e _j
 pk_count="$BENCH_PK_COLUMNS"
-pk_mod="$(awk -v n="$BENCH_ROWS" -v p="$pk_count" 'BEGIN { m = 1; while (m ^ p < n) m++; print m }')"
-if [ "$BENCH_PARTITIONED_LEAVES" -gt "$pk_mod" ]; then
-    echo "BENCH_PARTITIONED_LEAVES ($BENCH_PARTITIONED_LEAVES) must not exceed the distinct k1 values ($pk_mod) produced for $BENCH_ROWS rows" >&2
+# m such that m^pk_count >= rows, in integer arithmetic: awk's m^p is a double
+# and rounds once the power exceeds 2^53.
+pk_mod=1
+while :; do
+    pk_power=1
+    _i=0
+    while [ "$_i" -lt "$pk_count" ]; do
+        pk_power=$((pk_power * pk_mod))
+        _i=$((_i + 1))
+    done
+    [ "$pk_power" -ge "$BENCH_ROWS" ] && break
+    pk_mod=$((pk_mod + 1))
+done
+# The first key column repeats every m^(p-1) rows, so the number of distinct k1
+# values is ceil(rows / m^(p-1)) -- not m, which setup used to compare against.
+k1_div=1
+_i=1
+while [ "$_i" -lt "$pk_count" ]; do
+    k1_div=$((k1_div * pk_mod))
+    _i=$((_i + 1))
+done
+k1_values=$(( (BENCH_ROWS + k1_div - 1) / k1_div ))
+unset _i
+if [ "$BENCH_PARTITIONED_LEAVES" -gt "$k1_values" ]; then
+    echo "BENCH_PARTITIONED_LEAVES ($BENCH_PARTITIONED_LEAVES) must not exceed the distinct k1 values ($k1_values) produced for $BENCH_ROWS rows" >&2
     exit 2
 fi
 pk_def=""
@@ -275,7 +309,13 @@ while [ "$pk_i" -lt "$pk_count" ]; do
     pk_name="k$pk_i"
     pk_def="${pk_def:+$pk_def, }$pk_name bigint"
     pk_key="${pk_key:+$pk_key, }$pk_name"
-    pk_div="$(awk -v m="$pk_mod" -v e="$((pk_count - pk_i))" 'BEGIN { print m ^ e }')"
+    pk_div=1
+    _e=$((pk_count - pk_i))
+    _j=0
+    while [ "$_j" -lt "$_e" ]; do
+        pk_div=$((pk_div * pk_mod))
+        _j=$((_j + 1))
+    done
     pk_exprs="${pk_exprs:+$pk_exprs, }((g - 1) / $pk_div) % $pk_mod + 1"
 done
 

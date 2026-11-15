@@ -9,6 +9,11 @@
 -- balanced. The :pk_def, :pk_key and :pk_exprs variables must each stay on one
 -- line: a psql variable is only substituted when the name follows the colon
 -- with no whitespace.
+--
+-- The first key column defined by :pk_def must be named k1: it is the partition
+-- key. :leaves must be between 1 and the number of distinct k1 values, and :rows
+-- must be at least 1; setup.sh enforces both so this script cannot create an
+-- empty fixture or a leaf with an empty range.
 \set ON_ERROR_STOP on
 
 CREATE SCHEMA IF NOT EXISTS :"schema";
@@ -64,3 +69,6 @@ INSERT INTO :"schema".:"source_table" (:pk_key, payload)
 SELECT :pk_exprs,
        pg_catalog.md5(g::text)
 FROM pg_catalog.generate_series(1, :'rows'::bigint) AS g;
+
+-- Refresh planner statistics (see create-source.sql).
+ANALYZE :"schema".:"source_table";

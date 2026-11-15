@@ -43,3 +43,6 @@ SELECT pg_catalog.overlay(
            + ((g - 1) / 10) * interval '1 second',
        pg_catalog.md5(g::text)
 FROM pg_catalog.generate_series(1, :'rows'::bigint) AS g;
+
+-- Refresh planner statistics (see create-source.sql).
+ANALYZE :"schema".:"source_table";
