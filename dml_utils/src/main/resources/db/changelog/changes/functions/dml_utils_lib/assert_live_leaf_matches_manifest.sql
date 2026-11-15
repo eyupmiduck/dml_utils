@@ -26,6 +26,27 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
 
+    -- Hold the relation until the caller's transaction ends, before reading it: a
+    -- catalog read alone is a point-in-time check, and DETACH, VACUUM FULL,
+    -- CLUSTER or pg_repack could otherwise commit between the read and the scan
+    -- that relies on it (the exact staleness this function exists to catch; for a
+    -- blocks run it means ctid-addressed work on a rewritten heap). Taking the
+    -- lock first also means the compared values are the ones the lock protects.
+    -- ACCESS SHARE conflicts with the ACCESS EXCLUSIVE those operations need and
+    -- with nothing the scan needs.
+    BEGIN
+        EXECUTE pg_catalog.format('LOCK TABLE %I.%I IN ACCESS SHARE MODE',
+                                  i_leaf_schema_name, i_leaf_name);
+    EXCEPTION
+        WHEN undefined_table THEN
+            RAISE EXCEPTION 'leaf %.% no longer exists', i_leaf_schema_name, i_leaf_name
+                USING ERRCODE = '55000';
+        WHEN wrong_object_type THEN
+            -- Not lockable as a table (an index); the relkind guard below reports
+            -- it as the documented 55000.
+            NULL;
+    END;
+
     SELECT c.oid,
            c.relkind::text,
            pg_catalog.pg_get_expr(c.relpartbound, c.oid),
@@ -43,15 +64,6 @@ BEGIN
         RAISE EXCEPTION 'leaf %.% no longer exists', i_leaf_schema_name, i_leaf_name
             USING ERRCODE = '55000';
     END IF;
-
-    -- Hold the relation until the caller's transaction ends. A catalog read alone
-    -- is a point-in-time check: DETACH, VACUUM FULL, CLUSTER or pg_repack can
-    -- commit between this assertion and the scan that relies on it, which is
-    -- exactly the staleness this function exists to catch (for a blocks run it
-    -- means ctid-addressed work on a rewritten heap). ACCESS SHARE conflicts with
-    -- the ACCESS EXCLUSIVE those operations need and with nothing the scan needs.
-    EXECUTE pg_catalog.format('LOCK TABLE %I.%I IN ACCESS SHARE MODE',
-                              i_leaf_schema_name, i_leaf_name);
 
     -- A dropped and recreated leaf or a rename keeps the name but changes the
     -- OID; a detach clears relpartbound. Either makes the stored ranges stale.

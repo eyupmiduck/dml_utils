@@ -10,7 +10,6 @@ $$
 DECLARE
     l_run          record;
     l_terminal     record;
-    l_terminal_key dml_utils_data.migration_key;
     l_total_chunks bigint;
 BEGIN
     IF i_run_id IS NULL THEN
@@ -51,27 +50,17 @@ BEGIN
             USING ERRCODE = '55000';
     END IF;
 
-    SELECT o_leaf_ordinal,
-           o_leaf_schema_name,
-           o_leaf_name,
-           o_bigint_values,
-           o_text_values,
-           o_uuid_values,
-           o_timestamptz_values
+    SELECT o_leaf_ordinal
     INTO l_terminal
     FROM dml_utils_lib.terminal_leaf_for_run(i_run_id => i_run_id);
 
     IF l_terminal.o_leaf_ordinal IS NOT NULL THEN
-        l_terminal_key := ROW (l_terminal.o_bigint_values,
-            l_terminal.o_text_values, l_terminal.o_uuid_values,
-            l_terminal.o_timestamptz_values)::dml_utils_data.migration_key;
-
-        -- append_terminal_boundary derives the leaf identity from the manifest and
-        -- records the milestone itself (the single-terminal gate).
+        -- append_terminal_boundary derives the leaf identity and the terminal key
+        -- from the manifest and records the milestone itself (the single-terminal
+        -- gate).
         l_total_chunks := dml_utils_lib.append_terminal_boundary(
                 i_run_id => i_run_id,
-                i_leaf_ordinal => l_terminal.o_leaf_ordinal,
-                i_terminal_key => l_terminal_key);
+                i_leaf_ordinal => l_terminal.o_leaf_ordinal);
     ELSE
         -- Every leaf is empty: no terminal boundary and no chunks.
         l_total_chunks := 0;

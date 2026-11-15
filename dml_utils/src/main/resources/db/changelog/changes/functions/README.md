@@ -2135,23 +2135,25 @@ RETURNS record
 partition-wise run with its stored high-water key arrays, or NULL fields when
 every leaf is empty.
 
-### `dml_utils_lib.append_terminal_boundary(i_run_id, i_leaf_ordinal, i_terminal_key)`
+### `dml_utils_lib.append_terminal_boundary(i_run_id, i_leaf_ordinal)`
 
 ```sql
 i_run_id       bigint
 i_leaf_ordinal integer
-i_terminal_key dml_utils_data.migration_key
 RETURNS bigint
 ```
 
 `SECURITY DEFINER`. Appends the single terminal boundary after the last committed
 boundary, tagged with the manifest leaf at `i_leaf_ordinal`, and returns its
-boundary number (the run's chunk count). It serializes on the run row, derives
-the leaf schema/name from the manifest (so the caller's SELECT privilege is
-checked on the leaf that is actually written), re-checks the stored leaf identity,
-records `boundaries_calculated_at`/`total_chunks` itself (a repeat call is
-`55000`), and rejects a cancelled run (`55000`), a NULL run id or ordinal
-(`22023`) and a missing snapshot (`55000`).
+boundary number (the run's chunk count). Every input is taken from the manifest:
+the leaf schema/name (so the caller's SELECT privilege is checked on the leaf that
+is actually written) and the terminal high-water key
+(`migration_run_leaf.terminal_boundary_id`, which the runner uses as the end of
+the leaf's last chunk). It serializes on the run row, re-checks the stored leaf
+identity, rejects a run with uncalculated leaves, records
+`boundaries_calculated_at`/`total_chunks` itself (a repeat call is `55000`), and
+rejects a cancelled run (`55000`), a NULL run id or ordinal (`22023`) and a leaf
+without a snapshot (`55000`).
 
 ### `dml_utils_lib.assert_caller_can_select_relation(i_schema_name, i_table_name)`
 
