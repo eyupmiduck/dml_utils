@@ -48,13 +48,15 @@ BEGIN
             -- boundaries pending; mark them cancelled in an autonomous worker,
             -- exactly as the processing-phase cancellation handler does.
             BEGIN
-                SELECT outcome.completed, outcome.has_error, outcome.sqlstate,
+                SELECT outcome.completed,
+                       outcome.has_error,
+                       outcome.sqlstate,
                        outcome.error_message
                 INTO l_mark_outcome
                 FROM public.pg_background_run(pg_catalog.format(
                         'SELECT dml_utils_lib.mark_migration_run_cancelled(%L)',
                         i_run_id)
-                    ) AS outcome;
+                     ) AS outcome;
 
                 IF NOT COALESCE(l_mark_outcome.completed, false)
                     OR COALESCE(l_mark_outcome.has_error, false)

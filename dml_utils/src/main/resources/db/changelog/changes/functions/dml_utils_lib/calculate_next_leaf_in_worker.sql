@@ -7,9 +7,9 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.calculate_next_leaf_in_worker(
 AS
 $$
 DECLARE
-    l_handle       public.pg_background_handle;
-    l_ordinal      integer;
-    l_leaf_ordinal integer;
+    l_handle         public.pg_background_handle;
+    l_ordinal        integer;
+    l_leaf_ordinal   integer;
     l_info           public.pg_background_result_info;
     l_error          public.pg_background_error;
     l_record_outcome record;
@@ -88,7 +88,9 @@ BEGIN
         LIMIT 1;
         IF FOUND THEN
             BEGIN
-                SELECT outcome.completed, outcome.has_error, outcome.sqlstate,
+                SELECT outcome.completed,
+                       outcome.has_error,
+                       outcome.sqlstate,
                        outcome.error_message
                 INTO l_record_outcome
                 FROM public.pg_background_run(pg_catalog.format(
@@ -96,7 +98,7 @@ BEGIN
                         i_run_id, l_leaf_ordinal,
                         COALESCE(l_error.sqlstate, 'XX000'),
                         COALESCE(l_error.message, 'worker failed'))
-                    ) AS outcome;
+                     ) AS outcome;
 
                 -- Do not raise: the original worker SQLSTATE is re-raised below.
                 IF NOT COALESCE(l_record_outcome.completed, false)
