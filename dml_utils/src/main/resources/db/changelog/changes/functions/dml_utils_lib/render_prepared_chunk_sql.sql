@@ -78,8 +78,7 @@ BEGIN
     IF i_key_collations IS NULL
         OR pg_catalog.array_ndims(i_key_collations) IS DISTINCT FROM 1
         OR pg_catalog.array_lower(i_key_collations, 1) IS DISTINCT FROM 1
-        OR pg_catalog.array_length(i_key_collations, 1)
-            IS DISTINCT FROM pg_catalog.array_length(i_column_names, 1)
+        OR pg_catalog.array_length(i_key_collations, 1) IS DISTINCT FROM pg_catalog.array_length(i_column_names, 1)
     THEN
         RAISE EXCEPTION 'key collations must be a one-dimensional, 1-based array aligned with the column names'
             USING ERRCODE = '22023';
