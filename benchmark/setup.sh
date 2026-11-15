@@ -90,11 +90,18 @@ if ! docker inspect "$BENCH_CONTAINER" >/dev/null 2>&1; then
     echo "starting $BENCH_CONTAINER ($BENCH_IMAGE) ..." >&2
     # The trailing `postgres -c ...` overrides the image CMD, so the server runs
     # with the settings a reproducible sweep needs.
+    # Publish a host port only when one was configured for inspection. The
+    # scripts talk through docker exec, and a published port makes concurrent
+    # benchmark/smoke stacks collide on the fixed port.
+    port_arg=""
+    if [ -n "${BENCH_HOST_PORT:-}" ]; then
+        port_arg="-p 127.0.0.1:${BENCH_HOST_PORT}:5432"
+    fi
     docker run -d --name "$BENCH_CONTAINER" --network "$BENCH_NETWORK" \
         -e POSTGRES_DB="$BENCH_DB" \
         -e POSTGRES_USER="$BENCH_DB_USER" \
         -e POSTGRES_PASSWORD="$BENCH_DB_USER" \
-        -p "127.0.0.1:${BENCH_HOST_PORT}:5432" \
+        $port_arg \
         -v "${BENCH_VOLUME}:/var/lib/postgresql/data" \
         "$BENCH_IMAGE" \
         postgres -c max_worker_processes="$BENCH_MAX_WORKER_PROCESSES" \
@@ -275,17 +282,30 @@ unset _sources _target _e _j
 pk_count="$BENCH_PK_COLUMNS"
 # m such that m^pk_count >= rows, in integer arithmetic: awk's m^p is a double
 # and rounds once the power exceeds 2^53.
-pk_mod=1
-while :; do
+# m such that m^pk_count >= rows, by bisection: a linear scan is O(rows) for a
+# one-column key (the default). The power is clamped because mid^pk_count can
+# exceed the 64-bit range for a large midpoint.
+pk_lo=1
+pk_hi="$BENCH_ROWS"
+while [ "$pk_lo" -lt "$pk_hi" ]; do
+    pk_mid=$(( (pk_lo + pk_hi) / 2 ))
     pk_power=1
     _i=0
     while [ "$_i" -lt "$pk_count" ]; do
-        pk_power=$((pk_power * pk_mod))
+        pk_power=$((pk_power * pk_mid))
+        if [ "$pk_power" -gt "$BENCH_ROWS" ]; then
+            pk_power="$BENCH_ROWS"
+            break
+        fi
         _i=$((_i + 1))
     done
-    [ "$pk_power" -ge "$BENCH_ROWS" ] && break
-    pk_mod=$((pk_mod + 1))
+    if [ "$pk_power" -ge "$BENCH_ROWS" ]; then
+        pk_hi="$pk_mid"
+    else
+        pk_lo=$((pk_mid + 1))
+    fi
 done
+pk_mod="$pk_lo"
 # The first key column repeats every m^(p-1) rows, so the number of distinct k1
 # values is ceil(rows / m^(p-1)) -- not m, which setup used to compare against.
 k1_div=1
@@ -295,9 +315,13 @@ while [ "$_i" -lt "$pk_count" ]; do
     _i=$((_i + 1))
 done
 k1_values=$(( (BENCH_ROWS + k1_div - 1) / k1_div ))
+# The leaves are cut from 1..pk_mod, so the last leaf starts at
+# 1 + (n-1)*m/n; it is only non-empty when that value is itself a k1 value.
+last_leaf_lo=$(( 1 + (BENCH_PARTITIONED_LEAVES - 1) * pk_mod / BENCH_PARTITIONED_LEAVES ))
 unset _i
-if [ "$BENCH_PARTITIONED_LEAVES" -gt "$k1_values" ]; then
-    echo "BENCH_PARTITIONED_LEAVES ($BENCH_PARTITIONED_LEAVES) must not exceed the distinct k1 values ($k1_values) produced for $BENCH_ROWS rows" >&2
+if [ "$BENCH_PARTITIONED_LEAVES" -gt "$k1_values" ] \
+    || [ "$last_leaf_lo" -gt "$k1_values" ]; then
+    echo "BENCH_PARTITIONED_LEAVES ($BENCH_PARTITIONED_LEAVES) would create an empty leaf: the last leaf starts at k1=$last_leaf_lo but only $k1_values distinct k1 values exist for $BENCH_ROWS rows" >&2
     exit 2
 fi
 pk_def=""

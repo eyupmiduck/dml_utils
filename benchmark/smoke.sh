@@ -36,7 +36,9 @@ suffix="$$"
 BENCH_CONTAINER="dml_utils_benchmark_smoke_pg_$suffix"
 BENCH_VOLUME="dml_utils_benchmark_smoke_pgdata_$suffix"
 BENCH_NETWORK="dml_utils_benchmark_smoke_net_$suffix"
-BENCH_HOST_PORT=55434
+# No published port: the names are the isolation point, and two concurrent runs
+# must not collide on a fixed host port.
+BENCH_HOST_PORT=
 BENCH_ROWS=2000
 BENCH_PK_COLUMNS=3
 BENCH_CHUNK_SIZE=500
@@ -115,9 +117,12 @@ grep -q '^### strategy `blocks`, key k1+k2+k3, chunk_size 500 blocks$' \
 grep -q '(partition-wise)' "$report_dir/report.md"
 grep -q '^### strategy `ordered_key`, key created_at+id, chunk_size 500 rows (partition-wise)' \
     "$report_dir/report.md"
-# Every thread value of the sweep is present in each group.
-grep -q '^| 1 |' "$report_dir/report.md"
-grep -q '^| 2 |' "$report_dir/report.md"
+# Every group's table carries both thread values (a page-wide grep would pass
+# even if one group lost a row).
+awk '/^### strategy `/{group = $0; threads[group] = 0; next}
+     /^\| [12] \|/{threads[group]++}
+     END { for (g in threads) if (threads[g] != 2) { print "missing thread row in " g > "/dev/stderr"; exit 1 } }' \
+    "$report_dir/report.md"
 rm -rf "$report_dir"
 
 rm -f "$results_dir/smoke-primary_key.csv" "$results_dir/smoke-blocks.csv" \

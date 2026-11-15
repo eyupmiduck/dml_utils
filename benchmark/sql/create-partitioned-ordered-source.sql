@@ -74,3 +74,12 @@ COMMENT ON INDEX :"schema".:"index" IS
 
 -- Refresh planner statistics (see create-source.sql).
 ANALYZE :"schema".:"source_table";
+-- ANALYZE on the partitioned parent does not refresh the leaves, and the
+-- partition-wise chunks are planned per leaf, so analyze each storage leaf too.
+SELECT pg_catalog.format('ANALYZE %I.%I', n.nspname, c.relname)
+FROM pg_catalog.pg_partition_tree((:'schema' || '.' || :'source_table')::regclass) AS leaf
+         JOIN pg_catalog.pg_class AS c ON c.oid = leaf.relid
+         JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
+WHERE leaf.isleaf
+\gexec
+
