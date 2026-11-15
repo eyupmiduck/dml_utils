@@ -93,16 +93,16 @@ class DefaultPrivilegesTest extends PostgresTestBase {
             ownerDsl.execute("CREATE TYPE dml_utils.default_acl_probe_type AS ENUM ('a')");
             try {
                 assertEquals(Boolean.FALSE, ownerDsl.fetchOne(
-                                "SELECT pg_catalog.has_function_privilege('public',"
-                                        + " 'dml_utils.default_acl_probe()'::pg_catalog.regprocedure,"
-                                        + " 'EXECUTE')")
-                        .get(0, Boolean.class),
+                                        "SELECT pg_catalog.has_function_privilege('public',"
+                                                + " 'dml_utils.default_acl_probe()'::pg_catalog.regprocedure,"
+                                                + " 'EXECUTE')")
+                                .get(0, Boolean.class),
                         "a new routine must not be executable by PUBLIC");
                 assertEquals(Boolean.FALSE, ownerDsl.fetchOne(
-                                "SELECT pg_catalog.has_type_privilege('public',"
-                                        + " 'dml_utils.default_acl_probe_type'::pg_catalog.regtype,"
-                                        + " 'USAGE')")
-                        .get(0, Boolean.class),
+                                        "SELECT pg_catalog.has_type_privilege('public',"
+                                                + " 'dml_utils.default_acl_probe_type'::pg_catalog.regtype,"
+                                                + " 'USAGE')")
+                                .get(0, Boolean.class),
                         "a new type must not be usable by PUBLIC");
             } finally {
                 ownerDsl.execute("DROP TYPE IF EXISTS dml_utils.default_acl_probe_type");
