@@ -62,7 +62,7 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
     IF (SELECT boundary_key.o_key_columns IS DISTINCT FROM i_key_columns
-               OR boundary_key.o_key_kinds IS DISTINCT FROM i_key_kinds
+                   OR boundary_key.o_key_kinds IS DISTINCT FROM i_key_kinds
         FROM dml_utils_lib.migration_run_boundary_key(i_run_id => i_run_id) AS boundary_key)
     THEN
         RAISE EXCEPTION 'key columns/kinds do not match run %''s boundary key', i_run_id

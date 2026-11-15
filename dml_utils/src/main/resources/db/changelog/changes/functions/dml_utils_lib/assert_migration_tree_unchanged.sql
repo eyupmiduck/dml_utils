@@ -60,7 +60,7 @@ BEGIN
                    THEN pg_catalog.format('blocks filepath changed (stored %s, live %s)',
                                           manifest.relation_filepath, live.relation_filepath)
                ELSE 'leaf identity changed'
-           END
+               END
     INTO l_mismatch, l_reason
     FROM dml_utils_lib.leaf_partitions(
                  i_schema_name => l_schema_name,
