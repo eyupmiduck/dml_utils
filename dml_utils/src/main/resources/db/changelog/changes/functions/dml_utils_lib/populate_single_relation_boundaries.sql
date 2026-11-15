@@ -22,6 +22,8 @@ BEGIN
     -- 55000. The lock also covers the final UPDATE below.
     SELECT run.chunk_by,
            run.chunk_size,
+           run.driving_table_schema_name,
+           run.driving_table_name,
            run.boundaries_calculated_at,
            run.cancelled_at
     INTO l_run
@@ -41,6 +43,15 @@ BEGIN
     -- The caller supplies the configuration to render with, but the run row is
     -- what the runner later reads. A direct caller must not be able to populate
     -- a run it did not create with a different strategy, chunk size or key.
+    IF i_schema_name IS DISTINCT FROM l_run.driving_table_schema_name::text
+        OR i_table_name IS DISTINCT FROM l_run.driving_table_name::text
+    THEN
+        RAISE EXCEPTION 'run % drives %.%, not %.%',
+            i_run_id,
+            l_run.driving_table_schema_name, l_run.driving_table_name,
+            i_schema_name, i_table_name
+            USING ERRCODE = '22023';
+    END IF;
     IF i_chunk_by IS DISTINCT FROM l_run.chunk_by THEN
         RAISE EXCEPTION 'run % chunks by %, not %', i_run_id, l_run.chunk_by, i_chunk_by
             USING ERRCODE = '22023';
@@ -54,7 +65,7 @@ BEGIN
                OR boundary_key.o_key_kinds IS DISTINCT FROM i_key_kinds
         FROM dml_utils_lib.migration_run_boundary_key(i_run_id => i_run_id) AS boundary_key)
     THEN
-        RAISE EXCEPTION 'key columns/kinds do not match the run''s stored key'
+        RAISE EXCEPTION 'key columns/kinds do not match run %''s boundary key', i_run_id
             USING ERRCODE = '22023';
     END IF;
 

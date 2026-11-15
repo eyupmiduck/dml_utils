@@ -46,13 +46,19 @@ BEGIN
             i_leaf_ordinal => l_leaf.o_leaf_ordinal);
 
     -- The population and the terminal snapshot are separate statements, so under
-    -- READ COMMITTED they do not share a snapshot: a concurrent delete or
-    -- truncate can leave starts without a terminal. Fail with a descriptive error
-    -- instead of the bare migration_run_leaf_terminal_check violation.
-    IF l_boundary_count > 0 AND l_terminal_key IS NULL THEN
+    -- READ COMMITTED they do not share a snapshot. A concurrent delete/truncate
+    -- can leave starts without a terminal; a concurrent insert can leave a
+    -- terminal without starts, which would otherwise be discarded silently (the
+    -- leaf recorded as empty, its rows never migrated). Reject both directions
+    -- with a descriptive error instead of a bare constraint violation.
+    -- Compare against IS NULL, not IS NOT NULL: for a composite value
+    -- `x IS NOT NULL` is true only when *every* field is non-null, and a
+    -- migration_key always has NULL arrays for the unused kinds.
+    IF (l_boundary_count > 0) = (l_terminal_key IS NULL) THEN
         RAISE EXCEPTION
-            'leaf % of run % gained boundaries but has no terminal snapshot; retry the calculation',
-            l_leaf.o_leaf_ordinal, i_run_id
+            'leaf % of run % has % boundaries but %terminal snapshot; retry the calculation',
+            l_leaf.o_leaf_ordinal, i_run_id, l_boundary_count,
+            CASE WHEN l_terminal_key IS NULL THEN 'no ' ELSE 'a ' END
             USING ERRCODE = '55000';
     END IF;
 
@@ -80,4 +86,7 @@ COMMENT ON FUNCTION dml_utils_lib.calculate_migration_leaf(
         'stale-calculating leaf, leaf_boundary_population_sql appends its chunk '
         'starts, and this routine records the boundary count, high-water snapshot '
         'and calculated state. Returns the ordinal, or NULL when the run is '
-        'finalized, cancelled or fully calculated.';
+        'finalized, cancelled or fully calculated. If the population and the '
+        'terminal snapshot disagree (either direction, for example a concurrent '
+        'insert, delete or truncate on the leaf) it raises 55000 and the leaf can '
+        'be retried.';

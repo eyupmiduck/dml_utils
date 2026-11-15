@@ -37,12 +37,15 @@ BEGIN
     END IF;
 
     -- Every leaf is calculated. Re-check the tree and write the single terminal
-    -- boundary plus the run totals in the *same* worker transaction, so the check
-    -- and the write share one snapshot: a tree change committed between an
-    -- invoker-side check and the autonomous write would otherwise still finalize
-    -- stale ranges. The worker outcome must be observed: pg_background_run only
-    -- returns metadata, it does not re-raise, so a failed finalizer would
-    -- otherwise be reported as success with boundaries_calculated_at still NULL.
+    -- boundary plus the run totals in the *same* worker transaction. That removes
+    -- the cross-transaction commit gap, but each PL/pgSQL statement still takes
+    -- its own snapshot under READ COMMITTED, so a tree change committed between
+    -- the assertion and the write remains possible; the write re-validates the
+    -- cancelled state and leaf states under the run lock, and a stale range is
+    -- rejected on the next calculation attempt. The worker outcome must be
+    -- observed: pg_background_run only returns metadata, it does not re-raise, so
+    -- a failed finalizer would otherwise be reported as success with
+    -- boundaries_calculated_at still NULL.
     l_outcome := public.pg_background_run(pg_catalog.format(
             'DO $finalizer$ BEGIN '
                 'PERFORM dml_utils_lib.assert_migration_tree_unchanged(%L); '

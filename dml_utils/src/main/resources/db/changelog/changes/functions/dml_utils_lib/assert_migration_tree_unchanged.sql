@@ -56,8 +56,10 @@ BEGIN
                WHEN manifest.leaf_bound IS DISTINCT FROM live.leaf_bound
                    THEN pg_catalog.format('partition bound changed (stored %s, live %s)',
                                           manifest.leaf_bound, live.leaf_bound)
-               ELSE pg_catalog.format('blocks filepath changed (stored %s, live %s)',
-                                      manifest.relation_filepath, live.relation_filepath)
+               WHEN l_chunk_by = 'blocks'
+                   THEN pg_catalog.format('blocks filepath changed (stored %s, live %s)',
+                                          manifest.relation_filepath, live.relation_filepath)
+               ELSE 'leaf identity changed'
            END
     INTO l_mismatch, l_reason
     FROM dml_utils_lib.leaf_partitions(
