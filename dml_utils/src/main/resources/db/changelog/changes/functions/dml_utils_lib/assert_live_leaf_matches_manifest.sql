@@ -8,7 +8,7 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.assert_live_leaf_matches_manifest(
 )
     RETURNS void
     LANGUAGE plpgsql
-    STABLE
+    VOLATILE
     SECURITY INVOKER
 AS
 $$
@@ -18,6 +18,14 @@ DECLARE
     l_live_bound    text;
     l_live_filepath text;
 BEGIN
+    -- A NULL strategy would make both guards below NULL and the function would
+    -- fail open (a recorded filepath would go unverified). Manifest columns are
+    -- NOT NULL, but the function is directly callable, so reject it.
+    IF i_chunk_by IS NULL THEN
+        RAISE EXCEPTION 'chunk strategy must not be NULL'
+            USING ERRCODE = '22023';
+    END IF;
+
     SELECT c.oid,
            c.relkind::text,
            pg_catalog.pg_get_expr(c.relpartbound, c.oid),
@@ -35,6 +43,15 @@ BEGIN
         RAISE EXCEPTION 'leaf %.% no longer exists', i_leaf_schema_name, i_leaf_name
             USING ERRCODE = '55000';
     END IF;
+
+    -- Hold the relation until the caller's transaction ends. A catalog read alone
+    -- is a point-in-time check: DETACH, VACUUM FULL, CLUSTER or pg_repack can
+    -- commit between this assertion and the scan that relies on it, which is
+    -- exactly the staleness this function exists to catch (for a blocks run it
+    -- means ctid-addressed work on a rewritten heap). ACCESS SHARE conflicts with
+    -- the ACCESS EXCLUSIVE those operations need and with nothing the scan needs.
+    EXECUTE pg_catalog.format('LOCK TABLE %I.%I IN ACCESS SHARE MODE',
+                              i_leaf_schema_name, i_leaf_name);
 
     -- A dropped and recreated leaf or a rename keeps the name but changes the
     -- OID; a detach clears relpartbound. Either makes the stored ranges stale.
@@ -83,4 +100,5 @@ COMMENT ON FUNCTION dml_utils_lib.assert_live_leaf_matches_manifest(
     'Compares one manifest leaf identity with the live relation and raises '
         'object_not_in_prerequisite_state (55000) when it is missing, replaced '
         '(different OID), detached or rebound (different partition bound), not a '
-        'plain table, or (for blocks) a rewritten heap.';
+        'plain table, or (for blocks) a rewritten heap. Takes ACCESS SHARE on the leaf '
+        'so the verified identity cannot change before the caller uses it.';

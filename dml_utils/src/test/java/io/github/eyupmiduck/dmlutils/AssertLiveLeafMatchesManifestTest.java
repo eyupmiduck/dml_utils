@@ -99,8 +99,47 @@ class AssertLiveLeafMatchesManifestTest extends PartitionTestBase {
     }
 
 
+    /**
+     * A NULL chunk strategy is rejected with {@code 22023} instead of skipping
+     * both filepath guards.
+     */
+    @Test
+    void rejectsANullChunkStrategy() {
+        ManifestLeafIdentity leaf = identity(
+                populatePartitionWise("live-leaf-primary_key", TABLE, TEMPLATE,
+                        ChunkingStrategy.primary_key, 2, null));
+
+        assertSqlState("22023", () -> Routines.assertLiveLeafMatchesManifest(
+                dsl.configuration(), null, leaf.getOLeafSchemaName(),
+                leaf.getOLeafName(), leaf.getOLeafOid(), leaf.getOLeafBound(),
+                leaf.getORelationFilepath()));
+    }
+
+    /**
+     * A leaf that has actually been detached fails closed: its live partition
+     * bound is NULL, so the stored bound no longer matches.
+     */
+    @Test
+    void rejectsADetachedLeaf() throws Exception {
+        ManifestLeafIdentity leaf = identity(
+                populatePartitionWise("live-leaf-primary_key", TABLE, TEMPLATE,
+                        ChunkingStrategy.primary_key, 2, null), 2);
+
+        executeAsOwner("ALTER TABLE " + PARTITION_SCHEMA + "." + TABLE
+                + " DETACH PARTITION " + PARTITION_SCHEMA + ".test_partitioned_range_mid");
+        try {
+            assertSqlState("55000", () -> assertLeaf(leaf));
+        } finally {
+            restoreMidPartition();
+        }
+    }
+
     private ManifestLeafIdentity identity(long runId) {
-        return Routines.manifestLeafIdentity(dsl.configuration(), runId, 1);
+        return identity(runId, 1);
+    }
+
+    private ManifestLeafIdentity identity(long runId, int ordinal) {
+        return Routines.manifestLeafIdentity(dsl.configuration(), runId, ordinal);
     }
 
     private void assertLeaf(ManifestLeafIdentity leaf) {

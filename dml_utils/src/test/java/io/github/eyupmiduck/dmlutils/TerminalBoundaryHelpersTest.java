@@ -100,8 +100,7 @@ class TerminalBoundaryHelpersTest extends PartitionTestBase {
                 terminal.getOTimestamptzValues());
 
         long boundaryNo = Routines.appendTerminalBoundary(dsl.configuration(), runId,
-                terminal.getOLeafOrdinal(), terminal.getOLeafSchemaName(),
-                terminal.getOLeafName(), key);
+                terminal.getOLeafOrdinal(), key);
 
         assertEquals(4L, boundaryNo);
         MigrationBoundaryRecord boundary = dsl.selectFrom(MIGRATION_BOUNDARY)
@@ -125,11 +124,9 @@ class TerminalBoundaryHelpersTest extends PartitionTestBase {
                 dsl.configuration(), runId);
 
         assertSqlState("55000", () -> Routines.appendTerminalBoundary(
-                dsl.configuration(), runId, terminal.getOLeafOrdinal(),
-                terminal.getOLeafSchemaName(), terminal.getOLeafName(), null));
+                dsl.configuration(), runId, terminal.getOLeafOrdinal(), null));
         assertSqlState("55000", () -> Routines.appendTerminalBoundary(
-                dsl.configuration(), runId, 999, terminal.getOLeafSchemaName(),
-                terminal.getOLeafName(),
+                dsl.configuration(), runId, 999,
                 new MigrationKeyRecord(terminal.getOBigintValues(), null, null, null)));
 
         executeAsOwner("REVOKE SELECT ON " + PARTITION_SCHEMA
@@ -137,13 +134,57 @@ class TerminalBoundaryHelpersTest extends PartitionTestBase {
         try {
             assertSqlState("42501", () -> Routines.appendTerminalBoundary(
                     dsl.configuration(), runId, terminal.getOLeafOrdinal(),
-                    terminal.getOLeafSchemaName(), terminal.getOLeafName(),
                     new MigrationKeyRecord(terminal.getOBigintValues(), null, null, null)));
         } finally {
             executeAsOwner("GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON "
                     + PARTITION_SCHEMA + ".test_partitioned_range_high TO "
                     + TEST_USER + ", dml_utils_caller");
         }
+    }
+
+    /**
+     * A NULL run id or ordinal is a caller argument error ({@code 22023}), not a
+     * missing object.
+     */
+    @Test
+    void rejectsNullRunIdOrOrdinal() {
+        assertSqlState("22023", () -> Routines.appendTerminalBoundary(
+                dsl.configuration(), null, 1,
+                new MigrationKeyRecord(new Long[]{1L}, null, null, null)));
+        assertSqlState("22023", () -> Routines.appendTerminalBoundary(
+                dsl.configuration(), 1L, null,
+                new MigrationKeyRecord(new Long[]{1L}, null, null, null)));
+    }
+
+    /**
+     * The function is the single-terminal gate: a repeat call is rejected, and a
+     * cancelled run cannot gain a terminal boundary.
+     */
+    @Test
+    void rejectsARepeatAppendAndACancelledRun() {
+        insertRangeRows(0L, 200L);
+        long runId = populatePartitionWise("terminal-helpers", TABLE, TEMPLATE, ChunkingStrategy.primary_key, 1, null);
+        calculateAll(runId);
+        TerminalLeafForRun terminal = Routines.terminalLeafForRun(
+                dsl.configuration(), runId);
+        MigrationKeyRecord key = new MigrationKeyRecord(terminal.getOBigintValues(),
+                terminal.getOTextValues(), terminal.getOUuidValues(),
+                terminal.getOTimestamptzValues());
+
+        Routines.appendTerminalBoundary(dsl.configuration(), runId,
+                terminal.getOLeafOrdinal(), key);
+        assertSqlState("55000", () -> Routines.appendTerminalBoundary(
+                dsl.configuration(), runId, terminal.getOLeafOrdinal(), key));
+
+        long cancelledRun = populatePartitionWise("terminal-helpers", TABLE, TEMPLATE,
+                ChunkingStrategy.primary_key, 1, null);
+        calculateAll(cancelledRun);
+        TerminalLeafForRun cancelledTerminal = Routines.terminalLeafForRun(
+                dsl.configuration(), cancelledRun);
+        Routines.markMigrationRunCancelled(dsl.configuration(), cancelledRun);
+        assertSqlState("55000", () -> Routines.appendTerminalBoundary(
+                dsl.configuration(), cancelledRun, cancelledTerminal.getOLeafOrdinal(),
+                new MigrationKeyRecord(cancelledTerminal.getOBigintValues(), null, null, null)));
     }
 
 
