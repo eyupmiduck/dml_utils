@@ -78,6 +78,41 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
 
+    -- completed_at is set once, by complete_migration_run. Clearing it would
+    -- re-open a finished run, letting this trigger's paused_at guard be bypassed
+    -- (clear completion, re-pause, restore it) and letting completion/cancellation
+    -- run a second time with fresh timestamps.
+    IF OLD.completed_at IS NOT NULL
+        AND NEW.completed_at IS DISTINCT FROM OLD.completed_at
+    THEN
+        RAISE EXCEPTION 'migration_run.completed_at is immutable once set'
+            USING ERRCODE = '22023';
+    END IF;
+
+    -- archived_at is set once, by archive_migration_run. Clearing it would
+    -- resurrect an archived run as active, so its label could be reused twice and
+    -- the delete helper's terminal filter would no longer match it.
+    IF OLD.archived_at IS NOT NULL
+        AND NEW.archived_at IS DISTINCT FROM OLD.archived_at
+    THEN
+        RAISE EXCEPTION 'migration_run.archived_at is immutable once set'
+            USING ERRCODE = '22023';
+    END IF;
+
+    -- paused_at is mutually exclusive with every terminal stamp. The table check
+    -- constraint (migration_run_paused_at_check) covers completed_at and
+    -- cancelled_at, but not archived_at, so without this a run could be archived
+    -- while paused: the row is terminal (paused_at can never be cleared again) and
+    -- can never be deleted, because the delete helper needs completed_at or
+    -- cancelled_at. An archived run that is not terminal stays allowed: the delete
+    -- helper deliberately tolerates it (see MigrationMaintenanceTest).
+    IF NEW.paused_at IS NOT NULL
+        AND NEW.archived_at IS NOT NULL
+    THEN
+        RAISE EXCEPTION 'migration_run.paused_at must be NULL on an archived run'
+            USING ERRCODE = '22023';
+    END IF;
+
     RETURN NEW;
 END;
 $$;
@@ -91,7 +126,9 @@ COMMENT ON FUNCTION dml_utils_data.reject_migration_run_update IS
         'rejects a change to migration_run.total_chunks once '
         'boundaries_calculated_at is set (the value is written with that '
         'milestone), rejects clearing or moving boundaries_calculated_at once it '
-        'is set, and rejects rewriting a migration_run.cancelled_at that is '
-        'already set. It allows paused_at to be set or cleared on an unfinished, '
-        'non-cancelled run, rejects pausing a terminal run, and rejects rewriting '
-        'a non-NULL paused_at; migration_run.total_chunks_completed stays mutable.';
+        'is set, and rejects rewriting a migration_run.cancelled_at, '
+        'migration_run.completed_at or migration_run.archived_at once set. It '
+        'allows paused_at to be set or cleared on an unfinished, non-cancelled run, '
+        'rejects pausing a terminal run, rejects a paused run that is also archived, '
+        'and rejects rewriting a non-NULL paused_at; '
+        'migration_run.total_chunks_completed stays mutable.';
