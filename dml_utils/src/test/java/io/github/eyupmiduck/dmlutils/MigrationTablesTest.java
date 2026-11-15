@@ -570,6 +570,37 @@ class MigrationTablesTest extends PostgresTestBase {
                 .set(MIGRATION_RUN.ARCHIVED_AT, (OffsetDateTime) null)
                 .where(MIGRATION_RUN.RUN_ID.eq(runId))
                 .execute());
+
+        // Writing the identical value is a trigger-safe no-op, as with
+        // completed_at: the trigger compares with IS DISTINCT FROM.
+        dsl.update(MIGRATION_RUN)
+                .set(MIGRATION_RUN.ARCHIVED_AT, archivedAt)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .execute();
+        assertEquals(archivedAt.toInstant(), dsl.select(MIGRATION_RUN.ARCHIVED_AT)
+                .from(MIGRATION_RUN)
+                .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                .fetchOne(MIGRATION_RUN.ARCHIVED_AT).toInstant());
+    }
+
+    /**
+     * The paused/archived rule is a table constraint, not only an update guard, so
+     * a direct INSERT cannot create a row that is terminal (the pause could never
+     * be cleared) and undeletable (the delete helper needs completed_at or
+     * cancelled_at).
+     */
+    @Test
+    void rejectsInsertingAPausedAndArchivedRun() {
+        OffsetDateTime now = OffsetDateTime.now();
+
+        assertDomainViolation(() -> dsl.insertInto(MIGRATION_RUN)
+                .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE,
+                        MIGRATION_RUN.THREADS, MIGRATION_RUN.DRIVING_TABLE_SCHEMA_NAME,
+                        MIGRATION_RUN.DRIVING_TABLE_NAME, MIGRATION_RUN.STARTED_AT,
+                        MIGRATION_RUN.PAUSED_AT, MIGRATION_RUN.ARCHIVED_AT)
+                .values(uniqueLabel("paused-archived"), "SELECT 1", 1, 1, PUBLIC_SCHEMA,
+                        "migration_tables_source", now, now, now)
+                .execute());
     }
 
     /**

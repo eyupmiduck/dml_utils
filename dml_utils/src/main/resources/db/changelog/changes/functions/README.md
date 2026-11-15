@@ -2375,8 +2375,10 @@ filepath) when its boundaries are computed, and to `total_chunks` once
 `boundaries_calculated_at` is set (the two are written together);
 `total_chunks_completed` and `total_rows_affected` stay mutable for the chunk
 workers. It allows `paused_at` to be set or cleared on an unfinished,
-non-cancelled run, rejects pausing a terminal run and rejects rewriting a
-non-NULL `paused_at`, and rejects rewriting a `cancelled_at` that is already set.
+non-cancelled run, rejects pausing a terminal run, rejects a paused run that is
+also archived, and rejects rewriting a non-NULL `paused_at`. `cancelled_at`,
+`completed_at` and `archived_at` are set once: rewriting or clearing any of them
+is rejected.
 
 ### `dml_utils_data.reject_migration_boundary_update()`
 

@@ -100,12 +100,13 @@ BEGIN
     END IF;
 
     -- paused_at is mutually exclusive with every terminal stamp. The table check
-    -- constraint (migration_run_paused_at_check) covers completed_at and
-    -- cancelled_at, but not archived_at, so without this a run could be archived
-    -- while paused: the row is terminal (paused_at can never be cleared again) and
-    -- can never be deleted, because the delete helper needs completed_at or
-    -- cancelled_at. An archived run that is not terminal stays allowed: the delete
-    -- helper deliberately tolerates it (see MigrationMaintenanceTest).
+    -- constraint (migration_run_paused_at_check) covers completed_at,
+    -- cancelled_at and archived_at; this is the backstop that rejects the
+    -- archived case with 22023 instead of the constraint's 23514, consistent with
+    -- the other pause rules. It matters because such a row is terminal (paused_at
+    -- can never be cleared again) and can never be deleted: the delete helper needs
+    -- completed_at or cancelled_at. An archived run that is not terminal stays
+    -- allowed; the delete helper deliberately tolerates it.
     IF NEW.paused_at IS NOT NULL
         AND NEW.archived_at IS NOT NULL
     THEN
