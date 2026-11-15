@@ -1657,7 +1657,8 @@ RETURNS void
 replaced (different OID), detached or rebound (different partition bound), not an
 ordinary table, or (for `blocks`) a rewritten heap (different
 `pg_relation_filepath`). Holds `ACCESS SHARE` on the leaf (hence `VOLATILE`) so
-the verified identity stays stable for the caller's transaction. Used before calculating a leaf and before finalizing, so
+the verified identity stays stable for the caller's transaction. Used before calculating a leaf and before finalizing,
+so
 a changed partition tree never mixes stale ranges with new ones.
 
 ### `dml_utils_lib.leaf_terminal_boundary_id(i_run_id, i_leaf_ordinal)`
@@ -2147,8 +2148,8 @@ RETURNS bigint
 boundary, tagged with the manifest leaf at `i_leaf_ordinal`, and returns its
 boundary number (the run's chunk count). Every input is taken from the manifest:
 the leaf schema/name (so the caller's SELECT privilege is checked on the leaf that
-is actually written) and the terminal high-water key
-(`migration_run_leaf.terminal_boundary_id`, which the runner uses as the end of
+is actually written) and the terminal high-water key (`migration_run_leaf.terminal_boundary_id`, which the runner uses
+as the end of
 the leaf's last chunk). It serializes on the run row, re-checks the stored leaf
 identity, rejects a run with uncalculated leaves, records
 `boundaries_calculated_at`/`total_chunks` itself (a repeat call is `55000`), and

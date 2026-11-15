@@ -72,8 +72,8 @@ BEGIN
     INTO l_leaf_schema_name,
         l_leaf_name
     FROM dml_utils_lib.manifest_leaf_identity(
-            i_run_id => i_run_id,
-            i_leaf_ordinal => i_leaf_ordinal) AS identity;
+                 i_run_id => i_run_id,
+                 i_leaf_ordinal => i_leaf_ordinal) AS identity;
 
     -- The terminal scan runs in the definer context, so the effective caller must
     -- still be allowed to read the leaf, as for leaf calculation.
