@@ -88,7 +88,8 @@ BEGIN
         LIMIT 1;
         IF FOUND THEN
             BEGIN
-                SELECT outcome.has_error, outcome.sqlstate, outcome.error_message
+                SELECT outcome.completed, outcome.has_error, outcome.sqlstate,
+                       outcome.error_message
                 INTO l_record_outcome
                 FROM public.pg_background_run(pg_catalog.format(
                         'SELECT dml_utils_lib.record_migration_leaf_error(%L, %L, %L, %L)',
@@ -98,7 +99,9 @@ BEGIN
                     ) AS outcome;
 
                 -- Do not raise: the original worker SQLSTATE is re-raised below.
-                IF l_record_outcome.has_error THEN
+                IF NOT COALESCE(l_record_outcome.completed, false)
+                    OR COALESCE(l_record_outcome.has_error, false)
+                THEN
                     RAISE WARNING
                         'could not record the failure of leaf % of run %: % (%)',
                         l_leaf_ordinal, i_run_id,
@@ -107,8 +110,8 @@ BEGIN
             EXCEPTION
                 WHEN OTHERS THEN
                     RAISE WARNING
-                        'could not launch the failure-recording worker for leaf % of run %: %',
-                        l_leaf_ordinal, i_run_id, SQLERRM;
+                        'could not launch the failure-recording worker for leaf % of run %: % (%)',
+                        l_leaf_ordinal, i_run_id, SQLERRM, SQLSTATE;
             END;
         END IF;
     END IF;

@@ -18,7 +18,8 @@ BEGIN
     -- recording failure must not mask the original worker error, but it must not
     -- be silent either. The worker outcome is inspected for exactly that reason.
     BEGIN
-        SELECT outcome.has_error, outcome.sqlstate, outcome.error_message
+        SELECT outcome.completed, outcome.has_error, outcome.sqlstate,
+               outcome.error_message
         INTO l_outcome
         FROM public.pg_background_run(pg_catalog.format(
                 'SELECT dml_utils_lib.record_migration_error(%L, %L, %L, %L)',
@@ -28,7 +29,11 @@ BEGIN
                 COALESCE(i_error_message, 'chunk failed without an error message'))
             ) AS outcome;
 
-        IF l_outcome.has_error THEN
+        -- A worker that never ran its payload reports completed = false (and
+        -- has_error = false); that is still a lost record.
+        IF NOT COALESCE(l_outcome.completed, false)
+            OR COALESCE(l_outcome.has_error, false)
+        THEN
             RAISE WARNING
                 'recording the failure of run % boundary % failed: % (%)',
                 i_run_id, i_boundary_no, l_outcome.error_message, l_outcome.sqlstate;

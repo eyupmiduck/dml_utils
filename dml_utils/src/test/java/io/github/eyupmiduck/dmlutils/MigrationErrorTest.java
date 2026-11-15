@@ -71,6 +71,8 @@ class MigrationErrorTest extends PostgresTestBase {
                 dsl.configuration(), null, 0L, "22012", "boom"));
         assertDomainViolation(() -> Routines.recordMigrationWorkerFailure(
                 dsl.configuration(), 1L, null, "22012", "boom"));
+        assertDomainViolation(() -> Routines.recordMigrationWorkerFailure(
+                dsl.configuration(), 1L, -1L, "22012", "boom"));
     }
 
     /**
