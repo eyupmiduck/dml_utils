@@ -57,13 +57,12 @@ BEGIN
     -- last non-empty leaf: the runner ends the run's final chunk at this boundary,
     -- so finalizing with an earlier leaf would silently leave the later leaves
     -- unprocessed while the run looked complete.
-    IF i_leaf_ordinal IS DISTINCT FROM (
-            SELECT leaf.leaf_ordinal
-            FROM dml_utils_data.migration_run_leaf AS leaf
-            WHERE leaf.run_id = i_run_id
-              AND leaf.boundary_count > 0
-            ORDER BY leaf.leaf_ordinal DESC
-            LIMIT 1)
+    IF i_leaf_ordinal IS DISTINCT FROM (SELECT leaf.leaf_ordinal
+                                        FROM dml_utils_data.migration_run_leaf AS leaf
+                                        WHERE leaf.run_id = i_run_id
+                                          AND leaf.boundary_count > 0
+                                        ORDER BY leaf.leaf_ordinal DESC
+                                        LIMIT 1)
     THEN
         RAISE EXCEPTION 'leaf % is not the terminal leaf of run %',
             i_leaf_ordinal, i_run_id
