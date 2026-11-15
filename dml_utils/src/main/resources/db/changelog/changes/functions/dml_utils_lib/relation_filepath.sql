@@ -31,7 +31,9 @@ BEGIN
     FROM pg_catalog.pg_class AS c
     WHERE c.oid = l_relation;
 
-    IF l_relkind <> 'r' THEN
+    -- IS DISTINCT FROM: a concurrent drop between the two reads leaves relkind
+    -- NULL, and `NULL <> 'r'` would skip the guard.
+    IF l_relkind IS DISTINCT FROM 'r' THEN
         RAISE EXCEPTION 'relation %.% has no physical heap (relkind %)',
             i_schema_name, i_table_name, l_relkind
             USING ERRCODE = '42809';
@@ -43,6 +45,14 @@ BEGIN
     -- move) and is the fingerprint a block run records and re-checks on resume.
     l_filepath := pg_catalog.pg_relation_filepath(l_relation);
 
+    -- A drop between the relkind read and this call returns NULL; callers treat
+    -- NULL as "no fingerprint recorded", so never hand that back.
+    IF l_filepath IS NULL THEN
+        RAISE EXCEPTION 'relation %.% changed while reading its filepath',
+            i_schema_name, i_table_name
+            USING ERRCODE = '55000';
+    END IF;
+
     RETURN l_filepath;
 END;
 $$;
@@ -53,4 +63,5 @@ COMMENT ON FUNCTION dml_utils_lib.relation_filepath IS
         'when it does not exist and wrong_object_type (42809) when the relation '
         'has no heap of its own (partitioned table, view, matview, foreign table). '
         'Used as the physical fingerprint of a block-chunked run: the filepath '
-        'changes when the heap is rewritten.';
+        'changes when the heap is rewritten. Fails closed (55000) if the relation is '
+        'dropped while it is being read.';

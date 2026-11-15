@@ -801,7 +801,8 @@ RETURNS void
 ```
 
 `STABLE`, `SECURITY INVOKER`. Raises `invalid_schema_name` (`3F000`) when the
-schema does not exist.
+schema does not exist. The name is compared as an identifier, so a name longer
+than 63 bytes resolves to the truncated name `CREATE SCHEMA` stored.
 
 ### `dml_utils_lib.assert_table_exists(i_schema_name, i_table_name)`
 
