@@ -157,6 +157,33 @@ class BuildChunkBoundaryLiteralsTest extends PostgresTestBase {
     }
 
     /**
+     * The collation array must be aligned with the other arrays, and a collation
+     * that is not a plain or schema-qualified quoted identifier is rejected before
+     * it can reach the COLLATE clause.
+     */
+    @Test
+    void rejectsAMisalignedOrUnsafeCollation() {
+        assertSqlState("22023", () -> literals(new String[]{"t.a", "t.b"},
+                new String[]{"text", "text"}, new String[]{null},
+                new String[]{"a", "x"}, new String[]{"b", "y"}));
+        assertSqlState("22023", () -> literals(new String[]{"t.a"},
+                new String[]{"text"},
+                new String[]{"x\" < '' OR pg_sleep(10)::text < '' OR ''1"},
+                new String[]{"a"}, new String[]{"b"}));
+    }
+
+    /**
+     * A bigint literal outside the type's range is a 22023, like any other
+     * invalid boundary value.
+     */
+    @Test
+    void rejectsAnOutOfRangeBigint() {
+        assertSqlState("22023", () -> literals(new String[]{"t.id"},
+                new String[]{"bigint"}, new String[]{null},
+                new String[]{"99999999999999999999"}, new String[]{"5"}));
+    }
+
+    /**
      * Non-1-D and non-1-based arrays are rejected through raw SQL.
      */
     @Test
