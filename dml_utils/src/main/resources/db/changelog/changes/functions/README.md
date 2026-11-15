@@ -307,8 +307,8 @@ i_boundary_key_index        name DEFAULT NULL
 i_partition_wise            dml_utils_data.non_null_boolean DEFAULT FALSE
 i_leaf_ordinal              integer DEFAULT NULL
 RETURNS TABLE
-    (o_plan_kind text, o_sql_text text, o_plan json,
-     o_leaf_schema_name text, o_leaf_name text, o_leaf_ordinal integer)
+(o_plan_kind text, o_sql_text text, o_plan json,
+    o_leaf_schema_name text, o_leaf_name text, o_leaf_ordinal integer)
 ```
 
 `VOLATILE`, `SECURITY INVOKER`. The read-only companion to
@@ -774,8 +774,8 @@ RETURNS TABLE
 ```sql
 i_run_id bigint
 RETURNS TABLE
-    (boundary_no, boundary_id, leaf_ordinal, rows_affected,
-     started_at, completed_at, cancelled_at, duration_ms)
+(boundary_no, boundary_id, leaf_ordinal, rows_affected,
+    started_at, completed_at, cancelled_at, duration_ms)
 ```
 
 `STABLE`, `SECURITY INVOKER`. Returns the run's chunk boundaries in order.
