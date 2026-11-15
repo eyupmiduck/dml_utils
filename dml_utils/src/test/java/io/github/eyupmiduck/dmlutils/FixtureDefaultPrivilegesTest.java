@@ -17,6 +17,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 class FixtureDefaultPrivilegesTest extends PostgresTestBase {
 
+    private static final String PROBE = "dml_utils_fixtures.default_acl_probe";
+
     /**
      * A table created by {@code dml_utils_owner} after the fixture changelog is
      * granted to {@code dml_utils_test} by the default ACL.
@@ -25,21 +27,23 @@ class FixtureDefaultPrivilegesTest extends PostgresTestBase {
     void tablesCreatedLaterAreUsableByTheTestRole() throws Exception {
         try (Connection owner = openOwnerConnection()) {
             DSLContext ownerDsl = DSL.using(owner, SQLDialect.POSTGRES);
-            ownerDsl.execute("CREATE TABLE dml_utils_fixtures.default_acl_probe (id integer)");
+            ownerDsl.execute("CREATE TABLE " + PROBE + " (id integer)");
             try {
-                assertEquals(Boolean.TRUE, dsl.fetchOne(
-                                "SELECT pg_catalog.has_table_privilege(?,"
-                                        + " 'dml_utils_fixtures.default_acl_probe',"
-                                        + " 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE')",
-                                TEST_USER)
-                        .get(0, Boolean.class),
-                        "the test role should inherit the fixture default privileges");
+                for (String privilege : new String[]{
+                        "SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE"}) {
+                    assertEquals(Boolean.TRUE, dsl.fetchOne(
+                                    "SELECT pg_catalog.has_table_privilege(?::text::regrole, ?, ?)",
+                                    TEST_USER, PROBE, privilege)
+                            .get(0, Boolean.class),
+                            "the test role should hold " + privilege);
+                }
 
-                dsl.execute("INSERT INTO dml_utils_fixtures.default_acl_probe (id) VALUES (1)");
-                assertEquals(1, dsl.fetchCount(DSL.table("dml_utils_fixtures.default_acl_probe")),
+                dsl.execute("INSERT INTO " + PROBE + " (id) VALUES (1)");
+                assertEquals(1, dsl.fetchCount(DSL.table(DSL.name("dml_utils_fixtures",
+                                "default_acl_probe"))),
                         "the test role should be able to use the table");
             } finally {
-                ownerDsl.execute("DROP TABLE IF EXISTS dml_utils_fixtures.default_acl_probe");
+                ownerDsl.execute("DROP TABLE IF EXISTS " + PROBE);
             }
         }
     }

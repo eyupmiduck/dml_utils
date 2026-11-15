@@ -13,14 +13,6 @@
          re-runnable without dropping the trigger first. -->
     <changeSet id="trigger-dml_utils_data.migration_run_set_updated_at" author="lee.horner"
                dbms="postgresql" runOnChange="true">
-        <!-- The whole file uses CREATE OR REPLACE TRIGGER, which needs PostgreSQL
-             14. Fail before any earlier changeset has committed rather than with a
-             bare syntax error. This is a precondition check, not schema DDL. -->
-        <preConditions onFail="HALT">
-            <sqlCheck expectedResult="1">
-                SELECT (current_setting('server_version_num')::integer >= 140000)::integer
-            </sqlCheck>
-        </preConditions>
         <sqlFile path="triggers/dml_utils_data/migration_run_set_updated_at.sql"
                  relativeToChangelogFile="true"/>
         <rollback>

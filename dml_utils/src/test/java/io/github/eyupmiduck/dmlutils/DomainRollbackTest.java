@@ -23,9 +23,11 @@ class DomainRollbackTest {
             "db/changelog/changes/rollback/004-create-domains-rollback.sql";
 
     private static final Pattern CREATED = Pattern.compile(
-            "^CREATE (TYPE|DOMAIN) (dml_utils_data\\.[a-z_]+)", Pattern.MULTILINE);
+            "^\\s*CREATE\\s+(TYPE|DOMAIN)\\s+(dml_utils_data\\.[a-z0-9_]+)",
+            Pattern.MULTILINE | Pattern.CASE_INSENSITIVE);
     private static final Pattern DROPPED = Pattern.compile(
-            "^DROP (TYPE|DOMAIN) IF EXISTS (dml_utils_data\\.[a-z_]+)", Pattern.MULTILINE);
+            "^\\s*DROP\\s+(TYPE|DOMAIN)\\s+IF\\s+EXISTS\\s+(dml_utils_data\\.[a-z0-9_]+)",
+            Pattern.MULTILINE | Pattern.CASE_INSENSITIVE);
 
     /**
      * Every {@code CREATE TYPE}/{@code CREATE DOMAIN} in the forward changeset has
@@ -53,7 +55,8 @@ class DomainRollbackTest {
         Set<String> found = new LinkedHashSet<>();
         Matcher matcher = pattern.matcher(text);
         while (matcher.find()) {
-            found.add(matcher.group(1) + " " + matcher.group(2));
+            found.add(matcher.group(1).toUpperCase(java.util.Locale.ROOT) + " "
+                    + matcher.group(2).toLowerCase(java.util.Locale.ROOT));
         }
         return found;
     }
