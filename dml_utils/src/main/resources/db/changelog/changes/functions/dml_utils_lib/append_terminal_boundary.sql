@@ -1,6 +1,6 @@
 CREATE OR REPLACE FUNCTION dml_utils_lib.append_terminal_boundary(
-    i_run_id bigint,
-    i_leaf_ordinal integer
+    i_run_id dml_utils_data.non_null_bigint,
+    i_leaf_ordinal dml_utils_data.positive_integer
 )
     RETURNS bigint
     LANGUAGE plpgsql
@@ -15,17 +15,6 @@ DECLARE
     l_terminal_key     dml_utils_data.migration_key;
     l_boundary_no      bigint;
 BEGIN
-    -- A NULL run id or ordinal is a caller bug, not a missing object; name it as
-    -- such.
-    IF i_run_id IS NULL THEN
-        RAISE EXCEPTION 'i_run_id must not be NULL'
-            USING ERRCODE = '22023';
-    END IF;
-    IF i_leaf_ordinal IS NULL OR i_leaf_ordinal < 1 THEN
-        RAISE EXCEPTION 'leaf ordinal must be at least 1'
-            USING ERRCODE = '22023';
-    END IF;
-
     -- Serialize on the run row. max(boundary_no)+1 is only safe while one
     -- appender holds the lock, and the same lock makes the single-terminal check
     -- and the milestone write atomic against finalization and leaf calculation.
@@ -146,8 +135,8 @@ END;
 $$;
 
 COMMENT ON FUNCTION dml_utils_lib.append_terminal_boundary(
-    bigint,
-    integer
+    dml_utils_data.non_null_bigint,
+    dml_utils_data.positive_integer
     ) IS
     'Appends the single terminal boundary for a partition-wise run after the '
         'last committed boundary and returns its boundary number (the run''s '
@@ -156,5 +145,5 @@ COMMENT ON FUNCTION dml_utils_lib.append_terminal_boundary(
         'migration_run_leaf. Serializes on the run row, records '
         'boundaries_calculated_at/total_chunks itself, and rejects a repeat '
         'append, a cancelled run, a run with uncalculated leaves, a non-terminal '
-        'ordinal and a leaf without a snapshot (55000), or a NULL run '
-        'id/ordinal (22023).';
+        'ordinal and a leaf without a snapshot (55000). A NULL run id or a NULL '
+        'or non-positive ordinal is rejected by the parameter domains.';
