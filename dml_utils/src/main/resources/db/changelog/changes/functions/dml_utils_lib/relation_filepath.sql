@@ -31,9 +31,15 @@ BEGIN
     FROM pg_catalog.pg_class AS c
     WHERE c.oid = l_relation;
 
-    -- IS DISTINCT FROM: a concurrent drop between the two reads leaves relkind
-    -- NULL, and `NULL <> 'r'` would skip the guard.
-    IF l_relkind IS DISTINCT FROM 'r' THEN
+    -- The function is STABLE, so every statement shares the caller's snapshot and
+    -- this cannot actually observe a drop; it is a self-check that the resolved
+    -- relation still has a row and the expected kind. Keep 42P01 for "vanished"
+    -- separate from 42809 for "wrong kind", as assert_table_exists does.
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'relation %.% does not exist', i_schema_name, i_table_name
+            USING ERRCODE = '42P01';
+    END IF;
+    IF l_relkind <> 'r' THEN
         RAISE EXCEPTION 'relation %.% has no physical heap (relkind %)',
             i_schema_name, i_table_name, l_relkind
             USING ERRCODE = '42809';
@@ -45,8 +51,8 @@ BEGIN
     -- move) and is the fingerprint a block run records and re-checks on resume.
     l_filepath := pg_catalog.pg_relation_filepath(l_relation);
 
-    -- A drop between the relkind read and this call returns NULL; callers treat
-    -- NULL as "no fingerprint recorded", so never hand that back.
+    -- Defensive self-check: callers treat a NULL as "no fingerprint recorded", so
+    -- never hand one back even if the catalog and the filepath lookup disagree.
     IF l_filepath IS NULL THEN
         RAISE EXCEPTION 'relation %.% changed while reading its filepath',
             i_schema_name, i_table_name

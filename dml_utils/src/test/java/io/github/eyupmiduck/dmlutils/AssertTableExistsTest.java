@@ -23,6 +23,15 @@ class AssertTableExistsTest extends PostgresTestBase {
     }
 
     /**
+     * A partitioned parent is accepted: partition-wise chunking depends on it.
+     */
+    @Test
+    void acceptsAPartitionedTable() {
+        Routines.assertTableExists(dsl.configuration(), "dml_utils_fixtures",
+                "test_partitioned");
+    }
+
+    /**
      * A view is reported as the wrong object type, not as a missing table.
      */
     @Test

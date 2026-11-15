@@ -13,16 +13,17 @@ DECLARE
     l_key_kinds        text[];
     l_key              record;
 BEGIN
-    -- Read the expected arity first (as primary_key_columns does), so a
-    -- concurrent primary-key drop cannot leave a NULL or short kinds array.
+    -- Read the expected arity first (as primary_key_columns does). This is STABLE,
+    -- so both reads share the caller's snapshot: the guard is a self-check that
+    -- the callee returned one kind per key column, not a concurrency detector.
     SELECT i.indnkeyatts
     INTO l_key_column_count
     FROM pg_catalog.pg_index AS i
              JOIN pg_catalog.pg_class AS c ON c.oid = i.indrelid
              JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
     WHERE i.indisprimary
-      AND n.nspname = i_schema_name
-      AND c.relname = i_table_name;
+      AND n.nspname = i_schema_name::name
+      AND c.relname = i_table_name::name;
 
     -- primary_key_attributes returns each column's collapsed kind in key order;
     -- a NULL kind means an unsupported type.
@@ -45,7 +46,7 @@ BEGIN
     THEN
         RAISE EXCEPTION 'primary key of table %.% changed while reading its kinds',
             i_schema_name, i_table_name
-            USING ERRCODE = '22023';
+            USING ERRCODE = '55000';
     END IF;
 
     RETURN l_key_kinds;

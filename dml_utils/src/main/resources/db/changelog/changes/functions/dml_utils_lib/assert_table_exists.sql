@@ -19,8 +19,8 @@ BEGIN
     INTO l_relkind
     FROM pg_catalog.pg_class AS c
              JOIN pg_catalog.pg_namespace AS n ON n.oid = c.relnamespace
-    WHERE n.nspname = i_schema_name
-      AND c.relname = i_table_name;
+    WHERE n.nspname = i_schema_name::name
+      AND c.relname = i_table_name::name;
 
     IF NOT FOUND THEN
         RAISE EXCEPTION 'table %.% does not exist', i_schema_name, i_table_name

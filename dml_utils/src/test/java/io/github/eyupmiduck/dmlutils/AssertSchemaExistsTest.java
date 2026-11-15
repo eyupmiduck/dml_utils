@@ -33,7 +33,9 @@ class AssertSchemaExistsTest extends PostgresTestBase {
         String database = dsl.fetchOne("SELECT current_database()").get(0, String.class);
         try (Connection owner = openAdminConnection(database);
              Statement statement = owner.createStatement()) {
-            statement.execute("CREATE SCHEMA " + stored);
+            // Let PostgreSQL truncate the identifier, as it does for any DDL,
+            // so the assertion depends on the routine truncating the same way.
+            statement.execute("CREATE SCHEMA \"" + longName + "\"");
             try {
                 Routines.assertSchemaExists(dsl.configuration(), longName);
             } finally {
