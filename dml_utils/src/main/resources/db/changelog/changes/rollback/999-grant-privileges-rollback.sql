@@ -15,14 +15,17 @@ GRANT USAGE ON TYPE dml_utils_data.migration_key TO public;
 REVOKE USAGE ON TYPE dml_utils_data.migration_key FROM dml_utils_caller;
 GRANT USAGE ON TYPE dml_utils_data.chunking_strategy TO public;
 REVOKE USAGE ON TYPE dml_utils_data.chunking_strategy FROM dml_utils_caller;
-ALTER DEFAULT PRIVILEGES FOR ROLE dml_utils_owner IN SCHEMA dml_utils
-    GRANT EXECUTE ON FUNCTIONS TO public;
-ALTER DEFAULT PRIVILEGES FOR ROLE dml_utils_owner IN SCHEMA dml_utils_lib
-    GRANT EXECUTE ON FUNCTIONS TO public;
-ALTER DEFAULT PRIVILEGES FOR ROLE dml_utils_owner IN SCHEMA dml_utils_data
-    GRANT EXECUTE ON FUNCTIONS TO public;
-ALTER DEFAULT PRIVILEGES FOR ROLE dml_utils_owner IN SCHEMA dml_utils_data
-    GRANT USAGE ON TYPES TO public;
+-- The four migration table row types are revoked from PUBLIC and granted to the
+-- caller by the forward changeset; restore the default PUBLIC usage and take the
+-- caller's grant back.
+GRANT USAGE ON TYPE dml_utils_data.migration_run TO public;
+REVOKE USAGE ON TYPE dml_utils_data.migration_run FROM dml_utils_caller;
+GRANT USAGE ON TYPE dml_utils_data.migration_boundary TO public;
+REVOKE USAGE ON TYPE dml_utils_data.migration_boundary FROM dml_utils_caller;
+GRANT USAGE ON TYPE dml_utils_data.migration_error TO public;
+REVOKE USAGE ON TYPE dml_utils_data.migration_error FROM dml_utils_caller;
+GRANT USAGE ON TYPE dml_utils_data.migration_run_leaf TO public;
+REVOKE USAGE ON TYPE dml_utils_data.migration_run_leaf FROM dml_utils_caller;
 REVOKE SELECT, INSERT, UPDATE, DELETE ON dml_utils_data.migration_run FROM dml_utils_caller;
 REVOKE SELECT, INSERT, UPDATE, DELETE ON dml_utils_data.migration_boundary FROM dml_utils_caller;
 REVOKE SELECT, INSERT, UPDATE, DELETE ON dml_utils_data.migration_error FROM dml_utils_caller;
