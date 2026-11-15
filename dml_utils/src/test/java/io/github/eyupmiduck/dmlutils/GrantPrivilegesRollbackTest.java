@@ -51,7 +51,18 @@ class GrantPrivilegesRollbackTest extends PostgresTestBase {
             try {
                 ownerDsl.transaction(config -> {
                     DSLContext tx = DSL.using(config);
-                    tx.execute(TestResources.read(ROLLBACK));
+                    // The rollback is a long GRANT/REVOKE script. Strip line
+                    // comments first (a comment may contain a semicolon), then send
+                    // one statement at a time, the same way MigrationTablesTest
+                    // executes rollback scripts: no dollar-quoted body or literal
+                    // semicolon occurs in this file.
+                    String script = TestResources.read(ROLLBACK)
+                            .replaceAll("(?m)--.*$", "");
+                    for (String statement : script.split(";")) {
+                        if (!statement.isBlank()) {
+                            tx.execute(statement);
+                        }
+                    }
                     assertEquals(0, publicDefaultAclGrants(tx),
                             "the 999 rollback must not grant default privileges to PUBLIC");
                     throw rollback;
