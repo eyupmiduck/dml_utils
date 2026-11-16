@@ -2448,10 +2448,12 @@ and rejects any change to the snapshotted leaf identity (`run_id`, `leaf_ordinal
 `leaf_schema_name`, `leaf_name`, `leaf_oid`, `leaf_bound`, `relation_filepath`)
 on update. It rejects adding a leaf to a finalized, completed, cancelled or
 archived run, and freezes `terminal_boundary_id` once set; the calculation state,
-count, timestamp and error fields stay mutable. The run is read `FOR SHARE`, so a
-concurrent finalize, cancel or completion (which takes `FOR UPDATE` or
-`FOR NO KEY UPDATE` on the same row) is serialized with the insert instead of
-letting a leaf slip into a closed run.
+count, timestamp and error fields stay mutable. For an insert the run is read
+`FOR SHARE`, so a concurrent finalize, cancel or completion (which takes
+`FOR UPDATE` or `FOR NO KEY UPDATE` on the same row) is serialized with it instead
+of letting a leaf slip into a closed run; an update uses an unlocked read, because
+it cannot add a leaf and must not hold a share lock on the run for its whole
+transaction.
 
 ### `dml_utils_data.check_migration_boundary_leaf()`
 

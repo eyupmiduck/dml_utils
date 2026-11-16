@@ -59,6 +59,23 @@ class MigrationBoundaryStartedAtGuardTest extends PostgresTestBase {
     }
 
     /**
+     * A boundary that has not completed keeps its {@code started_at} writable, so
+     * the guard cannot block a chunk that is still in progress.
+     */
+    @Test
+    void allowsStartedAtBeforeCompletion() {
+        long runId = insertRun("boundary-started-at-pending-" + UUID.randomUUID(),
+                FIXTURE_SCHEMA, FIXTURE_TABLE);
+        insertBoundary(runId);
+
+        dsl.execute("UPDATE dml_utils_data.migration_boundary"
+                + " SET started_at = pg_catalog.clock_timestamp()"
+                + " WHERE run_id = ? AND boundary_no = 0", runId);
+        dsl.execute("UPDATE dml_utils_data.migration_boundary SET started_at = NULL"
+                + " WHERE run_id = ? AND boundary_no = 0", runId);
+    }
+
+    /**
      * Inserts one pending boundary directly, so the trigger sees it without the
      * boundary routines.
      *

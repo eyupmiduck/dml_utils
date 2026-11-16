@@ -202,6 +202,32 @@ class MigrationRunLeafGuardTest extends PostgresTestBase {
     }
 
     /**
+     * The closed-run rule is insert-only: recording a leaf failure after the run
+     * was cancelled must still work, or the coordinator could not report why a
+     * worker stopped.
+     */
+    @Test
+    void allowsAFailedLeafUpdateAfterTheRunIsCancelled() {
+        long runId = insertRun(true, "primary_key");
+        insertLeaf(runId, 1, null);
+        closeRun(runId, "cancelled_at");
+
+        dsl.execute("""
+                UPDATE dml_utils_data.migration_run_leaf
+                SET state = 'failed',
+                    error_sqlstate = '57014',
+                    error_message = 'cancelled while processing'
+                WHERE run_id = ?
+                  AND leaf_ordinal = 1
+                """, runId);
+
+        assertEquals("failed", dsl.fetchOne(
+                        "SELECT state FROM dml_utils_data.migration_run_leaf"
+                                + " WHERE run_id = ? AND leaf_ordinal = 1", runId)
+                .get(0, String.class));
+    }
+
+    /**
      * The leaf insert holds a share lock on the run row, so a concurrent
      * finalize/cancel (an update of the same row) waits for it instead of
      * slipping past the closed-run guard. The holder's transaction is rolled
