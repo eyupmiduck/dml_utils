@@ -7,8 +7,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.Statement;
 import java.time.OffsetDateTime;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
@@ -186,7 +189,9 @@ class ResolveMigrationRunTest extends PostgresTestBase {
     }
 
     /**
-     * A completed run is reported as already complete.
+     * A completed run is reported as already complete, and only the run id and
+     * the flag are set: the remaining outputs are NULL, as documented, because
+     * the caller stops.
      */
     @Test
     void reportsAnAlreadyCompletedRun() {
@@ -201,6 +206,19 @@ class ResolveMigrationRunTest extends PostgresTestBase {
 
         ResolveMigrationRun again = resolve(label, TEMPLATE, "t", 2, 1);
         assertTrue(again.getOAlreadyCompleted(), "a completed run should be reported complete");
+        assertEquals(first.getORunId(), again.getORunId(), "the completed run id is returned");
+        assertNull(again.getOEffectiveSqlText(), "the completed path leaves sql_text NULL");
+        assertNull(again.getOEffectiveSchemaName(), "the completed path leaves the schema NULL");
+        assertNull(again.getOEffectiveTableName(), "the completed path leaves the table NULL");
+        assertNull(again.getOEffectiveAlias(), "the completed path leaves the alias NULL");
+        assertNull(again.getOEffectiveThreads(), "the completed path leaves threads NULL");
+        assertNull(again.getOEffectiveSleepMs(), "the completed path leaves sleep NULL");
+        assertNull(again.getOEffectiveMaxRetries(), "the completed path leaves retries NULL");
+        assertNull(again.getOEffectiveRetryBackoffMs(), "the completed path leaves backoff NULL");
+        assertNull(again.getOChunkBy(), "the completed path leaves chunk_by NULL");
+        assertNull(again.getOPartitionWise(), "the completed path leaves partition_wise NULL");
+        assertNull(again.getOKeyColumns(), "the completed path leaves the key columns NULL");
+        assertNull(again.getOKeyKinds(), "the completed path leaves the key kinds NULL");
     }
 
     /**
@@ -389,6 +407,46 @@ class ResolveMigrationRunTest extends PostgresTestBase {
                 dsl.configuration(), TEMPLATE, schema(), name(),
                 uniqueLabel("resolve-primary-index"), 2, 1, "t",
                 ChunkingStrategy.primary_key, 0, "test_bigint_pkey", false, 3, 1000));
+    }
+
+    /**
+     * Two sessions resolving the same new label settle on one run: the loser
+     * either finds the winner's committed run or retries the lookup after losing
+     * the label-index race, and never surfaces the raw 23505.
+     */
+    @Test
+    void concurrentResolvesSettleOnOneRun() throws Exception {
+        seedBigint(1, 2, 3, 4);
+        String label = uniqueLabel("resolve-race");
+
+        try (Connection winner = openTestConnection()) {
+            winner.setAutoCommit(false);
+            long winnerRunId;
+            try (Statement insert = winner.createStatement();
+                 ResultSet result = insert.executeQuery(
+                         "SELECT dml_utils_lib.populate_migration_boundaries("
+                                 + "'" + schema() + "', '" + name() + "', '" + label + "', '"
+                                 + TEMPLATE.replace("'", "''") + "', 2, 1,"
+                                 + " 'primary_key'::dml_utils_data.chunking_strategy,"
+                                 + " 't', 0, NULL, false, 3, 1000)")) {
+                assertTrue(result.next(), "the winner creates the run");
+                winnerRunId = result.getLong(1);
+            }
+
+            CompletableFuture<Long> loser = CompletableFuture.supplyAsync(
+                    () -> resolve(label, TEMPLATE, "t", 2, 1).getORunId());
+
+            // Give the loser time to reach the blocked create; if it starts after
+            // the commit it simply resumes the committed run instead.
+            Thread.sleep(300);
+            winner.commit();
+
+            assertEquals(winnerRunId, loser.get(30, TimeUnit.SECONDS),
+                    "both sessions resolve to the winner's run");
+        }
+
+        assertEquals(1, dsl.fetchCount(MIGRATION_RUN, MIGRATION_RUN.LABEL.eq(label)),
+                "exactly one run exists for the label");
     }
 
     /**
