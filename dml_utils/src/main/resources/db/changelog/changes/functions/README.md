@@ -1139,7 +1139,8 @@ column for each, in key order. It is the two-key form of
 `migration_key_values`, so the coordinator extracts both bounds with a single
 call per chunk instead of two. It is `STABLE` for the same
 `timestamptz::text` session-time-zone reason. Rejects malformed kinds or an
-unsupported kind with `22023`.
+unsupported kind with `22023`, and any present value array (in either key) that
+is not one-dimensional, 1-based and the same arity.
 
 ###
 

@@ -109,6 +109,7 @@ COMMENT ON FUNCTION dml_utils_lib.assert_partitioned_ordered_key_leaves(
     'Validates the ordered-key child index of every leaf already snapshotted in a '
         'run''s manifest, walking multi-level index inheritance once. Raises 22023 '
         'when the supplied index is not the run''s stored ordered_key_index, 42704 '
-        'for a missing parent index, and 0A000/55000 for an unusable parent or '
-        'child index (the parent is validated before the leaf walk, including for '
-        'an empty manifest), with 0A000 for a leaf without a matching child index.';
+        'for a missing parent index, and 0A000/22023/55000 from the parent/child '
+        'index validator (non-btree, non-unique, unsupported key type, invalid or '
+        'ON ONLY index); the parent is validated before the leaf walk, including '
+        'for an empty manifest. A leaf without a matching child index is 0A000.';

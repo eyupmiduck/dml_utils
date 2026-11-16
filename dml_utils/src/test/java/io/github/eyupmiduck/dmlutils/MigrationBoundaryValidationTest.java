@@ -461,6 +461,22 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
                 "SELECT dml_utils_lib.migration_key_values("
                         + "ROW(ARRAY[1]::bigint[], NULL, NULL, NULL)"
                         + "::dml_utils_data.migration_key, ARRAY['bigint', 'bigint'])"));
+        assertSqlState("22023", () -> dsl.fetchOne(
+                "SELECT dml_utils_lib.migration_key_values("
+                        + "ROW(NULL, '[0:1]={a,b}'::text[], NULL, NULL)"
+                        + "::dml_utils_data.migration_key, ARRAY['text', 'text'])"));
+        assertSqlState("22023", () -> dsl.fetchOne(
+                "SELECT dml_utils_lib.migration_key_values("
+                        + "ROW(NULL, NULL, ARRAY[ARRAY['00000000-0000-0000-0000-000000000001'::uuid]],"
+                        + " NULL)::dml_utils_data.migration_key, ARRAY['uuid'])"));
+        assertSqlState("22023", () -> dsl.fetchOne(
+                "SELECT dml_utils_lib.migration_key_values("
+                        + "ROW(NULL, NULL, NULL, ARRAY['2026-01-01'::timestamptz])"
+                        + "::dml_utils_data.migration_key, ARRAY['timestamptz', 'timestamptz'])"));
+        assertSqlState("22023", () -> dsl.fetchOne(
+                "SELECT dml_utils_lib.migration_key_values("
+                        + "ROW('{}'::bigint[], NULL, NULL, NULL)"
+                        + "::dml_utils_data.migration_key, ARRAY['bigint'])"));
     }
 
     /**

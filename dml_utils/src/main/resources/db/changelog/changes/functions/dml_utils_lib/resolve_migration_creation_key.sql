@@ -74,6 +74,15 @@ BEGIN
                          i_schema_name => i_schema_name,
                          i_table_name => i_table_name,
                          i_index_name => i_boundary_key_index) AS a;
+
+            -- array_agg over no rows yields one NULL row, not an empty array, so
+            -- keep the fail-closed gate the assert gate provided: never build an
+            -- ordered run with a NULL descriptor.
+            IF o_key_columns IS NULL OR o_key_kinds IS NULL THEN
+                RAISE EXCEPTION 'index %.% has no usable ordered-key attributes',
+                    i_schema_name, i_boundary_key_index
+                    USING ERRCODE = '55000';
+            END IF;
         END IF;
     ELSE
         o_key_columns := dml_utils_lib.primary_key_columns(

@@ -20,9 +20,8 @@ class AssertPartitionedOrderedKeyLeavesTest extends PartitionTestBase {
 
     private static final String TEMPLATE =
             "UPDATE <driving_table> SET payload = 'x' WHERE <chunking_clause>";
-    private static final String PARENT = "test_partitioned_range";
     private static final String PARENT_INDEX = "test_partitioned_range_ordered_key_idx";
-    private static final String ON_ONLY_INDEX = "test_partitioned_range_leaves_on_only_idx";
+    private static final String ON_ONLY_INDEX = "test_partitioned_range_parent_on_only_idx";
 
     /**
      * Empties the fixture and the migration metadata between tests.
@@ -38,7 +37,7 @@ class AssertPartitionedOrderedKeyLeavesTest extends PartitionTestBase {
      */
     @Test
     void acceptsAValidManifest() {
-        long runId = populatePartitionWise("key-leaves-valid", PARENT, TEMPLATE,
+        long runId = populatePartitionWise("key-leaves-valid", PARTITIONED_RANGE, TEMPLATE,
                 ChunkingStrategy.ordered_key, 1, PARENT_INDEX);
 
         assertDoesNotThrow(() -> Routines.assertPartitionedOrderedKeyLeaves(
@@ -51,19 +50,9 @@ class AssertPartitionedOrderedKeyLeavesTest extends PartitionTestBase {
      */
     @Test
     void rejectsAnUnusableParentIndexEvenWithoutLeaves() throws Exception {
-        long runId = dsl.fetchOne("""
-                        INSERT INTO dml_utils_data.migration_run
-                            (label, sql_text, chunk_size, chunk_by, partition_wise, threads,
-                             driving_table_schema_name, driving_table_name,
-                             ordered_key_index, ordered_key_columns, ordered_key_kinds)
-                        VALUES (?, 'SELECT 1', 1, 'ordered_key', true, 1,
-                                'dml_utils_fixtures', ?, ?, ARRAY['id']::name[],
-                                ARRAY['bigint'])
-                        RETURNING run_id
-                        """, uniqueLabel("key-leaves-on-only"), PARENT, ON_ONLY_INDEX)
-                .get(0, Long.class);
+        long runId = insertOrderedRun(uniqueLabel("key-leaves-on-only"), ON_ONLY_INDEX);
         executeAsOwner("CREATE UNIQUE INDEX " + ON_ONLY_INDEX + " ON ONLY "
-                + PARTITION_SCHEMA + "." + PARENT + " (id)");
+                + PARTITION_SCHEMA + "." + PARTITIONED_RANGE + " (id)");
         try {
             assertEquals(0, dsl.fetchCount(MIGRATION_RUN_LEAF,
                             MIGRATION_RUN_LEAF.RUN_ID.eq(runId)),
@@ -77,6 +66,30 @@ class AssertPartitionedOrderedKeyLeavesTest extends PartitionTestBase {
     }
 
     /**
+     * With a real manifest the parent check still wins: replacing the parent index
+     * with an ON ONLY one reports the parent-level 55000, not a missing child index
+     * for every leaf (the leaf-level 0A000 that the pre-check code produced).
+     */
+    @Test
+    void reportsTheParentBeforeTheLeaves() throws Exception {
+        long runId = populatePartitionWise("key-leaves-replaced", PARTITIONED_RANGE, TEMPLATE,
+                ChunkingStrategy.ordered_key, 1, PARENT_INDEX);
+
+        executeAsOwner("DROP INDEX " + PARTITION_SCHEMA + "." + PARENT_INDEX);
+        try {
+            executeAsOwner("CREATE UNIQUE INDEX " + PARENT_INDEX + " ON ONLY "
+                    + PARTITION_SCHEMA + "." + PARTITIONED_RANGE + " (id)");
+
+            assertSqlState("55000", () -> Routines.assertPartitionedOrderedKeyLeaves(
+                    dsl.configuration(), runId, PARENT_INDEX));
+        } finally {
+            executeAsOwner("DROP INDEX IF EXISTS " + PARTITION_SCHEMA + "." + PARENT_INDEX);
+            executeAsOwner("CREATE UNIQUE INDEX " + PARENT_INDEX + " ON "
+                    + PARTITION_SCHEMA + "." + PARTITIONED_RANGE + " (id)");
+        }
+    }
+
+    /**
      * A NULL run id cannot reach the body: the non-null domain rejects it before
      * the lookup, so it is not reported as a missing run.
      */
@@ -84,5 +97,26 @@ class AssertPartitionedOrderedKeyLeavesTest extends PartitionTestBase {
     void rejectsANullRunId() {
         assertDomainViolation(() -> Routines.assertPartitionedOrderedKeyLeaves(
                 dsl.configuration(), null, PARENT_INDEX));
+    }
+
+    /**
+     * Inserts an ordered-key partition-wise run with no manifest, so the parent
+     * check is the only thing that can validate anything.
+     *
+     * @param label  the run label
+     * @param index  the ordered-key index name to store
+     * @return the run id
+     */
+    private long insertOrderedRun(String label, String index) {
+        return dsl.fetchOne("""
+                        INSERT INTO dml_utils_data.migration_run
+                            (label, sql_text, chunk_size, chunk_by, partition_wise, threads,
+                             driving_table_schema_name, driving_table_name,
+                             ordered_key_index, ordered_key_columns, ordered_key_kinds)
+                        VALUES (?, 'SELECT 1', 1, 'ordered_key', true, 1,
+                                ?, ?, ?, ARRAY['id']::name[], ARRAY['bigint'])
+                        RETURNING run_id
+                        """, label, PARTITION_SCHEMA, PARTITIONED_RANGE, index)
+                .get(0, Long.class);
     }
 }
