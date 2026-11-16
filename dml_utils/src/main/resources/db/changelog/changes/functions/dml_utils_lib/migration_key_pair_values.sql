@@ -56,6 +56,12 @@ BEGIN
                                  l_end := (i_end_key).uuid_values[l_position]::text;
                 WHEN 'timestamptz' THEN l_start := (i_start_key).timestamptz_values[l_position]::text;
                                         l_end := (i_end_key).timestamptz_values[l_position]::text;
+                -- The whitelist above admits exactly these four kinds, so this
+                -- arm is only a structural backstop: it must not silently leave
+                -- l_start/l_end at their previous value if the whitelist changes.
+                ELSE
+                    RAISE EXCEPTION 'unsupported key kind %', l_kind
+                        USING ERRCODE = '22023';
                 END CASE;
 
             o_start_values := o_start_values || l_start;

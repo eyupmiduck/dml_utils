@@ -31,8 +31,13 @@ BEGIN
             l_kind := i_key_kinds[l_position];
 
             -- A NULL kind would slip past NOT IN (NULL NOT IN (...) is NULL,
-            -- not true), so guard it explicitly.
-            IF l_kind IS NULL OR l_kind NOT IN ('bigint', 'text', 'uuid', 'timestamptz') THEN
+            -- not true), and format('%s', NULL) renders an empty string, so name
+            -- the NULL explicitly instead of reporting an empty kind.
+            IF l_kind IS NULL THEN
+                RAISE EXCEPTION 'key kind must not be NULL'
+                    USING ERRCODE = '22023';
+            END IF;
+            IF l_kind NOT IN ('bigint', 'text', 'uuid', 'timestamptz') THEN
                 RAISE EXCEPTION 'unsupported key kind %', l_kind
                     USING ERRCODE = '22023';
             END IF;
