@@ -13,9 +13,7 @@ import java.util.UUID;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRunLeaf.MIGRATION_RUN_LEAF;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Verifies {@code dml_utils_data.check_migration_run_leaf} directly, without the
@@ -27,6 +25,23 @@ class MigrationRunLeafGuardTest extends PostgresTestBase {
 
     private static final String FIXTURE_SCHEMA = "dml_utils_fixtures";
     private static final String FIXTURE_TABLE = "test_bigint";
+
+    /**
+     * Asserts that a statement is rejected with the given SQLSTATE and a message
+     * containing the given text, so the intended trigger branch (not a later
+     * constraint) is what failed.
+     *
+     * @param sqlState    the expected SQLSTATE
+     * @param messagePart text the error message must contain
+     * @param statement   the statement to run
+     */
+    private static void assertRejected(String sqlState, String messagePart, Executable statement) {
+        DataAccessException error = assertThrows(DataAccessException.class, statement::execute);
+        assertEquals(sqlState, sqlState(error),
+                () -> "unexpected SQLSTATE: " + error.getMessage());
+        assertTrue(error.getMessage().contains(messagePart),
+                () -> "unexpected message: " + error.getMessage());
+    }
 
     /**
      * Removes the runs (and, by cascade, their leaves) left by earlier tests.
@@ -273,13 +288,13 @@ class MigrationRunLeafGuardTest extends PostgresTestBase {
      */
     private long insertRun(boolean partitionWise, String chunkBy) {
         return dsl.fetchOne("""
-                INSERT INTO dml_utils_data.migration_run
-                    (label, sql_text, chunk_size, chunk_by, partition_wise, threads,
-                     driving_table_schema_name, driving_table_name, started_at)
-                VALUES (?, 'SELECT 1', 10, ?::dml_utils_data.chunking_strategy, ?, 1,
-                        ?, ?, pg_catalog.clock_timestamp())
-                RETURNING run_id
-                """, "leaf-guard-" + UUID.randomUUID(), chunkBy, partitionWise,
+                        INSERT INTO dml_utils_data.migration_run
+                            (label, sql_text, chunk_size, chunk_by, partition_wise, threads,
+                             driving_table_schema_name, driving_table_name, started_at)
+                        VALUES (?, 'SELECT 1', 10, ?::dml_utils_data.chunking_strategy, ?, 1,
+                                ?, ?, pg_catalog.clock_timestamp())
+                        RETURNING run_id
+                        """, "leaf-guard-" + UUID.randomUUID(), chunkBy, partitionWise,
                 FIXTURE_SCHEMA, FIXTURE_TABLE).get(0, Long.class);
     }
 
@@ -293,11 +308,11 @@ class MigrationRunLeafGuardTest extends PostgresTestBase {
      */
     private void insertLeaf(long runId, int ordinal, String relationFilepath) {
         dsl.execute("""
-                INSERT INTO dml_utils_data.migration_run_leaf
-                    (run_id, leaf_ordinal, leaf_schema_name, leaf_name, leaf_oid,
-                     leaf_bound, relation_filepath)
-                VALUES (?, ?, ?, ?, ?::oid, 'FOR VALUES IN (1)', ?)
-                """, runId, ordinal, FIXTURE_SCHEMA, FIXTURE_TABLE + "_" + ordinal,
+                        INSERT INTO dml_utils_data.migration_run_leaf
+                            (run_id, leaf_ordinal, leaf_schema_name, leaf_name, leaf_oid,
+                             leaf_bound, relation_filepath)
+                        VALUES (?, ?, ?, ?, ?::oid, 'FOR VALUES IN (1)', ?)
+                        """, runId, ordinal, FIXTURE_SCHEMA, FIXTURE_TABLE + "_" + ordinal,
                 String.valueOf(100000 + ordinal), relationFilepath);
     }
 
@@ -322,22 +337,5 @@ class MigrationRunLeafGuardTest extends PostgresTestBase {
         return dsl.fetchCount(
                 dsl.selectFrom(MIGRATION_RUN_LEAF)
                         .where(MIGRATION_RUN_LEAF.RUN_ID.eq(runId)));
-    }
-
-    /**
-     * Asserts that a statement is rejected with the given SQLSTATE and a message
-     * containing the given text, so the intended trigger branch (not a later
-     * constraint) is what failed.
-     *
-     * @param sqlState    the expected SQLSTATE
-     * @param messagePart text the error message must contain
-     * @param statement   the statement to run
-     */
-    private static void assertRejected(String sqlState, String messagePart, Executable statement) {
-        DataAccessException error = assertThrows(DataAccessException.class, statement::execute);
-        assertEquals(sqlState, sqlState(error),
-                () -> "unexpected SQLSTATE: " + error.getMessage());
-        assertTrue(error.getMessage().contains(messagePart),
-                () -> "unexpected message: " + error.getMessage());
     }
 }

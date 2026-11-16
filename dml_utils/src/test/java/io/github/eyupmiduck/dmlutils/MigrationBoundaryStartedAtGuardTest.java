@@ -8,9 +8,7 @@ import org.junit.jupiter.api.function.Executable;
 import java.util.UUID;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Verifies {@code dml_utils_data.reject_migration_boundary_update} freezes a
@@ -21,6 +19,23 @@ class MigrationBoundaryStartedAtGuardTest extends PostgresTestBase {
 
     private static final String FIXTURE_SCHEMA = "dml_utils_fixtures";
     private static final String FIXTURE_TABLE = "test_bigint";
+
+    /**
+     * Asserts that a statement is rejected with the given SQLSTATE and a message
+     * containing the given text.
+     *
+     * @param expectedState the expected SQLSTATE
+     * @param messagePart   text the error message must contain
+     * @param statement     the statement to run
+     */
+    private static void assertRejected(String expectedState, String messagePart,
+                                       Executable statement) {
+        DataAccessException error = assertThrows(DataAccessException.class, statement::execute);
+        assertEquals(expectedState, sqlState(error),
+                () -> "unexpected SQLSTATE: " + error.getMessage());
+        assertTrue(error.getMessage().contains(messagePart),
+                () -> "unexpected message: " + error.getMessage());
+    }
 
     /**
      * Removes the runs (and, by cascade, their boundaries) left by earlier tests.
@@ -87,22 +102,5 @@ class MigrationBoundaryStartedAtGuardTest extends PostgresTestBase {
                     (run_id, boundary_no, boundary_id)
                 VALUES (?, 0, ROW(ARRAY[1::bigint], NULL, NULL, NULL)::dml_utils_data.migration_key)
                 """, runId);
-    }
-
-    /**
-     * Asserts that a statement is rejected with the given SQLSTATE and a message
-     * containing the given text.
-     *
-     * @param expectedState the expected SQLSTATE
-     * @param messagePart   text the error message must contain
-     * @param statement     the statement to run
-     */
-    private static void assertRejected(String expectedState, String messagePart,
-                                       Executable statement) {
-        DataAccessException error = assertThrows(DataAccessException.class, statement::execute);
-        assertEquals(expectedState, sqlState(error),
-                () -> "unexpected SQLSTATE: " + error.getMessage());
-        assertTrue(error.getMessage().contains(messagePart),
-                () -> "unexpected message: " + error.getMessage());
     }
 }

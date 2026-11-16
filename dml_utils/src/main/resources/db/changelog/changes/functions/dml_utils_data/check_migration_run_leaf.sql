@@ -65,9 +65,9 @@ BEGIN
     -- INSERT above, so this is an insert-only rule.
     IF TG_OP = 'INSERT'
         AND (l_calculated_at IS NOT NULL
-        OR l_cancelled_at IS NOT NULL
-        OR l_completed_at IS NOT NULL
-        OR l_archived_at IS NOT NULL)
+            OR l_cancelled_at IS NOT NULL
+            OR l_completed_at IS NOT NULL
+            OR l_archived_at IS NOT NULL)
     THEN
         RAISE EXCEPTION 'cannot add a leaf to a run that is finalized, completed, cancelled or archived: %',
             NEW.run_id
