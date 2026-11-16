@@ -3,14 +3,19 @@ package io.github.eyupmiduck.dmlutils;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.enums.ChunkingStrategy;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.routines.ResolveMigrationRun;
+import org.jooq.DSLContext;
+import org.jooq.SQLDialect;
+import org.jooq.impl.DSL;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.OffsetDateTime;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
@@ -433,12 +438,19 @@ class ResolveMigrationRunTest extends PostgresTestBase {
                 winnerRunId = result.getLong(1);
             }
 
-            CompletableFuture<Long> loser = CompletableFuture.supplyAsync(
-                    () -> resolve(label, TEMPLATE, "t", 2, 1).getORunId());
+            CompletableFuture<Long> loser = CompletableFuture.supplyAsync(() -> {
+                try (Connection connection = openTestConnection()) {
+                    DSLContext context = DSL.using(connection, SQLDialect.POSTGRES);
+                    return Routines.resolveMigrationRun(context.configuration(), TEMPLATE,
+                                    schema(), name(), label, 2, 1, "t",
+                                    ChunkingStrategy.primary_key, 0, null, false, 3, 1000)
+                            .getORunId();
+                } catch (SQLException error) {
+                    throw new CompletionException(error);
+                }
+            });
 
-            // Give the loser time to reach the blocked create; if it starts after
-            // the commit it simply resumes the committed run instead.
-            Thread.sleep(300);
+            awaitLoserBlockedOnTheLabelIndex();
             winner.commit();
 
             assertEquals(winnerRunId, loser.get(30, TimeUnit.SECONDS),
@@ -447,6 +459,36 @@ class ResolveMigrationRunTest extends PostgresTestBase {
 
         assertEquals(1, dsl.fetchCount(MIGRATION_RUN, MIGRATION_RUN.LABEL.eq(label)),
                 "exactly one run exists for the label");
+    }
+
+    /**
+     * Waits until the losing session's create worker is actually blocked inserting
+     * the label (a transactionid lock waiting on the winner's transaction), so the
+     * test exercises the 23505 adoption path instead of a plain resume after the
+     * winner commits. A fixed sleep could let the winner commit first on a slow
+     * agent, and the test would pass without covering the adoption.
+     *
+     * @throws InterruptedException if the wait is interrupted
+     */
+    private void awaitLoserBlockedOnTheLabelIndex() throws InterruptedException {
+        for (int attempt = 0; attempt < 200; attempt++) {
+            boolean blocked = Boolean.TRUE.equals(dsl.fetchOne("""
+                    SELECT EXISTS (
+                        SELECT 1
+                        FROM pg_catalog.pg_locks AS held
+                                 JOIN pg_catalog.pg_stat_activity AS activity
+                                      ON activity.pid = held.pid
+                        WHERE held.locktype = 'transactionid'
+                          AND NOT held.granted
+                          AND activity.query LIKE '%populate_migration_boundaries%'
+                          AND held.pid <> pg_catalog.pg_backend_pid())
+                    """).get(0, Boolean.class));
+            if (blocked) {
+                return;
+            }
+            Thread.sleep(50);
+        }
+        fail("the losing resolve never reached its blocked create");
     }
 
     /**

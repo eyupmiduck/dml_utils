@@ -14,13 +14,16 @@ AS
 $$
 DECLARE
     l_chunk_by   dml_utils_data.chunking_strategy;
+    l_chunk_size integer;
     l_descriptor record;
 BEGIN
-    -- The run's stored strategy is the single source of truth: the key descriptor
-    -- below is resolved from it, so dispatching on the caller's argument could
-    -- render a statement for a different strategy than the run chunks by.
-    SELECT run.chunk_by
-    INTO l_chunk_by
+    -- The run's stored strategy and chunk size are the single source of truth: the
+    -- key descriptor below is resolved from the run too, so dispatching on the
+    -- caller's values could render a statement for a different strategy or with a
+    -- stride the run does not advertise.
+    SELECT run.chunk_by,
+           run.chunk_size
+    INTO l_chunk_by, l_chunk_size
     FROM dml_utils_data.migration_run AS run
     WHERE run.run_id = i_run_id;
 
@@ -34,8 +37,15 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
 
-    IF i_chunk_by <> l_chunk_by THEN
+    -- IS DISTINCT FROM keeps the guard total: a NULL stored strategy (the column
+    -- is NOT NULL today) must not fall through to the primary-key builder.
+    IF i_chunk_by IS DISTINCT FROM l_chunk_by THEN
         RAISE EXCEPTION 'run % uses chunk_by %, not %', i_run_id, l_chunk_by, i_chunk_by
+            USING ERRCODE = '22023';
+    END IF;
+
+    IF i_chunk_size <> l_chunk_size THEN
+        RAISE EXCEPTION 'run % uses chunk_size %, not %', i_run_id, l_chunk_size, i_chunk_size
             USING ERRCODE = '22023';
     END IF;
 
@@ -75,6 +85,7 @@ COMMENT ON FUNCTION dml_utils_lib.leaf_boundary_population_sql(
     'Returns the statement that appends one claimed leaf''s chunk starts, '
         'dispatching on the run''s stored chunk_by (the same strategy that drives '
         'the key descriptor). Raises invalid_parameter_value (22023) when '
-        'i_chunk_by is NULL or differs from the stored strategy, and no_data_found '
-        '(P0002) when the run does not exist. The caller executes the statement in '
-        'the leaf calculation transaction.';
+        'i_chunk_by is NULL or differs from the stored strategy, when i_chunk_size '
+        'differs from the stored size, and no_data_found (P0002) when the run does '
+        'not exist. The caller executes the statement in the leaf calculation '
+        'transaction.';
