@@ -699,7 +699,12 @@ completed nor cancelled) boundary is skipped, because a worker may still be
 winding it down: `cancel_migration_run` marks every unclaimed boundary, so a
 pending one is exactly a boundary a worker had claimed; the coordinator marks it
 once the worker is gone. A completed run has no in-flight worker and is deleted
-regardless. A run row locked by another session is also skipped (`SKIP LOCKED`). A non-terminal archived run is left in place; `archive_migration_run`
+regardless. A run row locked by another session is also skipped (`SKIP LOCKED`),
+so a return of 0 also means "every remaining candidate is locked", not only
+"drained"; retry later. If a coordinator died between cancelling and marking a
+claimed boundary, that run is skipped on every call: recover it with
+`dml_utils_lib.mark_migration_run_cancelled(run_id)` (granted to the caller role)
+and retry. A non-terminal archived run is left in place; `archive_migration_run`
 cancels unfinished runs, so that state is normally unreachable.
 
 ### `dml_utils.migration_run_summary(i_label)`

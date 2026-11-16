@@ -164,12 +164,10 @@ class MigrationMaintenanceTest extends PostgresTestBase {
                 "a pending boundary defers the delete");
         assertNotNull(runRow(label), "the run is kept");
 
-        // The coordinator marks the boundary once the worker is gone.
-        dsl.update(MIGRATION_BOUNDARY)
-                .set(MIGRATION_BOUNDARY.CANCELLED_AT, OffsetDateTime.now())
-                .where(MIGRATION_BOUNDARY.RUN_ID.eq(runId))
-                .and(MIGRATION_BOUNDARY.BOUNDARY_NO.eq(99L))
-                .execute();
+        // The documented recovery for a stranded run: the metadata helper marks the
+        // pending boundary (and is idempotent for the already-cancelled run).
+        io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines
+                .markMigrationRunCancelled(dsl.configuration(), runId);
 
         assertEquals(1, Routines.deleteArchivedMigrationRuns(dsl.configuration(), label, 1000),
                 "the run is deleted once no boundary is pending");

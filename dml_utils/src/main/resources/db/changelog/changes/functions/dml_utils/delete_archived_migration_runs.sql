@@ -50,6 +50,11 @@ COMMENT ON FUNCTION dml_utils.delete_archived_migration_runs(text, dml_utils_dat
         'pending (neither completed nor cancelled) boundary is skipped because a '
         'worker may still be winding it down (cancel_migration_run leaves exactly '
         'those boundaries pending); a completed run has no in-flight worker. A run '
-        'row locked by another session is skipped. A '
+        'row locked by another session is skipped, so a return of 0 also means '
+        '"every remaining candidate is locked", not only "drained"; retry later. If '
+        'a coordinator died between cancelling and marking a claimed boundary, the '
+        'run is skipped on every call: mark the boundary with '
+        'dml_utils_lib.mark_migration_run_cancelled(run_id) (granted to the caller '
+        'role) and retry. A '
         'non-terminal archived run is left in place; archive_migration_run cancels '
         'unfinished runs, so that state is normally unreachable.';
