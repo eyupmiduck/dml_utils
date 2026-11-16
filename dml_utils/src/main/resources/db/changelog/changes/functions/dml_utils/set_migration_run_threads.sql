@@ -11,13 +11,10 @@ $$
 BEGIN
     -- max_worker_processes is the cluster-wide ceiling every run_migration_chunks
     -- call checks (resolve_migration_run). Reject a value the next call could
-    -- never use here, instead of accepting it and failing the run later.
-    IF i_threads::integer > pg_catalog.current_setting('max_worker_processes')::integer
-    THEN
-        RAISE EXCEPTION 'threads (%) exceeds max_worker_processes (%)',
-            i_threads, pg_catalog.current_setting('max_worker_processes')
-            USING ERRCODE = '22023';
-    END IF;
+    -- never use here, instead of accepting it and failing the run later. Both go
+    -- through one helper so the two checks cannot drift.
+    PERFORM dml_utils_lib.assert_threads_within_max_worker_processes(
+            i_threads => i_threads);
 
     -- Only an unfinished run can have its thread count adjusted: a completed
     -- run's chunks are already processed.

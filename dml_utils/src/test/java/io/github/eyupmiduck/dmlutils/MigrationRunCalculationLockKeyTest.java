@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -33,7 +34,7 @@ class MigrationRunCalculationLockKeyTest extends PostgresTestBase {
                 """);
 
         assertEquals("i", attributes.get("provolatile", String.class),
-                "the key derivation is immutable");
+                "the key derivation is immutable (bigint::text, not format())");
         assertTrue(attributes.get("proisstrict", Boolean.class),
                 "STRICT keeps a NULL run id from collapsing onto a shared key");
         assertEquals("s", attributes.get("proparallel", String.class),
@@ -62,6 +63,9 @@ class MigrationRunCalculationLockKeyTest extends PostgresTestBase {
         Long other = dsl.fetchOne("SELECT " + FUNCTION + "(43)")
                 .get(0, Long.class);
 
+        assertNotNull(first, "a non-NULL run id yields a key");
+        assertNotNull(again, "a non-NULL run id yields a key");
+        assertNotNull(other, "a non-NULL run id yields a key");
         assertEquals(first, again, "the key is deterministic");
         assertNotEquals(first, other, "different runs use different keys");
     }

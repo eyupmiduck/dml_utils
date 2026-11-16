@@ -568,9 +568,9 @@ RETURNS void
 `SECURITY DEFINER`. Replaces the recorded `threads` of the unfinished (`completed_at IS NULL`) run for the label, so the
 next `run_migration_chunks`
 call uses the adjusted worker count. A count above `max_worker_processes` is
-rejected with `invalid_parameter_value` (`22023`) at set time, as the next call
-would reject it. Raises `no_data_found` (`P0002`) when there is no unfinished run
-for the label. Use this to tune the parallelism of an
+rejected with `invalid_parameter_value` (`22023`) at set time through the same
+helper the runner uses, so the two cannot drift. Raises `no_data_found` (`P0002`)
+when there is no unfinished run for the label. Use this to tune the parallelism of an
 existing run instead of passing a changed `i_threads` to a resumed call, which
 would ignore it.
 
@@ -619,8 +619,8 @@ RETURNS bigint
 `SECURITY DEFINER`. Sets `paused_at` on the active (not archived, unfinished,
 non-cancelled) run for the label, if any, and returns its `run_id`; a second
 pause returns the same run without moving the timestamp, and a terminal or
-absent run returns NULL. The active run is read `FOR UPDATE` and the decision is
-made under that lock, so a concurrent `resume_migration_run` cannot commit
+absent run returns NULL. The active run is read `FOR NO KEY UPDATE` and the
+decision is made under that lock, so a concurrent `resume_migration_run` cannot commit
 between the two and make the return value lie. Pause is a durable, reversible flag: the coordinator
 stops launching new chunks or leaves, waits for the in-flight workers to commit
 their current chunk, and leaves the run unfinished and resumable. It does not
@@ -638,7 +638,7 @@ RETURNS bigint
 `SECURITY DEFINER`. Clears `paused_at` on the active unfinished, non-cancelled
 run for the label, if any, and returns its `run_id`. Resuming a run that is not
 paused is a no-op that still returns its id; a terminal or absent run returns
-NULL. Like pause, it reads the active run `FOR UPDATE`, so a concurrent pause
+NULL. Like pause, it reads the active run `FOR NO KEY UPDATE`, so a concurrent pause
 cannot commit between the decision and the result. Call `run_migration_chunks` again with the same label to continue; a
 partition-wise run resumes at its first `pending`/`failed` leaf and an
 already-calculated leaf is never recalculated.
@@ -1333,6 +1333,19 @@ RETURNS void
 `SECURITY INVOKER`. Raises `unique_violation` (`23505`) when a not-archived
 migration run already exists for the label.
 
+### `dml_utils_lib.assert_threads_within_max_worker_processes(i_threads)`
+
+```sql
+i_threads dml_utils_data.positive_integer
+RETURNS void
+```
+
+`STABLE`, `SECURITY INVOKER`. Raises `invalid_parameter_value` (`22023`) when the
+requested worker count exceeds `max_worker_processes`. It is shared by
+`run_migration_chunks` (`resolve_migration_run`) and
+`set_migration_run_threads`, so the setter cannot accept a count the runner would
+reject.
+
 ###
 
 `dml_utils_lib.populate_migration_boundaries(i_schema_name, i_table_name, i_label, i_sql_text, i_chunk_size [, i_threads, i_chunk_by, i_driving_table_alias, i_sleep_ms, i_boundary_key_index, i_partition_wise, i_max_retries, i_retry_backoff_ms])`
@@ -1428,9 +1441,11 @@ RETURNS bigint
 `IMMUTABLE`, `STRICT`, `PARALLEL SAFE`, `SECURITY INVOKER`. Returns the bigint
 advisory-lock key that serializes boundary calculation for a run, derived from
 the run id with a `dml_utils.migration_run.calculation.` prefix. It is
-`IMMUTABLE` because `pg_catalog.format` and `pg_catalog.hashtextextended` are
-both immutable, `STRICT` so a NULL run id yields NULL rather than one shared key
-for every NULL caller, and `PARALLEL SAFE` because it reads no state.
+`IMMUTABLE` because the prefix is concatenated with `i_run_id::text` (bigint's
+text output is immutable) and `pg_catalog.hashtextextended` is immutable;
+`format()` is deliberately not used because it is only `STABLE`. It is `STRICT`
+so a NULL run id yields NULL rather than one shared key for every NULL caller,
+and `PARALLEL SAFE` because it reads no state.
 
 ### `dml_utils_lib.calculate_migration_run_boundaries(i_run_id)`
 

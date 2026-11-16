@@ -15,6 +15,10 @@ BEGIN
     -- the no-op path unlocked, so a concurrent pause could commit between it and
     -- the fallback read and this call would then report no run at all. The row
     -- lock makes the counterpart wait and see this transaction's committed state.
+    -- FOR NO KEY UPDATE is the weakest lock that still conflicts with the other
+    -- run-row writers (their UPDATEs take FOR NO KEY UPDATE too), and it does not
+    -- conflict with the FOR KEY SHARE lock a worker's boundary/error insert takes
+    -- on this row through its foreign key.
     SELECT run.run_id, run.paused_at
     INTO l_run_id, l_paused_at
     FROM dml_utils_data.migration_run AS run
@@ -22,7 +26,7 @@ BEGIN
       AND run.archived_at IS NULL
       AND run.completed_at IS NULL
       AND run.cancelled_at IS NULL
-        FOR UPDATE;
+        FOR NO KEY UPDATE;
 
     -- Terminal or absent: there is no run to resume.
     IF NOT FOUND THEN
@@ -44,6 +48,6 @@ COMMENT ON FUNCTION dml_utils.resume_migration_run IS
     'Resumes the active (not archived, unfinished, not cancelled) migration run '
         'for the label, if any: clears paused_at so the next run_migration_chunks '
         'call continues at the first pending boundary. Resuming a run that is not '
-        'paused is a no-op. The active run is read FOR UPDATE, so a concurrent '
+        'paused is a no-op. The active run is read FOR NO KEY UPDATE, so a concurrent '
         'pause cannot commit between the decision and the result. Returns the '
         'run_id, or NULL when there was no active unfinished run.';

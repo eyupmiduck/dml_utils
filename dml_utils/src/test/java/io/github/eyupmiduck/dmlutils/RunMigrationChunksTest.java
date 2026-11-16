@@ -671,6 +671,14 @@ class RunMigrationChunksTest extends PostgresTestBase {
                         .where(MIGRATION_RUN.RUN_ID.eq(runId))
                         .fetchOne(MIGRATION_RUN.THREADS),
                 "the rejected value is not stored");
+
+        // The ceiling itself is legal: the guard is >, not >=.
+        Routines.setMigrationRunThreads(dsl.configuration(), label, max);
+        assertEquals(max, dsl.select(MIGRATION_RUN.THREADS)
+                        .from(MIGRATION_RUN)
+                        .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                        .fetchOne(MIGRATION_RUN.THREADS),
+                "max_worker_processes itself is accepted and stored");
     }
 
     /**
@@ -690,23 +698,31 @@ class RunMigrationChunksTest extends PostgresTestBase {
                 completedRun);
 
         String cancelled = label("set-sql-cancelled");
-        populate(TEST_BIGINT, cancelled, TEMPLATE, 2);
+        long cancelledRun = populate(TEST_BIGINT, cancelled, TEMPLATE, 2);
         Routines.cancelMigrationRun(dsl.configuration(), cancelled);
 
         String archived = label("set-sql-archived");
-        populate(TEST_BIGINT, archived, TEMPLATE, 2);
-        Routines.archiveMigrationRun(dsl.configuration(), archived);
+        long archivedRun = populate(TEST_BIGINT, archived, TEMPLATE, 2);
+        // Archive without cancelling: archive_migration_run would cancel first, so
+        // completed_at/cancelled_at would reject the update and the archived_at
+        // guard would never be exercised.
+        dsl.execute("UPDATE dml_utils_data.migration_run"
+                + " SET archived_at = pg_catalog.clock_timestamp() WHERE run_id = ?",
+                archivedRun);
 
-        for (String terminal : List.of(completed, cancelled, archived)) {
+        for (long runId : List.of(completedRun, cancelledRun, archivedRun)) {
+            String terminalLabel = dsl.select(MIGRATION_RUN.LABEL)
+                    .from(MIGRATION_RUN)
+                    .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                    .fetchOne(MIGRATION_RUN.LABEL);
             assertSqlState("P0002", () -> Routines.setMigrationRunSqlText(
-                    dsl.configuration(), terminal, adjusted));
+                    dsl.configuration(), terminalLabel, adjusted));
+            assertEquals(TEMPLATE, dsl.select(MIGRATION_RUN.SQL_TEXT)
+                            .from(MIGRATION_RUN)
+                            .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                            .fetchOne(MIGRATION_RUN.SQL_TEXT),
+                    "a rejected terminal run keeps its SQL");
         }
-
-        assertEquals(TEMPLATE, dsl.select(MIGRATION_RUN.SQL_TEXT)
-                        .from(MIGRATION_RUN)
-                        .where(MIGRATION_RUN.RUN_ID.eq(completedRun))
-                        .fetchOne(MIGRATION_RUN.SQL_TEXT),
-                "the terminal run keeps its SQL");
     }
 
     /**

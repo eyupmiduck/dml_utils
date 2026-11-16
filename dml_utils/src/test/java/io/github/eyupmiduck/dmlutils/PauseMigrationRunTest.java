@@ -225,10 +225,15 @@ class PauseMigrationRunTest extends PostgresTestBase {
     void pauseWaitsForTheRunRowEvenWhenAlreadyPaused() throws Exception {
         seedBigint(1, 2, 3);
         String label = uniqueLabel("pause-locked");
-        assertNotNull(populate(label));
+        Long runId = populate(label);
+        assertNotNull(runId);
         assertNotNull(Routines.pauseMigrationRun(dsl.configuration(), label));
 
         assertCallWaitsForTheRunRow(label, "pause_migration_run");
+
+        assertEquals(runId, Routines.pauseMigrationRun(dsl.configuration(), label),
+                "after the lock is released the pause sees the committed run");
+        assertNotNull(run(runId).getPausedAt(), "the run stays paused");
     }
 
     /**
@@ -240,17 +245,23 @@ class PauseMigrationRunTest extends PostgresTestBase {
     void resumeWaitsForTheRunRowEvenWhenNotPaused() throws Exception {
         seedBigint(1, 2, 3);
         String label = uniqueLabel("resume-locked");
-        assertNotNull(populate(label));
+        Long runId = populate(label);
+        assertNotNull(runId);
 
         assertCallWaitsForTheRunRow(label, "resume_migration_run");
+
+        assertEquals(runId, Routines.resumeMigrationRun(dsl.configuration(), label),
+                "after the lock is released the resume sees the committed run");
+        assertNull(run(runId).getPausedAt(), "the run is not paused");
     }
 
     /**
      * Calls one of the run-control routines from a second connection while a
      * first one holds the run row, and asserts it waits instead of returning a
-     * stale result.
+     * stale result. The holder then commits, so the caller can verify that the
+     * routine sees the committed state once the lock is released.
      *
-     * @param label  the run label
+     * @param label   the run label
      * @param routine the routine to call
      */
     private void assertCallWaitsForTheRunRow(String label, String routine) throws Exception {
@@ -269,9 +280,9 @@ class PauseMigrationRunTest extends PostgresTestBase {
                         "SELECT dml_utils." + routine + "('" + label + "')"));
                 assertEquals("55P03", error.getSQLState(),
                         () -> "unexpected error: " + error.getMessage());
-            } finally {
-                holder.rollback();
             }
+
+            holder.commit();
         }
     }
 
