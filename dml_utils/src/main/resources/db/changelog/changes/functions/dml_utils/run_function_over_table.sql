@@ -72,40 +72,46 @@ BEGIN
     -- rendering. search_path is deliberately not pinned here: this function
     -- forwards the caller's session into run_migration_chunks, which calls
     -- pg_background, and pg_background's own routines reference its
-    -- pg_background_handle type unqualified. The filter is hashed because label is indexed by three btree
-    -- indexes; a large IN list or regex would otherwise exceed the btree tuple
-    -- limit and fail run creation with an opaque "index row size" error.
-    l_filter_hash := CASE
-                         WHEN i_filter IS NULL THEN NULL
-                         ELSE 'sha256:' || pg_catalog.encode(
-                                 pg_catalog.sha256(pg_catalog.convert_to(i_filter, 'UTF8')),
-                                 'hex')
-        END;
+    -- pg_background_handle type unqualified.
+    --
+    -- The filter is hashed because label is indexed by three btree indexes; a
+    -- large IN list or regex would otherwise exceed the btree tuple limit and
+    -- fail run creation with an opaque "index row size" error.
+    IF i_label IS NULL THEN
+        l_filter_hash := CASE
+                             WHEN i_filter IS NULL THEN NULL
+                             ELSE 'sha256:' || pg_catalog.encode(
+                                     pg_catalog.sha256(pg_catalog.convert_to(i_filter, 'UTF8')),
+                                     'hex')
+            END;
 
-    l_label_parts := ARRAY [
-            pg_catalog.to_json(i_driving_table_schema_name),
-            pg_catalog.to_json(i_driving_table_name),
-            pg_catalog.to_json(i_function_schema_name),
-            pg_catalog.to_json(i_function_name),
-            pg_catalog.to_json(l_filter_hash),
-            pg_catalog.to_json(i_chunk_by::text)
-        ];
+        l_label_parts := ARRAY [
+                pg_catalog.to_json(i_driving_table_schema_name),
+                pg_catalog.to_json(i_driving_table_name),
+                pg_catalog.to_json(i_function_schema_name),
+                pg_catalog.to_json(i_function_name),
+                pg_catalog.to_json(l_filter_hash),
+                pg_catalog.to_json(i_chunk_by::text)
+            ];
 
-    -- Keep the v1 six-component shape when the ordered-key index is absent and
-    -- partition_wise is false, so a plain call still resumes a run created before
-    -- this change. The key and partition flag are appended only when they can
-    -- distinguish a run.
-    IF i_boundary_key_index IS NOT NULL OR i_partition_wise::boolean THEN
-        l_label_parts := l_label_parts
-            || ARRAY [
-                pg_catalog.to_json(i_boundary_key_index::text),
-                pg_catalog.to_json(i_partition_wise::boolean)
-                ];
+        -- Keep the v1 six-component shape when the ordered-key index is absent and
+        -- partition_wise is false, so a plain call still resumes a run created
+        -- before this change. The key and partition flag are appended only when
+        -- they can distinguish a run.
+        IF i_boundary_key_index IS NOT NULL OR i_partition_wise::boolean THEN
+            l_label_parts := l_label_parts
+                || ARRAY [
+                    pg_catalog.to_json(i_boundary_key_index::text),
+                    pg_catalog.to_json(i_partition_wise::boolean)
+                    ];
+        END IF;
+
+        l_label := 'function:' || pg_catalog.json_build_array(VARIADIC l_label_parts)::text;
+    ELSE
+        -- An explicit label skips the derivation (and the filter hash, which can
+        -- be expensive for a large IN list or regex).
+        l_label := i_label;
     END IF;
-
-    l_label := coalesce(
-            i_label,
-            'function:' || pg_catalog.json_build_array(VARIADIC l_label_parts)::text);
 
     -- Delegate to the base engine: it owns resume, chunk scheduling, error
     -- recording and run completion. The generated template is a valid

@@ -236,6 +236,55 @@ class RunFunctionOverTableTest extends PostgresTestBase {
     }
 
     /**
+     * An omitted label appends the ordered-key index and the partition flag, in
+     * that order: the eight-component label is the one an existing ordered-key or
+     * partition-wise run was created with, so a repeated call resumes it.
+     */
+    @Test
+    void derivedLabelIncludesTheOrderedKeyAndPartitionComponents() {
+        seedOrderedKeyRows(1L, 2L, 3L);
+        createMarkOrderedKey("done");
+        Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_ORDERED_KEY),
+                name(TEST_ORDERED_KEY), FN_SCHEMA, "mark_ordered_key", 1, 1, null, null,
+                ChunkingStrategy.ordered_key, 1, 0,
+                "test_ordered_key_created_at_id_idx", false, 3, 1000);
+
+        String orderedLabel = "function:" + dsl.fetchOne("""
+                        SELECT pg_catalog.json_build_array(?, ?, ?, ?, CAST(? AS text), ?,
+                                                           CAST(? AS text), ?)::text
+                        """, schema(TEST_ORDERED_KEY), name(TEST_ORDERED_KEY), FN_SCHEMA,
+                "mark_ordered_key", null, "ordered_key",
+                "test_ordered_key_created_at_id_idx", false).get(0, String.class);
+        assertEquals(1, dsl.fetchCount(MIGRATION_RUN, MIGRATION_RUN.LABEL.eq(orderedLabel)),
+                "the ordered-key run uses the eight-component derived label");
+
+        // A second call with different inputs resumes the same derived run.
+        Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_ORDERED_KEY),
+                name(TEST_ORDERED_KEY), FN_SCHEMA, "mark_ordered_key", 99, 4, null, null,
+                ChunkingStrategy.ordered_key, 1, 0,
+                "test_ordered_key_created_at_id_idx", false, 3, 1000);
+        assertEquals(1, dsl.fetchCount(MIGRATION_RUN, MIGRATION_RUN.LABEL.eq(orderedLabel)),
+                "the repeated ordered-key call resumes the same run");
+
+        insertPartitionedRows(50L, 150L, 250L);
+        createMarkPartitioned("done");
+        Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_PARTITIONED_RANGE),
+                name(TEST_PARTITIONED_RANGE), FN_SCHEMA, "mark_partitioned", 1, 1, null, null,
+                ChunkingStrategy.primary_key, 1, 0, null, true, 3, 1000);
+
+        String partitionLabel = "function:" + dsl.fetchOne("""
+                        SELECT pg_catalog.json_build_array(?, ?, ?, ?, CAST(? AS text), ?,
+                                                           CAST(? AS text), ?)::text
+                        """, schema(TEST_PARTITIONED_RANGE), name(TEST_PARTITIONED_RANGE),
+                FN_SCHEMA, "mark_partitioned", null, "primary_key", null, true)
+                .get(0, String.class);
+        assertEquals(1, dsl.fetchCount(MIGRATION_RUN, MIGRATION_RUN.LABEL.eq(partitionLabel)),
+                "the partition-wise run appends the flag even without an index");
+        assertEquals(3, payloadCount(TEST_PARTITIONED_RANGE, "done"),
+                "the partition-wise run applied the function to every row");
+    }
+
+    /**
      * The derived label distinguishes inputs that the old delimiter-joined format
      * would have conflated: a name containing a '.' does not shift the component
      * boundaries, so two different table/function tuples derive different labels.
