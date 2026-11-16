@@ -460,7 +460,8 @@ differ only in those derive different runs. The strategy is rendered as its bare
 text label (not the enum value), so the derived label is identical from any
 session; `search_path` is not pinned here because the routine forwards the
 caller's session to `run_migration_chunks`, whose `pg_background` calls rely on
-their own unqualified type names. A non-NULL `i_filter` is ANDed onto every chunk's range predicate (referencing the driving table through the fixed
+their own unqualified type names. A non-NULL `i_filter` is ANDed onto every chunk's range predicate (referencing the
+driving table through the fixed
 alias `t`), so only the rows it
 matches are passed to the function; a filter that contains `<driving_table>` or
 `<chunking_clause>` is rejected when the template is validated. `i_chunk_by`

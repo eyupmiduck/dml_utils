@@ -273,10 +273,10 @@ class RunFunctionOverTableTest extends PostgresTestBase {
                 ChunkingStrategy.primary_key, 1, 0, null, true, 3, 1000);
 
         String partitionLabel = "function:" + dsl.fetchOne("""
-                        SELECT pg_catalog.json_build_array(?, ?, ?, ?, CAST(? AS text), ?,
-                                                           CAST(? AS text), ?)::text
-                        """, schema(TEST_PARTITIONED_RANGE), name(TEST_PARTITIONED_RANGE),
-                FN_SCHEMA, "mark_partitioned", null, "primary_key", null, true)
+                                SELECT pg_catalog.json_build_array(?, ?, ?, ?, CAST(? AS text), ?,
+                                                                   CAST(? AS text), ?)::text
+                                """, schema(TEST_PARTITIONED_RANGE), name(TEST_PARTITIONED_RANGE),
+                        FN_SCHEMA, "mark_partitioned", null, "primary_key", null, true)
                 .get(0, String.class);
         assertEquals(1, dsl.fetchCount(MIGRATION_RUN, MIGRATION_RUN.LABEL.eq(partitionLabel)),
                 "the partition-wise run appends the flag even without an index");

@@ -86,12 +86,12 @@ BEGIN
             END;
 
         l_label_parts := ARRAY [
-                pg_catalog.to_json(i_driving_table_schema_name),
-                pg_catalog.to_json(i_driving_table_name),
-                pg_catalog.to_json(i_function_schema_name),
-                pg_catalog.to_json(i_function_name),
-                pg_catalog.to_json(l_filter_hash),
-                pg_catalog.to_json(i_chunk_by::text)
+            pg_catalog.to_json(i_driving_table_schema_name),
+            pg_catalog.to_json(i_driving_table_name),
+            pg_catalog.to_json(i_function_schema_name),
+            pg_catalog.to_json(i_function_name),
+            pg_catalog.to_json(l_filter_hash),
+            pg_catalog.to_json(i_chunk_by::text)
             ];
 
         -- Keep the v1 six-component shape when the ordered-key index is absent and
@@ -101,9 +101,9 @@ BEGIN
         IF i_boundary_key_index IS NOT NULL OR i_partition_wise::boolean THEN
             l_label_parts := l_label_parts
                 || ARRAY [
-                    pg_catalog.to_json(i_boundary_key_index::text),
-                    pg_catalog.to_json(i_partition_wise::boolean)
-                    ];
+                                 pg_catalog.to_json(i_boundary_key_index::text),
+                                 pg_catalog.to_json(i_partition_wise::boolean)
+                                 ];
         END IF;
 
         l_label := 'function:' || pg_catalog.json_build_array(VARIADIC l_label_parts)::text;
