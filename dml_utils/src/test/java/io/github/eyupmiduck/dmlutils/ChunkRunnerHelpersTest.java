@@ -191,6 +191,26 @@ class ChunkRunnerHelpersTest extends PartitionTestBase {
         assertNotNull(Routines.sleepBetweenMigrationChunks(dsl.configuration(), runId, 10));
     }
 
+    /**
+     * A run row deleted while the caller is sleeping ends the sleep at the next
+     * slice instead of making it loop on a vanished run.
+     */
+    @Test
+    void sleepEndsWhenTheRunRowDisappears() {
+        seedBigint(1, 2);
+        long runId = Routines.populateMigrationBoundaries(dsl.configuration(),
+                schema(TEST_BIGINT), name(TEST_BIGINT), uniqueLabel("sleep-deleted"),
+                TEMPLATE, 1, 1, ChunkingStrategy.primary_key, "t", 0, null, false, 3, 1000);
+        dsl.deleteFrom(MIGRATION_RUN).where(MIGRATION_RUN.RUN_ID.eq(runId)).execute();
+
+        long startedAt = System.nanoTime();
+        assertNull(Routines.sleepBetweenMigrationChunks(dsl.configuration(), runId, 10_000));
+
+        long elapsedMillis = (System.nanoTime() - startedAt) / 1_000_000;
+        assertTrue(elapsedMillis < 2_000,
+                () -> "the sleep should stop at the first slice, took " + elapsedMillis + "ms");
+    }
+
     private NextMigrationChunk next(long runId, boolean partitionWise, Long[] inFlight) {
         return Routines.nextMigrationChunk(dsl.configuration(), runId, partitionWise,
                 new String[]{"bigint"}, inFlight, schema(TEST_BIGINT), name(TEST_BIGINT));

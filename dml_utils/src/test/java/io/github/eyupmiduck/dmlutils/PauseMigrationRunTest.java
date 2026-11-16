@@ -6,6 +6,9 @@ import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.records.Migratio
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.time.OffsetDateTime;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
@@ -211,6 +214,65 @@ class PauseMigrationRunTest extends PostgresTestBase {
         assertNotNull(run.getArchivedAt(), "the run is archived");
         assertNotNull(run.getCancelledAt(), "archiving cancels the unfinished run");
         assertNull(run.getPausedAt(), "archive clears the pause");
+    }
+
+    /**
+     * Pausing waits for a concurrent holder of the run row even when the run is
+     * already paused: the old no-op path took no lock, so a resume could commit
+     * between the update and the fallback read and pause would report no run.
+     */
+    @Test
+    void pauseWaitsForTheRunRowEvenWhenAlreadyPaused() throws Exception {
+        seedBigint(1, 2, 3);
+        String label = uniqueLabel("pause-locked");
+        assertNotNull(populate(label));
+        assertNotNull(Routines.pauseMigrationRun(dsl.configuration(), label));
+
+        assertCallWaitsForTheRunRow(label, "pause_migration_run");
+    }
+
+    /**
+     * Resuming waits for a concurrent holder of the run row even when the run is
+     * not paused: the old no-op path took no lock, so a pause could commit
+     * between the update and the fallback read and resume would report no run.
+     */
+    @Test
+    void resumeWaitsForTheRunRowEvenWhenNotPaused() throws Exception {
+        seedBigint(1, 2, 3);
+        String label = uniqueLabel("resume-locked");
+        assertNotNull(populate(label));
+
+        assertCallWaitsForTheRunRow(label, "resume_migration_run");
+    }
+
+    /**
+     * Calls one of the run-control routines from a second connection while a
+     * first one holds the run row, and asserts it waits instead of returning a
+     * stale result.
+     *
+     * @param label  the run label
+     * @param routine the routine to call
+     */
+    private void assertCallWaitsForTheRunRow(String label, String routine) throws Exception {
+        Long runId = runIdForLabel(label);
+        try (Connection holder = openTestConnection();
+             Connection caller = openTestConnection()) {
+            holder.setAutoCommit(false);
+            try (Statement lock = holder.createStatement()) {
+                lock.execute("SELECT 1 FROM dml_utils_data.migration_run"
+                        + " WHERE run_id = " + runId + " FOR UPDATE");
+            }
+
+            try (Statement call = caller.createStatement()) {
+                call.execute("SET lock_timeout = '1s'");
+                SQLException error = assertThrows(SQLException.class, () -> call.execute(
+                        "SELECT dml_utils." + routine + "('" + label + "')"));
+                assertEquals("55P03", error.getSQLState(),
+                        () -> "unexpected error: " + error.getMessage());
+            } finally {
+                holder.rollback();
+            }
+        }
     }
 
     /**

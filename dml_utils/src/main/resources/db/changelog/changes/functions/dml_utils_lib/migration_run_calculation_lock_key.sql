@@ -3,7 +3,9 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.migration_run_calculation_lock_key(
 )
     RETURNS bigint
     LANGUAGE sql
-    STABLE
+    IMMUTABLE
+    STRICT
+    PARALLEL SAFE
     SECURITY INVOKER
 AS
 $$
@@ -15,4 +17,8 @@ $$;
 
 COMMENT ON FUNCTION dml_utils_lib.migration_run_calculation_lock_key(bigint) IS
     'Returns the advisory-lock key used to serialize partition-wise boundary '
-        'calculation for a run. STABLE because pg_catalog.format is not immutable.';
+        'calculation for a run. IMMUTABLE: pg_catalog.format and '
+        'pg_catalog.hashtextextended are both immutable, so the key is stable for '
+        'the same run id. STRICT: a NULL run id yields NULL instead of collapsing '
+        'every NULL caller onto one shared key. PARALLEL SAFE: it reads no state '
+        'and takes no lock.';
