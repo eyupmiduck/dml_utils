@@ -2,6 +2,8 @@ package io.github.eyupmiduck.dmlutils;
 
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.enums.ChunkingStrategy;
+import org.jooq.DSLContext;
+import org.jooq.SQLDialect;
 import org.jooq.Table;
 import org.jooq.impl.DSL;
 import org.junit.jupiter.api.AfterEach;
@@ -9,6 +11,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.sql.Connection;
+import java.sql.Statement;
 import java.util.List;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
@@ -203,6 +207,32 @@ class RunFunctionOverTableTest extends PostgresTestBase {
                 "both calls share one derived run");
         assertEquals(3, payloadCount(TEST_COMPOSITE_MIXED, "done"),
                 "every row should still be updated exactly once");
+    }
+
+    /**
+     * The derived label is identical from sessions whose search_path differs, so
+     * the second call resumes the first run instead of deriving a new label and
+     * starting another run.
+     */
+    @Test
+    void derivedLabelIsIndependentOfTheSessionSearchPath() throws Exception {
+        createMixed();
+        createMarkMixed("done");
+
+        for (String searchPath : List.of("public", "dml_utils_data, public")) {
+            try (Connection connection = openTestConnection();
+                 Statement statement = connection.createStatement()) {
+                statement.execute("SET search_path = " + searchPath);
+                DSLContext context = DSL.using(connection, SQLDialect.POSTGRES);
+                Routines.runFunctionOverTable(context.configuration(),
+                        schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
+                        FN_SCHEMA, "mark_mixed", 2, 1, null, null,
+                        ChunkingStrategy.primary_key, 1, 0, null, false, 3, 1000);
+            }
+        }
+
+        assertEquals(1, dsl.fetchCount(MIGRATION_RUN, MIGRATION_RUN.LABEL.like("function:%")),
+                "both sessions derive the same label and share one run");
     }
 
     /**
