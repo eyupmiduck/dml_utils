@@ -16,9 +16,11 @@ buildNumber.properties
 .project
 # JDT-specific (Eclipse Java Development Tools)
 .classpath
-# JDT per-project preferences and its default output folder.
-/.settings/
-/bin/
+# JDT per-project preferences and its default output folder. Eclipse writes
+# these inside each project directory (for example dml_utils/.settings/), not at
+# the repository root, so match them at any depth.
+.settings/
+bin/
 
 # IntelliJ
 .idea/

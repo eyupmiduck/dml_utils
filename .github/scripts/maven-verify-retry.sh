@@ -18,11 +18,12 @@
 # to ./mvnw like any other argument.
 #
 # The script works from any directory: it resolves the repository root from its
-# own path, so ./mvnw and the settings file are found regardless of the caller's
-# working directory.
+# own path and runs Maven there, so the reactor (not just one module POM) is
+# built regardless of the caller's working directory.
 set -euo pipefail
 
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+cd "$repo_root" || exit 1
 log="$(mktemp)"
 trap 'rm -f "$log"' EXIT
 
@@ -35,7 +36,9 @@ run_build() {
 # pipeline's: with pipefail a tee failure (disk full, SIGPIPE on the CI log
 # stream) must not turn a successful build into a failure.
 attempt_build() {
-    run_build ${1+"$@"} 2>&1 | tee "$log"
+    # Append: the retry must not truncate the first attempt's log, so the
+    # diagnostics below and a post-mortem see both attempts.
+    run_build ${1+"$@"} 2>&1 | tee -a "$log"
     return "${PIPESTATUS[0]}"
 }
 
