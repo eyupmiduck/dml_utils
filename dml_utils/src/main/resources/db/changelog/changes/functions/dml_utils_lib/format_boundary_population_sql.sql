@@ -16,6 +16,28 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.format_boundary_population_sql(
 AS
 $$
 BEGIN
+    -- The two identifiers rendered with %I and the numbers interpolated below are
+    -- validated here, like the descriptor's caller does: a NULL run id or a
+    -- non-positive chunk size would render a statement that only fails when it is
+    -- finally executed (after the run exists), and a blank order-by renders an
+    -- ORDER BY that is a syntax error.
+    IF i_run_id IS NULL THEN
+        RAISE EXCEPTION 'i_run_id must not be NULL'
+            USING ERRCODE = '22023';
+    END IF;
+    IF i_chunk_size IS NULL OR i_chunk_size <= 0 THEN
+        RAISE EXCEPTION 'i_chunk_size must be positive'
+            USING ERRCODE = '22023';
+    END IF;
+    IF i_order_by IS NULL
+        OR pg_catalog.btrim(i_order_by, E' \t\n\r\f\013') = ''
+        OR i_order_by_desc IS NULL
+        OR pg_catalog.btrim(i_order_by_desc, E' \t\n\r\f\013') = ''
+    THEN
+        RAISE EXCEPTION 'i_order_by and i_order_by_desc must not be NULL or blank'
+            USING ERRCODE = '22023';
+    END IF;
+
     -- Boundaries are picked by row position, so the computation never needs
     -- min()/max() on the key: PostgreSQL defines those aggregates for the integer
     -- and text types but not for uuid.

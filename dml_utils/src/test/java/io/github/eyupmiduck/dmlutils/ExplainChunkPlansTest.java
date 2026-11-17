@@ -87,6 +87,17 @@ class ExplainChunkPlansTest extends PostgresTestBase {
     }
 
     /**
+     * A NULL strategy is rejected instead of falling through to the key branch and
+     * rendering key plans for a caller that asked for nothing.
+     */
+    @Test
+    void rejectsANullStrategy() {
+        assertSqlState("22023", () -> Routines.explainChunkPlans(
+                dsl.configuration(), TEMPLATE, FIXTURE_SCHEMA, "test_bigint", "t",
+                new String[]{"id"}, new String[]{"bigint"}, 1000L, null));
+    }
+
+    /**
      * The explicit-boundary form explains exactly one rendered chunk and names it
      * by its finality.
      */

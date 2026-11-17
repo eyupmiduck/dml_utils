@@ -38,6 +38,8 @@ class RenderBlockChunkSqlTest extends PostgresTestBase {
                 TEMPLATE, PUBLIC_SCHEMA, "some_table", "t", 10L, 10L));
         assertSqlState("22023", () -> Routines.renderBlockChunkSql(dsl.configuration(),
                 TEMPLATE, PUBLIC_SCHEMA, "some_table", "t", 10L, 5L));
+        assertSqlState("22023", () -> Routines.renderBlockChunkSql(dsl.configuration(),
+                TEMPLATE, PUBLIC_SCHEMA, "some_table", "t", 0L, 4294967296L));
         assertDomainViolation(() -> Routines.renderBlockChunkSql(dsl.configuration(),
                 TEMPLATE, PUBLIC_SCHEMA, "some_table", "t", -1L, 5L));
     }
