@@ -6,9 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.sql.Connection;
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Verifies that the extensions compiled into the custom PostgreSQL image are

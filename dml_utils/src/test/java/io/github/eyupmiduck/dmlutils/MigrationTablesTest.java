@@ -56,6 +56,24 @@ class MigrationTablesTest extends PostgresTestBase {
     }
 
     /**
+     * Whether the throwable's cause chain contains the target, at any depth. The
+     * transactional rollback sentinel can be wrapped by jOOQ or Liquibase more
+     * than once, so a fixed-depth check would misreport it.
+     *
+     * @param error  the thrown error
+     * @param target the sentinel
+     * @return true when the chain contains the sentinel
+     */
+    private static boolean hasCause(Throwable error, Throwable target) {
+        for (Throwable current = error; current != null; current = current.getCause()) {
+            if (current == target) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * The migration tables exist in the {@code dml_utils} schema with the
      * expected columns.
      */
@@ -975,24 +993,6 @@ class MigrationTablesTest extends PostgresTestBase {
                 .fetchOne(MIGRATION_RUN.RUN_ID);
         assertNotNull(runId, "the partition-wise run insert should return its id");
         return runId;
-    }
-
-    /**
-     * Whether the throwable's cause chain contains the target, at any depth. The
-     * transactional rollback sentinel can be wrapped by jOOQ or Liquibase more
-     * than once, so a fixed-depth check would misreport it.
-     *
-     * @param error  the thrown error
-     * @param target the sentinel
-     * @return true when the chain contains the sentinel
-     */
-    private static boolean hasCause(Throwable error, Throwable target) {
-        for (Throwable current = error; current != null; current = current.getCause()) {
-            if (current == target) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private void insertLeaf(Long runId, int ordinal, String state, String filepath,

@@ -299,14 +299,14 @@ class RunMigrationChunksPauseTest extends PostgresTestBase {
                 if (row != null) {
                     long runId = row.get(0, Long.class);
                     if (Boolean.TRUE.equals(probe.fetchOne(
-                            "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_locks AS l"
-                                    + " JOIN pg_catalog.pg_stat_activity AS a ON a.pid = l.pid"
-                                    + " WHERE l.locktype = 'advisory'"
-                                    + " AND l.classid = 1 AND l.objid = 4242"
-                                    + " AND a.backend_type = 'pg_background'"
-                                    + " AND a.datname = pg_catalog.current_database()"
-                                    + " AND a.query LIKE ?)",
-                            "%process_migration_chunk(" + runId + ",%")
+                                    "SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_locks AS l"
+                                            + " JOIN pg_catalog.pg_stat_activity AS a ON a.pid = l.pid"
+                                            + " WHERE l.locktype = 'advisory'"
+                                            + " AND l.classid = 1 AND l.objid = 4242"
+                                            + " AND a.backend_type = 'pg_background'"
+                                            + " AND a.datname = pg_catalog.current_database()"
+                                            + " AND a.query LIKE ?)",
+                                    "%process_migration_chunk(" + runId + ",%")
                             .get(0, Boolean.class))) {
                         return runId;
                     }

@@ -105,7 +105,7 @@ class TransientRetryTest extends PostgresTestBase {
                     code + " should be retried and the run should complete");
             assertEquals(0, dsl.fetchCount(MIGRATION_ERROR, MIGRATION_ERROR.RUN_ID.eq(runId)),
                     code + " should leave no error row after recovery");
-                // max_retries counts retries after the initial attempt, and the probe
+            // max_retries counts retries after the initial attempt, and the probe
             // row is incremented per execution: one retry means two executions.
             assertEquals(2L, lastProbeValue(),
                     "the first attempt fails and the retry succeeds for " + code);

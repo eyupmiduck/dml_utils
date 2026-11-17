@@ -33,6 +33,55 @@ class RenderChunkSqlTest extends PostgresTestBase {
             "UPDATE <driving_table> SET processed = true WHERE <chunking_clause>";
 
     /**
+     * A type-aware, NULL-marked sort key for a row, so ordering is deterministic
+     * without conflating distinct values (a literal "null" vs SQL NULL, or a '|'
+     * inside a value).
+     *
+     * @param row the row values
+     * @return the sort key
+     */
+    private static String rowKey(List<Object> row) {
+        return row.stream()
+                .map(value -> value == null ? "<null>"
+                        : value.getClass().getName() + ":" + value)
+                .collect(java.util.stream.Collectors.joining("\u0001"));
+    }
+
+    /**
+     * Quotes a SQL identifier, doubling embedded quotes and quoting each dotted
+     * part.
+     *
+     * @param identifier the identifier or dotted name
+     * @return the quoted identifier
+     */
+    private static String quoteIdentifier(String identifier) {
+        return java.util.Arrays.stream(identifier.split("\\."))
+                .map(part -> "\"" + part.replace("\"", "\"\"") + "\"")
+                .collect(java.util.stream.Collectors.joining("."));
+    }
+
+    /**
+     * Quotes a SQL string literal, doubling embedded quotes.
+     *
+     * @param value the literal value
+     * @return the quoted literal
+     */
+    private static String quoteLiteral(String value) {
+        return "'" + value.replace("'", "''") + "'";
+    }
+
+    /**
+     * Schema-qualifies a table with both parts quoted.
+     *
+     * @param schema the schema
+     * @param table  the table
+     * @return the qualified name
+     */
+    private static String qualify(String schema, String table) {
+        return quoteIdentifier(schema) + "." + quoteIdentifier(table);
+    }
+
+    /**
      * A valid template is accepted.
      */
     @Test
@@ -975,55 +1024,6 @@ class RenderChunkSqlTest extends PostgresTestBase {
                 })
                 .sorted(java.util.Comparator.comparing(RenderChunkSqlTest::rowKey))
                 .toList();
-    }
-
-    /**
-     * A type-aware, NULL-marked sort key for a row, so ordering is deterministic
-     * without conflating distinct values (a literal "null" vs SQL NULL, or a '|'
-     * inside a value).
-     *
-     * @param row the row values
-     * @return the sort key
-     */
-    private static String rowKey(List<Object> row) {
-        return row.stream()
-                .map(value -> value == null ? "<null>"
-                        : value.getClass().getName() + ":" + value)
-                .collect(java.util.stream.Collectors.joining("\u0001"));
-    }
-
-    /**
-     * Quotes a SQL identifier, doubling embedded quotes and quoting each dotted
-     * part.
-     *
-     * @param identifier the identifier or dotted name
-     * @return the quoted identifier
-     */
-    private static String quoteIdentifier(String identifier) {
-        return java.util.Arrays.stream(identifier.split("\\."))
-                .map(part -> "\"" + part.replace("\"", "\"\"") + "\"")
-                .collect(java.util.stream.Collectors.joining("."));
-    }
-
-    /**
-     * Quotes a SQL string literal, doubling embedded quotes.
-     *
-     * @param value the literal value
-     * @return the quoted literal
-     */
-    private static String quoteLiteral(String value) {
-        return "'" + value.replace("'", "''") + "'";
-    }
-
-    /**
-     * Schema-qualifies a table with both parts quoted.
-     *
-     * @param schema the schema
-     * @param table  the table
-     * @return the qualified name
-     */
-    private static String qualify(String schema, String table) {
-        return quoteIdentifier(schema) + "." + quoteIdentifier(table);
     }
 
     private String render(boolean isFinal, String keyKind, String startValue, String endValue) {
