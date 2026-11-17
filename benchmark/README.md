@@ -124,12 +124,12 @@ benchmark/run.sh --reset
 benchmark/report.sh
 ```
 
-This writes the findings page to `results/published/lhorner_laptop_oct_2026/3_col_pk/report.md` and prints its
+This writes the findings page to `results/lhorner_laptop_oct_2026/3_col_pk/report.md` and prints its
 path. Re-run it any time to refresh the means after more runs.
 
 ### Step 5 — read the results
 
-Open `results/published/lhorner_laptop_oct_2026/3_col_pk/report.md`. It contains:
+Open `results/lhorner_laptop_oct_2026/3_col_pk/report.md`. It contains:
 
 - the **configuration** that produced the results and a **dataset** section (live
   source rows and blocks),
@@ -143,10 +143,10 @@ Open `results/published/lhorner_laptop_oct_2026/3_col_pk/report.md`. It contains
   next to the page) of the mean total time against the thread count, embedded in
   the page.
 
-The raw per-run data is `results/published/lhorner_laptop_oct_2026/3_col_pk/benchmark.csv` (one row per measured
-run, tagged with the strategy and chunk unit); `results/published/lhorner_laptop_oct_2026/3_col_pk/hardware.txt`,
-`results/published/lhorner_laptop_oct_2026/3_col_pk/postgres-settings.txt` and
-`results/published/lhorner_laptop_oct_2026/3_col_pk/dataset.txt` hold
+The raw per-run data is `results/lhorner_laptop_oct_2026/3_col_pk/benchmark.csv` (one row per measured
+run, tagged with the strategy and chunk unit); `results/lhorner_laptop_oct_2026/3_col_pk/hardware.txt`,
+`results/lhorner_laptop_oct_2026/3_col_pk/postgres-settings.txt` and
+`results/lhorner_laptop_oct_2026/3_col_pk/dataset.txt` hold
 the captured environment and dataset.
 
 ## What is measured

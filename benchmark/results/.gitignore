@@ -4,8 +4,6 @@
 !.gitkeep
 !.gitignore
 
-# Published snapshots are committed under published/<name>/ and need no edit to
-# this file: force-add is not required, and a new snapshot cannot be silently
-# dropped by a missing whitelist entry.
-!published/
-!published/**
+# Published snapshots are committed: un-ignore the directory and its contents.
+!lhorner_laptop_oct_2026/
+!lhorner_laptop_oct_2026/**
