@@ -4,6 +4,8 @@ import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.tables.records.BoundaryKeyDescriptorSqlRecord;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
@@ -91,6 +93,19 @@ class BoundaryKeyDescriptorSqlTest extends PostgresTestBase {
         assertEquals("id1, id2", row.getOIdList());
         assertEquals("x, id1", row.getOOrderBy());
         assertEquals("id1 DESC, id2 DESC", row.getOOrderByDesc());
+
+        // Execute the fragments: the top-level ORDER BY must use the output alias
+        // idN, so a key column named id1 at position 2 is ordered by its value and
+        // not shadowed by the id1 alias of the first key column. Both rows share
+        // x, so ordering by the real column is observable as 10 before 0.
+        List<Long[]> ordered = dsl.fetch("SELECT " + row.getOSelectList()
+                        + " FROM (VALUES (1::bigint, 0::bigint), (1::bigint, 10::bigint))"
+                        + " AS src(x, id1) ORDER BY " + row.getOOrderByDesc())
+                .map(record -> new Long[]{record.get("id1", Long.class),
+                        record.get("id2", Long.class)});
+        assertEquals(10L, ordered.getFirst()[1],
+                "the second key column is ordered by its own value, not the first alias");
+        assertEquals(0L, ordered.getLast()[1]);
     }
 
     /**
