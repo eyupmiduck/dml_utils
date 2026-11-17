@@ -100,9 +100,9 @@ class CompleteMigrationBoundaryTest extends PostgresTestBase {
                 dsl.configuration(), runId, 0L, OffsetDateTime.now(), 0L));
 
         assertEquals(0L, dsl.select(MIGRATION_RUN.TOTAL_CHUNKS_COMPLETED)
-                .from(MIGRATION_RUN)
-                .where(MIGRATION_RUN.RUN_ID.eq(runId))
-                .fetchOne(MIGRATION_RUN.TOTAL_CHUNKS_COMPLETED),
+                        .from(MIGRATION_RUN)
+                        .where(MIGRATION_RUN.RUN_ID.eq(runId))
+                        .fetchOne(MIGRATION_RUN.TOTAL_CHUNKS_COMPLETED),
                 "a cancelled boundary does not advance the counter");
     }
 
