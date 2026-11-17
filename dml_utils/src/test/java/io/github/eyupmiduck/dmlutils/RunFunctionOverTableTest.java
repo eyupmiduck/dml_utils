@@ -538,7 +538,7 @@ class RunFunctionOverTableTest extends PostgresTestBase {
                         name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", "t.b = 'x'");
 
         assertEquals("SELECT public.mark_mixed(t.a, t.b) FROM <driving_table>"
-                + " WHERE <chunking_clause> AND (t.b = 'x'\n)", template,
+                        + " WHERE <chunking_clause> AND (t.b = 'x'\n)", template,
                 "the closing paren is on its own line so a trailing line comment "
                         + "cannot swallow it");
     }

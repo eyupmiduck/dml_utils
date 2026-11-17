@@ -21,8 +21,8 @@ DECLARE
     l_chunking_clause_token    constant text := '<chunking_clause>';
     l_driving_table_sentinel   constant text := pg_catalog.chr(1);
     l_chunking_clause_sentinel constant text := pg_catalog.chr(2);
-    l_call_arguments           text;
-    l_function_chunk_template  text;
+    l_call_arguments                    text;
+    l_function_chunk_template           text;
 BEGIN
     IF i_filter IS NOT NULL
         AND pg_catalog.btrim(i_filter, E' \t\n\r\f\013') = ''
@@ -37,14 +37,14 @@ BEGIN
     -- would be rewritten in an unintended place.
     IF i_filter IS NOT NULL
         AND (pg_catalog.strpos(i_filter, l_driving_table_token) > 0
-        OR pg_catalog.strpos(i_filter, l_chunking_clause_token) > 0)
+            OR pg_catalog.strpos(i_filter, l_chunking_clause_token) > 0)
     THEN
         RAISE EXCEPTION 'i_filter must not contain the chunking template tokens'
             USING ERRCODE = '22023';
     END IF;
     IF i_filter IS NOT NULL
         AND (pg_catalog.strpos(i_filter, l_driving_table_sentinel) > 0
-        OR pg_catalog.strpos(i_filter, l_chunking_clause_sentinel) > 0)
+            OR pg_catalog.strpos(i_filter, l_chunking_clause_sentinel) > 0)
     THEN
         RAISE EXCEPTION 'i_filter contains a reserved substitution character'
             USING ERRCODE = '22023';
@@ -74,7 +74,7 @@ BEGIN
         -- Newline before the closing paren: a filter ending in a -- line comment
         -- would otherwise comment out the paren and leave a broken template.
         l_function_chunk_template := l_function_chunk_template
-            || ' AND (' || i_filter || E'\n)';
+                                         || ' AND (' || i_filter || E'\n)';
     END IF;
 
     RETURN l_function_chunk_template;

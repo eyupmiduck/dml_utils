@@ -10,9 +10,9 @@ $$
 DECLARE
     l_driving_table_token   constant text := '<driving_table>';
     l_chunking_clause_token constant text := '<chunking_clause>';
-    l_driving_table_count   integer;
-    l_chunking_clause_count integer;
-    l_probe                 text;
+    l_driving_table_count            integer;
+    l_chunking_clause_count          integer;
+    l_probe                          text;
 BEGIN
     -- Count occurrences of each token by removing it and comparing lengths:
     -- length difference / token length = number of occurrences. The tokens are
