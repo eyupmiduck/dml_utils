@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * Verifies {@code dml_utils_lib.explain_query_plan}: it returns the
@@ -104,9 +105,18 @@ class ExplainQueryPlanTest extends PostgresTestBase {
      * literal containing a backslash still parses as closed. Without the pin,
      * the session's scs=off would leave the literal open and the EXPLAIN would
      * fail with 42601.
+     *
+     * <p>PostgreSQL 19 removed the non-standard setting, so the scenario is
+     * skipped there; the pin itself is still valid in both cases.
      */
     @Test
     void pinsStandardConformingStringsForTheGuardAndTheExplain() {
+        int serverVersion = dsl.fetchOne(
+                        "SELECT pg_catalog.current_setting('server_version_num')::integer")
+                .get(0, Integer.class);
+        assumeTrue(serverVersion < 190000,
+                "standard_conforming_strings = off was removed in PostgreSQL 19");
+
         dsl.transaction(config -> {
             org.jooq.DSLContext tx = org.jooq.impl.DSL.using(config);
             tx.execute("SET LOCAL standard_conforming_strings = off");
