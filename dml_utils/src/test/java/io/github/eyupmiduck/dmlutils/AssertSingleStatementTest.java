@@ -76,6 +76,53 @@ class AssertSingleStatementTest extends PostgresTestBase {
     }
 
     /**
+     * A '$' that continues an identifier is not a dollar-quote opener, so the
+     * terminator after the identifier is still seen. (PostgreSQL identifiers may
+     * contain '$', so {@code a$b$} is one identifier.)
+     */
+    @Test
+    void treatsADollarInsideAnIdentifierAsText() {
+        accepts("SELECT 0 AS a$b$");
+        rejects("SELECT 0 AS a$b$; SELECT 2");
+    }
+
+    /**
+     * A non-ASCII dollar-quote tag is recognised, because PostgreSQL's tag lexer
+     * accepts any letter, not ASCII only.
+     */
+    @Test
+    void acceptsANonAsciiDollarTag() {
+        accepts("SELECT $t\u00e4g$a;b$t\u00e4g$");
+    }
+
+    /**
+     * Text that holds no statement at all is rejected rather than passed to the
+     * server as an opaque syntax error.
+     */
+    @Test
+    void rejectsTextWithoutAStatement() {
+        rejects(";");
+        rejects("   ;   ");
+        rejects("-- only a comment");
+        rejects("/* only a comment */");
+        rejects("-- c\n/* d */;");
+    }
+
+    /**
+     * Text that ends inside an unterminated literal, quoted identifier,
+     * dollar-quoted body or block comment is rejected: an unclosed body must not
+     * be treated as "the rest is data", which would fail open.
+     */
+    @Test
+    void rejectsAnUnterminatedConstruct() {
+        rejects("SELECT 'abc");
+        rejects("SELECT E'abc\\");
+        rejects("SELECT \"a");
+        rejects("SELECT $body$a;b");
+        rejects("SELECT 1 /* a /* b */");
+    }
+
+    /**
      * An unterminated dollar tag is ordinary text, so the scan keeps looking for
      * a real statement separator.
      */

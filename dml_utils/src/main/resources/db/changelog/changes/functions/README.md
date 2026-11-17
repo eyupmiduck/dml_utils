@@ -1261,9 +1261,13 @@ RETURNS void
 unless `i_sql_text` is a single statement. The scan is lexical, so a semicolon
 separates statements only outside a quoted literal, a quoted identifier, a
 dollar-quoted body or a (nested) comment; a terminator followed by only
-whitespace and comments is accepted, so a trailing semicolon is allowed. Used
-by `explain_query_plan`, because PL/pgSQL's `EXECUTE` would otherwise run the
-statements that follow the first one.
+whitespace and comments is accepted, so a trailing semicolon is allowed. A `$`
+that continues an identifier is text, not a dollar-quote opener, and a tag may
+contain non-ASCII letters as PostgreSQL allows. Text with no statement, and
+text that ends inside an unterminated literal, quoted identifier, dollar-quoted
+body or block comment, is rejected too. Used by `explain_query_plan`, because
+PL/pgSQL's `EXECUTE` would otherwise run the statements that follow the first
+one.
 
 ###
 

@@ -94,18 +94,22 @@ class BoundaryKeyDescriptorSqlTest extends PostgresTestBase {
         assertEquals("x, id1", row.getOOrderBy());
         assertEquals("id1 DESC, id2 DESC", row.getOOrderByDesc());
 
-        // Execute the fragments: the top-level ORDER BY must use the output alias
-        // idN, so a key column named id1 at position 2 is ordered by its value and
-        // not shadowed by the id1 alias of the first key column. Both rows share
-        // x, so ordering by the real column is observable as 10 before 0.
-        List<Long[]> ordered = dsl.fetch("SELECT " + row.getOSelectList()
-                        + " FROM (VALUES (1::bigint, 0::bigint), (1::bigint, 10::bigint))"
-                        + " AS src(x, id1) ORDER BY " + row.getOOrderByDesc())
+        // Execute a swapped collision instead: with key columns (id2, id1) the
+        // correct fragment (id1 DESC, id2 DESC) orders by src.id2, then src.id1,
+        // while a raw-name fragment (id2 DESC, id1 DESC) would resolve to the
+        // output aliases and order by src.id1, then src.id2 -- a deterministic
+        // difference, unlike a tie on the first column.
+        BoundaryKeyDescriptorSqlRecord swapped = describe(
+                new String[]{"id2", "id1"}, new String[]{"bigint", "bigint"});
+        List<Long[]> ordered = dsl.fetch("SELECT " + swapped.getOSelectList()
+                        + " FROM (VALUES (1::bigint, 2::bigint), (2::bigint, 1::bigint))"
+                        + " AS src(id2, id1) ORDER BY " + swapped.getOOrderByDesc())
                 .map(record -> new Long[]{record.get("id1", Long.class),
                         record.get("id2", Long.class)});
-        assertEquals(10L, ordered.getFirst()[1],
-                "the second key column is ordered by its own value, not the first alias");
-        assertEquals(0L, ordered.getLast()[1]);
+        assertEquals(2L, ordered.getFirst()[0],
+                "the first key column is ordered by its own value");
+        assertEquals(1L, ordered.getFirst()[1],
+                "the second key column is ordered by its own value, not by the first alias");
     }
 
     /**

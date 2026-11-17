@@ -51,7 +51,6 @@ class TerminalLeafForRunTest extends PartitionTestBase {
      */
     @Test
     void rejectsARunWithoutALeafManifest() {
-        seedBigint(1L);
         long runId = Routines.populateMigrationBoundaries(dsl.configuration(),
                 TEST_BIGINT.getSchema().getName(), TEST_BIGINT.getName(),
                 uniqueLabel("terminal-leaf-single"), "SELECT 1", 1, 1,
@@ -66,7 +65,7 @@ class TerminalLeafForRunTest extends PartitionTestBase {
      * key: the mid leaf's stored high-water id is returned with its identity.
      */
     @Test
-    void returnsTheLastNonEmptyLeafsHighWaterKey() {
+    void returnsLastNonEmptyLeafHighWaterKey() {
         insertRangeRows(0L, 1L, 150L);
         long runId = populatePartitionWise("terminal-leaf", PARTITIONED_RANGE, TEMPLATE,
                 ChunkingStrategy.primary_key, 2, null);
@@ -102,6 +101,7 @@ class TerminalLeafForRunTest extends PartitionTestBase {
     void returnsAllNullFieldsWhenEveryLeafIsEmpty() {
         long runId = populatePartitionWise("terminal-leaf-empty", PARTITIONED_RANGE,
                 TEMPLATE, ChunkingStrategy.primary_key, 2, null);
+        Routines.calculateMigrationRunBoundaries(dsl.configuration(), runId);
 
         TerminalLeafForRun terminal = Routines.terminalLeafForRun(
                 dsl.configuration(), runId);

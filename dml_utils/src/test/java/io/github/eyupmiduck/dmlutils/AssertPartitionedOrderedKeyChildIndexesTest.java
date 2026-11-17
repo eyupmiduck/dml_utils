@@ -49,8 +49,13 @@ class AssertPartitionedOrderedKeyChildIndexesTest extends PartitionTestBase {
         // dropped, so the parent cannot be resolved.
         executeAsOwner("CREATE UNIQUE INDEX assert_child_index_stale_idx ON "
                 + SCHEMA + ".test_partitioned_range (id)");
-        long staleOid = relationOid(SCHEMA + ".assert_child_index_stale_idx");
-        executeAsOwner("DROP INDEX " + SCHEMA + ".assert_child_index_stale_idx");
+        long staleOid;
+        try {
+            staleOid = relationOid(SCHEMA + ".assert_child_index_stale_idx");
+        } finally {
+            executeAsOwner("DROP INDEX IF EXISTS " + SCHEMA
+                    + ".assert_child_index_stale_idx");
+        }
         assertSqlState("42704", () -> Routines.assertPartitionedOrderedKeyChildIndexes(
                 dsl.configuration(), staleOid, SCHEMA, "test_partitioned_range",
                 "assert_child_index_stale_idx"));

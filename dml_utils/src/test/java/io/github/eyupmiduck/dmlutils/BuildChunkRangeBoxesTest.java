@@ -93,8 +93,9 @@ class BuildChunkRangeBoxesTest extends PostgresTestBase {
     }
 
     /**
-     * The same three-box shape with the final flag set uses an inclusive upper
-     * bound in every box, so the last chunk includes its end key.
+     * The same three-box shape with the final flag set only makes the upper
+     * tail's last-column bound inclusive (the middle box stays a strict open
+     * range), so the last chunk includes its end key.
      */
     @Test
     void rendersInclusiveThreeBoxesForAFinalChunk() {

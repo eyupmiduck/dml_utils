@@ -49,8 +49,10 @@ class ResolveFunctionChunkTargetTest extends PostgresTestBase {
      */
     @Test
     void resolvesTheMatchingOverload() {
+        // The decoy is non-void, so picking it would raise "must return void";
+        // both siblings otherwise produce the same key columns and call list.
         dsl.execute("CREATE OR REPLACE FUNCTION public.target_mark_overload(a bigint, b bigint)"
-                + " RETURNS void LANGUAGE plpgsql AS $$ BEGIN NULL; END $$");
+                + " RETURNS bigint LANGUAGE sql AS $$ SELECT a $$");
         dsl.execute("CREATE OR REPLACE FUNCTION public.target_mark_overload(a bigint, b text)"
                 + " RETURNS void LANGUAGE plpgsql AS $$ BEGIN NULL; END $$");
 
