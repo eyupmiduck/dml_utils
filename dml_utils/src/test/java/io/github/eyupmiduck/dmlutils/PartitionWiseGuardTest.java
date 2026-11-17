@@ -162,7 +162,8 @@ class PartitionWiseGuardTest extends PartitionTestBase {
         } finally {
             executeAsOwner("DO $$ BEGIN"
                     + " IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint"
-                    + " WHERE conname = 'test_partitioned_range_pkey') THEN"
+                    + " WHERE conrelid = '" + SCHEMA + "." + TABLE + "'::regclass"
+                    + " AND contype = 'p') THEN"
                     + " ALTER TABLE " + SCHEMA + "." + TABLE + " ADD PRIMARY KEY (id);"
                     + " END IF; END $$");
         }

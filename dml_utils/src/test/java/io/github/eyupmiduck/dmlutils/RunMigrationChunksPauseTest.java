@@ -125,7 +125,7 @@ class RunMigrationChunksPauseTest extends PostgresTestBase {
                 DSLContext ownerDsl = DSL.using(owner, SQLDialect.POSTGRES);
                 Routines.runMigrationChunks(ownerDsl.configuration(), FAST_TEMPLATE,
                         schema(TEST_BIGINT), name(TEST_BIGINT), label, 1, 1, "t",
-                        ChunkingStrategy.primary_key, 1, 5_000, null, false, 3, 1000);
+                        ChunkingStrategy.primary_key, 1, 60_000, null, false, 3, 1000);
             } catch (SQLException error) {
                 throw new CompletionException(error);
             }
@@ -134,8 +134,9 @@ class RunMigrationChunksPauseTest extends PostgresTestBase {
         long runId = awaitCompletedChunk(label);
         assertEquals(runId, Routines.pauseMigrationRun(dsl.configuration(), label));
 
-        // The pause must abort the 5s throttle sleep; allow well beyond the
-        // remaining window so a loaded runner does not fail the test spuriously.
+        // The throttle is 60s, so a coordinator that does not abort it on pause
+        // cannot finish inside this deadline: the test fails if the sleep is not
+        // interrupted, not merely later.
         run.get(10, TimeUnit.SECONDS);
 
         MigrationRunRecord record = run(runId);
@@ -303,7 +304,9 @@ class RunMigrationChunksPauseTest extends PostgresTestBase {
                                     + " WHERE l.locktype = 'advisory'"
                                     + " AND l.classid = 1 AND l.objid = 4242"
                                     + " AND a.backend_type = 'pg_background'"
-                                    + " AND a.datname = pg_catalog.current_database())")
+                                    + " AND a.datname = pg_catalog.current_database()"
+                                    + " AND a.query LIKE ?)",
+                            "%process_migration_chunk(" + runId + ",%")
                             .get(0, Boolean.class))) {
                         return runId;
                     }

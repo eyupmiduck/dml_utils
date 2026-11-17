@@ -23,7 +23,6 @@ class LeafBoundaryPopulationSqlTest extends PartitionTestBase {
     private static final String TEMPLATE =
             "UPDATE <driving_table> SET payload = 'x' WHERE <chunking_clause>";
     private static final String TABLE = "test_partitioned_range";
-    private static final String ORDERED_INDEX = "test_partitioned_range_ordered_key_idx";
 
     /**
      * Empties the fixture and migration metadata between tests.
@@ -60,13 +59,14 @@ class LeafBoundaryPopulationSqlTest extends PartitionTestBase {
     void buildsAnOrderedKeyLeafStatement() throws Exception {
         insertRangeRows(0L, 1L, 2L, 3L, 4L);
         String index = "test_partitioned_range_leaf_descriptor_idx";
-        // Ordered-key columns must be NOT NULL; cover both catalog changes with
-        // the same restore.
-        executeAsOwner("ALTER TABLE " + PARTITION_SCHEMA + "." + TABLE
-                + " ALTER COLUMN payload SET NOT NULL");
-        executeAsOwner("CREATE UNIQUE INDEX " + index + " ON " + PARTITION_SCHEMA
-                + "." + TABLE + " (payload, id)");
         try {
+            // Ordered-key columns must be NOT NULL; the DDL is inside the try so
+            // the finally always restores both catalog changes.
+            executeAsOwner("DROP INDEX IF EXISTS " + PARTITION_SCHEMA + "." + index);
+            executeAsOwner("ALTER TABLE " + PARTITION_SCHEMA + "." + TABLE
+                    + " ALTER COLUMN payload SET NOT NULL");
+            executeAsOwner("CREATE UNIQUE INDEX " + index + " ON " + PARTITION_SCHEMA
+                    + "." + TABLE + " (payload, id)");
             long runId = populatePartitionWise("leaf-builder-wrapper-ordered_key", TABLE,
                     TEMPLATE, ChunkingStrategy.ordered_key, 2, index);
 

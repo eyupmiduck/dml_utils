@@ -297,7 +297,8 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
 
     /**
      * Splits an SQL script into statements on top-level semicolons, respecting
-     * single-quoted literals, dollar-quoted bodies and {@code --} line comments.
+     * single-quoted literals, dollar-quoted bodies, line comments and nested block
+     * comments. Whitespace-only fragments are dropped.
      * Used by the tests that execute changelog or example scripts, so a
      * semicolon inside a literal or a function body cannot corrupt a statement.
      *
@@ -314,6 +315,26 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
                 int end = script.indexOf('\n', i);
                 if (end < 0) {
                     end = script.length();
+                }
+                current.append(script, i, end);
+                i = end;
+            } else if (c == '/' && i + 1 < script.length() && script.charAt(i + 1) == '*') {
+                // Block comments nest, and a semicolon inside one must not split.
+                int depth = 0;
+                int end = i;
+                while (end < script.length()) {
+                    if (script.startsWith("/*", end)) {
+                        depth++;
+                        end += 2;
+                    } else if (script.startsWith("*/", end)) {
+                        depth--;
+                        end += 2;
+                        if (depth == 0) {
+                            break;
+                        }
+                    } else {
+                        end++;
+                    }
                 }
                 current.append(script, i, end);
                 i = end;
@@ -341,7 +362,9 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
                 current.append(script, i, close + tag.length());
                 i = close + tag.length();
             } else if (c == ';') {
-                statements.add(current.toString());
+                if (!current.toString().isBlank()) {
+                    statements.add(current.toString());
+                }
                 current.setLength(0);
                 i++;
             } else {

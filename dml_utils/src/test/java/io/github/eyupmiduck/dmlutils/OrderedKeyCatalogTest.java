@@ -143,7 +143,8 @@ class OrderedKeyCatalogTest extends PostgresTestBase {
 
         assertTrue(error.getMessage().contains("Hint:"),
                 () -> "expected a hint in the message: " + error.getMessage());
-        assertTrue(error.getMessage().matches("(?s).*Hint:.*test_bigint.*"),
+        assertTrue(error.getMessage().contains(
+                        "exists on table " + FIXTURE_SCHEMA + ".test_bigint"),
                 () -> "the hint should name the table that owns the index: " + error.getMessage());
     }
 

@@ -33,6 +33,19 @@ class PartitionBoundaryCalculationTest extends PartitionTestBase {
             "UPDATE <driving_table> SET payload = 'x' WHERE <chunking_clause>";
 
     /**
+     * Re-grants the mid-partition SELECT revoked by one test, so a failure that
+     * skips its own finally cannot break later tests (the GRANT is idempotent).
+     *
+     * @throws Exception if the grant cannot be restored
+     */
+    @AfterEach
+    void restoreMidPartitionGrant() throws Exception {
+        executeAsOwner("GRANT SELECT, INSERT, UPDATE, DELETE, TRUNCATE ON "
+                + PARTITION_SCHEMA + "." + PARTITIONED_RANGE_MID + " TO "
+                + TEST_USER + ", dml_utils_caller");
+    }
+
+    /**
      * Empties the range fixture between tests.
      */
     @BeforeEach

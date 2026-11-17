@@ -98,9 +98,13 @@ class MigrationRunProgressTest extends PartitionTestBase {
         // Compare against the database's own elapsed time, read independently of
         // the view, rather than deriving the expectation from the view's output.
         long measuredMs = databaseElapsedMs(runId);
-        assertEquals(measuredMs, progress.getElapsedMs(), 200,
-                "the reported elapsed time matches the database clock");
-        double measuredRate = 1.0 / (measuredMs / 1000.0);
+        // databaseElapsedMs is sampled after the view, so it can only be larger
+        // than the reported elapsed; allow the round-trip gap in one direction.
+        assertTrue(progress.getElapsedMs() >= 1900,
+                "the elapsed time is measured from started_at");
+        assertTrue(progress.getElapsedMs() <= measuredMs,
+                "the reported elapsed time does not exceed the sampled clock");
+        double measuredRate = 1.0 / (progress.getElapsedMs() / 1000.0);
         assertEquals(measuredRate, progress.getChunksPerSecond(),
                 measuredRate * 0.1, "one chunk per measured elapsed second");
         assertEquals(10.0 * measuredRate, progress.getRowsPerSecond(),

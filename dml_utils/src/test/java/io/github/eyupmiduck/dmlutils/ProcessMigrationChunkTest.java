@@ -220,9 +220,9 @@ class ProcessMigrationChunkTest extends PostgresTestBase {
                     "exactly one caller should claim the boundary");
         } finally {
             pool.shutdownNow();
-            assertTrue(pool.awaitTermination(30, TimeUnit.SECONDS),
-                    "the claim workers must terminate");
         }
+        assertTrue(pool.awaitTermination(30, TimeUnit.SECONDS),
+                "the claim workers must terminate");
 
         assertTrue(boundaryCompleted(runId, 0), "the boundary should be completed once");
         assertEquals(2, dsl.fetchCount(TEST_BIGINT, TEST_BIGINT.PAYLOAD.eq("x")),

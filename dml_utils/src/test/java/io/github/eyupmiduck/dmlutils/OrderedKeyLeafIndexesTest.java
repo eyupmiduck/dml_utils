@@ -75,7 +75,7 @@ class OrderedKeyLeafIndexesTest extends PostgresTestBase {
 
         assertEquals(3, rows.size(), "one child index per range leaf");
         Map<Long, String> indexedTables = indexedTables();
-        Map<Long, String> relationNames = relationNames();
+        Map<Long, String> relationNameByOid = relationNames();
         Set<String> indexedLeaves = new HashSet<>();
         Set<String> childNames = new HashSet<>();
         for (OrderedKeyLeafIndexesRecord row : rows) {
@@ -85,7 +85,7 @@ class OrderedKeyLeafIndexesTest extends PostgresTestBase {
             assertTrue(childNames.add(row.getChildIndexName()),
                     "each child index name is distinct");
             String childTable = indexedTables.get(row.getChildIndexOid());
-            assertEquals(relationNames.get(row.getLeafOid()), childTable,
+            assertEquals(relationNameByOid.get(row.getLeafOid()), childTable,
                     "the child index belongs to the leaf the row names");
             indexedLeaves.add(childTable);
         }
@@ -104,11 +104,11 @@ class OrderedKeyLeafIndexesTest extends PostgresTestBase {
 
         assertEquals(3, rows.size(), "two hash leaves plus the high leaf");
         Map<Long, String> indexedTables = indexedTables();
-        Map<Long, String> relationNames = relationNames();
+        Map<Long, String> relationNameByOid = relationNames();
         Set<String> indexedLeaves = new HashSet<>();
         for (OrderedKeyLeafIndexesRecord row : rows) {
             String childTable = indexedTables.get(row.getChildIndexOid());
-            assertEquals(relationNames.get(row.getLeafOid()), childTable,
+            assertEquals(relationNameByOid.get(row.getLeafOid()), childTable,
                     "the child index belongs to the leaf the row names");
             indexedLeaves.add(childTable);
         }

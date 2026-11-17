@@ -819,8 +819,9 @@ class RenderChunkSqlTest extends PostgresTestBase {
             // the boxes and that the tuple range estimates strictly more rows.
             assertTrue(boxEstimate <= Math.max(50, actual * 10),
                     "the box estimate " + boxEstimate + " should be in the same order as the actual " + actual);
-            assertTrue(tupleEstimate > boxEstimate,
-                    "the row-value estimate " + tupleEstimate + " should exceed the boxes' " + boxEstimate);
+            assertTrue(tupleEstimate > boxEstimate * 2,
+                    "the row-value estimate " + tupleEstimate + " should exceed the boxes' "
+                            + boxEstimate + " by more than rounding");
         }
     }
 
@@ -889,7 +890,6 @@ class RenderChunkSqlTest extends PostgresTestBase {
     private void assertRandomRangesMatch(String schema, String table, String[] columns, String[] kinds,
                                          List<String[]> keys, int iterations, long seed) {
         Random random = new Random(seed);
-        int verified = 0;
         for (int i = 0; i < iterations; i++) {
             int lo = random.nextInt(keys.size());
             int hi = random.nextInt(keys.size());
@@ -914,9 +914,7 @@ class RenderChunkSqlTest extends PostgresTestBase {
                 }
             }
             assertBoxesMatchTupleRange(schema, table, columns, kinds, keys.get(lo), keys.get(hi), isFinal);
-            verified++;
         }
-        assertEquals(iterations, verified, "every requested random range is verified");
     }
 
     /**

@@ -165,6 +165,7 @@ class RunMigrationChunksEdgeCasesTest extends PostgresTestBase {
                                     + " WHERE pid <> pg_backend_pid()"
                                     + " AND wait_event_type = 'Lock'"
                                     + " AND backend_type = 'pg_background'"
+                                    + " AND datname = pg_catalog.current_database()"
                                     + " AND query LIKE ?",
                             runMarker)
                     .get(0, Integer.class);
