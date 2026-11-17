@@ -35,6 +35,24 @@ class OrderedKeyCatalogTest extends PostgresTestBase {
         assertNotNull(row.getColumnOid(), "the column type oid is returned");
     }
 
+    /**
+     * The resolvable index shapes.
+     *
+     * @return the index, its key columns and kinds
+     */
+    private static java.util.stream.Stream<Arguments> resolvableIndexes() {
+        return java.util.stream.Stream.of(
+                Arguments.of("composite timestamptz, bigint",
+                        "test_ordered_key_created_at_id_idx",
+                        new String[]{"created_at", "id"}, new String[]{"timestamptz", "bigint"}),
+                Arguments.of("single uuid", "test_ordered_key_external_id_idx",
+                        new String[]{"external_id"}, new String[]{"uuid"}),
+                Arguments.of("primary key", "test_ordered_key_pkey",
+                        new String[]{"id"}, new String[]{"bigint"}),
+                Arguments.of("INCLUDE columns", "test_ordered_key_include_idx",
+                        new String[]{"created_at", "id"}, new String[]{"timestamptz", "bigint"}));
+    }
+
     private List<OrderedKeyAttributesRecord> attributes(String index) {
         return Routines.orderedKeyAttributes(
                 dsl.configuration(), FIXTURE_SCHEMA, TABLE, index);
@@ -43,10 +61,6 @@ class OrderedKeyCatalogTest extends PostgresTestBase {
     private void assertRejected(String expectedSqlState, String index) {
         assertSqlState(expectedSqlState, () -> attributes(index));
     }
-
-
-
-
 
     /**
      * Each supported unique btree index resolves to its key columns in index
@@ -67,24 +81,6 @@ class OrderedKeyCatalogTest extends PostgresTestBase {
         for (int i = 0; i < columns.length; i++) {
             assertAttribute(rows.get(i), i + 1, columns[i], kinds[i]);
         }
-    }
-
-    /**
-     * The resolvable index shapes.
-     *
-     * @return the index, its key columns and kinds
-     */
-    private static java.util.stream.Stream<Arguments> resolvableIndexes() {
-        return java.util.stream.Stream.of(
-                Arguments.of("composite timestamptz, bigint",
-                        "test_ordered_key_created_at_id_idx",
-                        new String[]{"created_at", "id"}, new String[]{"timestamptz", "bigint"}),
-                Arguments.of("single uuid", "test_ordered_key_external_id_idx",
-                        new String[]{"external_id"}, new String[]{"uuid"}),
-                Arguments.of("primary key", "test_ordered_key_pkey",
-                        new String[]{"id"}, new String[]{"bigint"}),
-                Arguments.of("INCLUDE columns", "test_ordered_key_include_idx",
-                        new String[]{"created_at", "id"}, new String[]{"timestamptz", "bigint"}));
     }
 
     /**

@@ -38,6 +38,18 @@ class TransientRetryTest extends PostgresTestBase {
     private static final String SEQUENCE = "public.retry_probe_seq";
 
     /**
+     * The non-retry cases: a permanent error with a budget and a transient error
+     * without one.
+     *
+     * @return the case parameters
+     */
+    private static java.util.stream.Stream<Arguments> nonRetryCases() {
+        return java.util.stream.Stream.of(
+                Arguments.of("retry-permanent", "fail_counted", "22012", 3),
+                Arguments.of("retry-zero", "retry_once", "40P01", 0));
+    }
+
+    /**
      * Clears the fixture and metadata, then creates a fresh probe sequence and the
      * two transient-error functions.
      */
@@ -144,8 +156,6 @@ class TransientRetryTest extends PostgresTestBase {
                 "one initial attempt plus one configured retry");
     }
 
-
-
     /**
      * A non-transient error is never retried even with a retry budget, and a zero
      * retry budget disables retries for a transient error: either way the error
@@ -172,18 +182,6 @@ class TransientRetryTest extends PostgresTestBase {
         assertEquals(1, dsl.fetchCount(MIGRATION_ERROR, MIGRATION_ERROR.RUN_ID.eq(runId)),
                 "the error is recorded once");
         assertEquals(1L, lastProbeValue(), "the function is attempted only once");
-    }
-
-    /**
-     * The non-retry cases: a permanent error with a budget and a transient error
-     * without one.
-     *
-     * @return the case parameters
-     */
-    private static java.util.stream.Stream<Arguments> nonRetryCases() {
-        return java.util.stream.Stream.of(
-                Arguments.of("retry-permanent", "fail_counted", "22012", 3),
-                Arguments.of("retry-zero", "retry_once", "40P01", 0));
     }
 
     /**

@@ -95,7 +95,6 @@ class PrimaryKeyAttributesTest extends PostgresTestBase {
     }
 
 
-
     /**
      * A table without a primary key and a primary key of more than three columns
      * are rejected with {@code 22023}.

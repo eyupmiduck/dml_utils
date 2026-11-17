@@ -130,7 +130,6 @@ class PauseMigrationRunTest extends PostgresTestBase {
     }
 
 
-
     /**
      * A cancelled or archived run is not pausable or resumable, and gains no
      * pause timestamp.

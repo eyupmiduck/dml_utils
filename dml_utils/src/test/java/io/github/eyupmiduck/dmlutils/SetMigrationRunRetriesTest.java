@@ -122,7 +122,6 @@ class SetMigrationRunRetriesTest extends PostgresTestBase {
     }
 
 
-
     /**
      * A cancelled or archived run is not updated: the terminal state reports
      * {@code P0002} and the created retry settings are unchanged.

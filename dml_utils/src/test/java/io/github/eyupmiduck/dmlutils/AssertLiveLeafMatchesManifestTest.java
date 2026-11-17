@@ -242,7 +242,6 @@ class AssertLiveLeafMatchesManifestTest extends PartitionTestBase {
     }
 
 
-
     private void assertLeaf(ManifestLeafIdentity leaf) {
         assertLeaf(dsl, leaf);
     }

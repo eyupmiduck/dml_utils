@@ -38,6 +38,22 @@ class ResolveMigrationRunTest extends PostgresTestBase {
             "UPDATE <driving_table> SET payload = 'x' WHERE <chunking_clause>";
 
     /**
+     * The index mutations a resumed ordered run must reject.
+     *
+     * @return the replacement CREATE INDEX statements
+     */
+    private static java.util.stream.Stream<Arguments> resumeIndexViolations() {
+        return java.util.stream.Stream.of(
+                Arguments.of("reordered", "CREATE UNIQUE INDEX test_ordered_key_created_at_id_idx"
+                        + " ON dml_utils_fixtures.test_ordered_key (id, created_at)"),
+                Arguments.of("non-unique", "CREATE INDEX test_ordered_key_created_at_id_idx"
+                        + " ON dml_utils_fixtures.test_ordered_key (created_at, id)"),
+                Arguments.of("too-many-columns", "CREATE UNIQUE INDEX test_ordered_key_created_at_id_idx"
+                        + " ON dml_utils_fixtures.test_ordered_key"
+                        + " (created_at, id, external_id, label)"));
+    }
+
+    /**
      * Resets the run metadata and the fixture table between tests.
      */
     @BeforeEach
@@ -317,9 +333,6 @@ class ResolveMigrationRunTest extends PostgresTestBase {
         }
     }
 
-
-
-
     /**
      * A resumed ordered run fails closed with {@code 55000} when the stored
      * index is recreated with a different key order, as non-unique, or with too
@@ -345,22 +358,6 @@ class ResolveMigrationRunTest extends PostgresTestBase {
         } finally {
             recreateOrderedKeyIndex();
         }
-    }
-
-    /**
-     * The index mutations a resumed ordered run must reject.
-     *
-     * @return the replacement CREATE INDEX statements
-     */
-    private static java.util.stream.Stream<Arguments> resumeIndexViolations() {
-        return java.util.stream.Stream.of(
-                Arguments.of("reordered", "CREATE UNIQUE INDEX test_ordered_key_created_at_id_idx"
-                        + " ON dml_utils_fixtures.test_ordered_key (id, created_at)"),
-                Arguments.of("non-unique", "CREATE INDEX test_ordered_key_created_at_id_idx"
-                        + " ON dml_utils_fixtures.test_ordered_key (created_at, id)"),
-                Arguments.of("too-many-columns", "CREATE UNIQUE INDEX test_ordered_key_created_at_id_idx"
-                        + " ON dml_utils_fixtures.test_ordered_key"
-                        + " (created_at, id, external_id, label)"));
     }
 
     private void recreateOrderedKeyIndex() throws Exception {

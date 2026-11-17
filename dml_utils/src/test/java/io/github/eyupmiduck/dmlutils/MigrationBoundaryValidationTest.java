@@ -41,6 +41,19 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     private static final String NO_SUCH_TABLE = "no_such_table";
     private static final String SQL_TEXT = "SELECT 1";
 
+    /**
+     * The invalid label and SQL-text values.
+     *
+     * @return the rejected argument pairs
+     */
+    private static java.util.stream.Stream<Arguments> invalidTextArguments() {
+        return java.util.stream.Stream.of(
+                Arguments.of("null label", null, SQL_TEXT),
+                Arguments.of("blank label", "   ", SQL_TEXT),
+                Arguments.of("null sql text", "null-sql-text", null),
+                Arguments.of("blank sql text", "blank-sql-text", "   "));
+    }
+
     @BeforeEach
     void resetFixtures() {
         // The class shares one database across methods, so clear both the fixture
@@ -80,10 +93,6 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
         assertDomainViolation(() -> populateByNames(FIXTURE_SCHEMA, "   ", 1));
     }
 
-
-
-
-
     /**
      * A null or blank label and a null or blank SQL text are each rejected by
      * their non-null text domain before any run is created.
@@ -98,19 +107,6 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
         assertDomainViolation(() -> Routines.populateMigrationBoundaries(
                 dsl.configuration(), FIXTURE_SCHEMA, TEST_BIGINT.getName(), label, sqlText,
                 1, 1, ChunkingStrategy.primary_key, "t", 0, null, false, 3, 1000));
-    }
-
-    /**
-     * The invalid label and SQL-text values.
-     *
-     * @return the rejected argument pairs
-     */
-    private static java.util.stream.Stream<Arguments> invalidTextArguments() {
-        return java.util.stream.Stream.of(
-                Arguments.of("null label", null, SQL_TEXT),
-                Arguments.of("blank label", "   ", SQL_TEXT),
-                Arguments.of("null sql text", "null-sql-text", null),
-                Arguments.of("blank sql text", "blank-sql-text", "   "));
     }
 
     /**

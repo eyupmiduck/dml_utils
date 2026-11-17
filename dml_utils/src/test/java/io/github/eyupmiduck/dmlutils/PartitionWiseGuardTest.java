@@ -302,7 +302,6 @@ class PartitionWiseGuardTest extends PartitionTestBase {
     }
 
 
-
     /**
      * The first manifest leaf, with a descriptive failure if the manifest is
      * unexpectedly empty.

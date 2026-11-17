@@ -21,6 +21,22 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  */
 class PartitionedOrderedKeyAttributesTest extends PartitionTestBase {
 
+    /**
+     * The unusable parent indexes.
+     *
+     * @return the index definitions and their SQLSTATEs
+     */
+    private static java.util.stream.Stream<Arguments> invalidParentIndexes() {
+        return java.util.stream.Stream.of(
+                Arguments.of("ON ONLY index", "test_partitioned_range_on_only_idx",
+                        "CREATE UNIQUE INDEX test_partitioned_range_on_only_idx ON ONLY "
+                                + "dml_utils_fixtures.test_partitioned_range (id)", "55000"),
+                Arguments.of("non-unique index", "test_partitioned_range_payload_idx",
+                        "CREATE INDEX test_partitioned_range_payload_idx ON "
+                                + "dml_utils_fixtures.test_partitioned_range (payload)",
+                        "0A000"));
+    }
+
     private List<PartitionedOrderedKeyAttributesRecord> attributes(String table, String index) {
         return Routines.partitionedOrderedKeyAttributes(dsl.configuration(),
                 PARTITION_SCHEMA, table, index);
@@ -118,21 +134,5 @@ class PartitionedOrderedKeyAttributesTest extends PartitionTestBase {
         } finally {
             executeAsOwner("DROP INDEX IF EXISTS " + PARTITION_SCHEMA + "." + index);
         }
-    }
-
-    /**
-     * The unusable parent indexes.
-     *
-     * @return the index definitions and their SQLSTATEs
-     */
-    private static java.util.stream.Stream<Arguments> invalidParentIndexes() {
-        return java.util.stream.Stream.of(
-                Arguments.of("ON ONLY index", "test_partitioned_range_on_only_idx",
-                        "CREATE UNIQUE INDEX test_partitioned_range_on_only_idx ON ONLY "
-                                + "dml_utils_fixtures.test_partitioned_range (id)", "55000"),
-                Arguments.of("non-unique index", "test_partitioned_range_payload_idx",
-                        "CREATE INDEX test_partitioned_range_payload_idx ON "
-                                + "dml_utils_fixtures.test_partitioned_range (payload)",
-                        "0A000"));
     }
 }

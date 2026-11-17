@@ -49,6 +49,18 @@ class ExplainMigrationChunksTest extends PostgresTestBase {
     }
 
     /**
+     * The rejected explicit ranges.
+     *
+     * @return the range shapes
+     */
+    private static java.util.stream.Stream<Arguments> invalidExplicitRanges() {
+        return java.util.stream.Stream.of(
+                Arguments.of("reversed", new String[]{"9", "b"}, new String[]{"7", "a"}),
+                Arguments.of("empty", new String[]{"7", "a"}, new String[]{"7", "a"}),
+                Arguments.of("arity mismatch", new String[]{"7"}, new String[]{"7", "b"}));
+    }
+
+    /**
      * Empties the fixture table and the migration metadata so rows or runs left by
      * an earlier test cannot change this test's row estimates or plan output.
      */
@@ -423,9 +435,6 @@ class ExplainMigrationChunksTest extends PostgresTestBase {
         assertFalse(sql.contains(" OR "), "only the last column differs, so one box");
     }
 
-
-
-
     /**
      * A reversed, equal or arity-mismatched explicit range is rejected with
      * {@code 22023}.
@@ -442,18 +451,6 @@ class ExplainMigrationChunksTest extends PostgresTestBase {
                 dsl.configuration(), TEMPLATE, schema(TEST_COMPOSITE_MIXED),
                 name(TEST_COMPOSITE_MIXED), startValues, endValues, false, "t",
                 ChunkingStrategy.primary_key, null, false, null));
-    }
-
-    /**
-     * The rejected explicit ranges.
-     *
-     * @return the range shapes
-     */
-    private static java.util.stream.Stream<Arguments> invalidExplicitRanges() {
-        return java.util.stream.Stream.of(
-                Arguments.of("reversed", new String[]{"9", "b"}, new String[]{"7", "a"}),
-                Arguments.of("empty", new String[]{"7", "a"}, new String[]{"7", "a"}),
-                Arguments.of("arity mismatch", new String[]{"7"}, new String[]{"7", "b"}));
     }
 
     /**

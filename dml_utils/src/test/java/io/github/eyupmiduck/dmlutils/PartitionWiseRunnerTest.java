@@ -403,5 +403,4 @@ class PartitionWiseRunnerTest extends PartitionTestBase {
     }
 
 
-
 }

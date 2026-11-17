@@ -85,6 +85,33 @@ class RenderChunkSqlTest extends PostgresTestBase {
     }
 
     /**
+     * The identifier-rendering cases.
+     *
+     * @return the render cases
+     */
+    private static java.util.stream.Stream<Arguments> renderCases() {
+        return java.util.stream.Stream.of(
+                Arguments.of("given primary-key name", "public", "src", "s",
+                        new String[]{"pk"}, new String[]{"5"}, new String[]{"15"},
+                        "UPDATE public.src s SET processed = true"
+                                + " WHERE (s.pk >= '5'::bigint AND s.pk < '15'::bigint)"),
+                Arguments.of("given alias", "public", "src", "src_row",
+                        new String[]{"id"}, new String[]{"1"}, new String[]{"2"},
+                        "UPDATE public.src src_row SET processed = true"
+                                + " WHERE (src_row.id >= '1'::bigint"
+                                + " AND src_row.id < '2'::bigint)"),
+                Arguments.of("quoted identifiers", "my schema", "my table", "x\"y",
+                        new String[]{"pk\"col"}, new String[]{"1"}, new String[]{"2"},
+                        "UPDATE \"my schema\".\"my table\" \"x\"\"y\" SET processed = true"
+                                + " WHERE (\"x\"\"y\".\"pk\"\"col\" >= '1'::bigint"
+                                + " AND \"x\"\"y\".\"pk\"\"col\" < '2'::bigint)"),
+                Arguments.of("token inside an identifier", "public", "<chunking_clause>", "t",
+                        new String[]{"id"}, new String[]{"1"}, new String[]{"2"},
+                        "UPDATE public.\"<chunking_clause>\" t SET processed = true"
+                                + " WHERE (t.id >= '1'::bigint AND t.id < '2'::bigint)"));
+    }
+
+    /**
      * A valid template is accepted.
      */
     @Test
@@ -496,10 +523,6 @@ class RenderChunkSqlTest extends PostgresTestBase {
                 new String[]{}, new String[]{}, false));
     }
 
-
-
-
-
     /**
      * The caller-supplied key name, alias and unusual identifiers are rendered
      * verbatim (quoted), and a substituted identifier that itself contains a
@@ -525,33 +548,6 @@ class RenderChunkSqlTest extends PostgresTestBase {
                 startValues, endValues, false);
 
         assertEquals(expected, rendered);
-    }
-
-    /**
-     * The identifier-rendering cases.
-     *
-     * @return the render cases
-     */
-    private static java.util.stream.Stream<Arguments> renderCases() {
-        return java.util.stream.Stream.of(
-                Arguments.of("given primary-key name", "public", "src", "s",
-                        new String[]{"pk"}, new String[]{"5"}, new String[]{"15"},
-                        "UPDATE public.src s SET processed = true"
-                                + " WHERE (s.pk >= '5'::bigint AND s.pk < '15'::bigint)"),
-                Arguments.of("given alias", "public", "src", "src_row",
-                        new String[]{"id"}, new String[]{"1"}, new String[]{"2"},
-                        "UPDATE public.src src_row SET processed = true"
-                                + " WHERE (src_row.id >= '1'::bigint"
-                                + " AND src_row.id < '2'::bigint)"),
-                Arguments.of("quoted identifiers", "my schema", "my table", "x\"y",
-                        new String[]{"pk\"col"}, new String[]{"1"}, new String[]{"2"},
-                        "UPDATE \"my schema\".\"my table\" \"x\"\"y\" SET processed = true"
-                                + " WHERE (\"x\"\"y\".\"pk\"\"col\" >= '1'::bigint"
-                                + " AND \"x\"\"y\".\"pk\"\"col\" < '2'::bigint)"),
-                Arguments.of("token inside an identifier", "public", "<chunking_clause>", "t",
-                        new String[]{"id"}, new String[]{"1"}, new String[]{"2"},
-                        "UPDATE public.\"<chunking_clause>\" t SET processed = true"
-                                + " WHERE (t.id >= '1'::bigint AND t.id < '2'::bigint)"));
     }
 
     /**

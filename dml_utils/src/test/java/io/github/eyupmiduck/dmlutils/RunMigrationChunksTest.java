@@ -66,6 +66,50 @@ class RunMigrationChunksTest extends PostgresTestBase {
     }
 
     /**
+     * The invalid run inputs, each named by the argument it violates.
+     *
+     * @return the rejected calls
+     */
+    private static java.util.stream.Stream<Arguments> invalidRunArguments() {
+        return java.util.stream.Stream.of(
+                Arguments.of("null sql text",
+                        (java.util.function.Consumer<org.jooq.Configuration>) config ->
+                                Routines.runMigrationChunks(config, null,
+                                        schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 1, "t",
+                                        ChunkingStrategy.primary_key, 1, 0, null, false, 3, 1000)),
+                Arguments.of("blank label",
+                        (java.util.function.Consumer<org.jooq.Configuration>) config ->
+                                Routines.runMigrationChunks(config, TEMPLATE,
+                                        schema(TEST_BIGINT), name(TEST_BIGINT), "   ", 2, 1, "t",
+                                        ChunkingStrategy.primary_key, 1, 0, null, false, 3, 1000)),
+                Arguments.of("non-positive chunk size",
+                        (java.util.function.Consumer<org.jooq.Configuration>) config ->
+                                Routines.runMigrationChunks(config, TEMPLATE,
+                                        schema(TEST_BIGINT), name(TEST_BIGINT), "l", 0, 1, "t",
+                                        ChunkingStrategy.primary_key, 1, 0, null, false, 3, 1000)),
+                Arguments.of("null alias",
+                        (java.util.function.Consumer<org.jooq.Configuration>) config ->
+                                Routines.runMigrationChunks(config, TEMPLATE,
+                                        schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 1, null,
+                                        ChunkingStrategy.primary_key, 1, 0, null, false, 3, 1000)),
+                Arguments.of("non-positive threads",
+                        (java.util.function.Consumer<org.jooq.Configuration>) config ->
+                                Routines.runMigrationChunks(config, TEMPLATE,
+                                        schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 0, "t",
+                                        ChunkingStrategy.primary_key, 1, 0, null, false, 3, 1000)),
+                Arguments.of("non-positive poll timeout",
+                        (java.util.function.Consumer<org.jooq.Configuration>) config ->
+                                Routines.runMigrationChunks(config, TEMPLATE,
+                                        schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 1, "t",
+                                        ChunkingStrategy.primary_key, 0, 0, null, false, 3, 1000)),
+                Arguments.of("null initial sleep",
+                        (java.util.function.Consumer<org.jooq.Configuration>) config ->
+                                Routines.runMigrationChunks(config, TEMPLATE,
+                                        schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 1, "t",
+                                        ChunkingStrategy.primary_key, 1, null, null, false, 3, 1000)));
+    }
+
+    /**
      * Clears the fixture tables this class drives a run over, so each test
      * starts from a known state.
      */
@@ -728,10 +772,6 @@ class RunMigrationChunksTest extends PostgresTestBase {
         }
     }
 
-
-
-
-
     /**
      * The primary-key column is resolved from the catalog, not assumed to be
      * named {@code id}: a table whose key is {@code key} still chunks correctly.
@@ -1079,7 +1119,6 @@ class RunMigrationChunksTest extends PostgresTestBase {
                 dsl.configuration(), "any-label", null));
     }
 
-
     /**
      * Each invalid run input is rejected by its argument domain before any run
      * is created: a null SQL text, blank label, NULL alias, non-positive chunk
@@ -1093,50 +1132,6 @@ class RunMigrationChunksTest extends PostgresTestBase {
     void rejectsInvalidRunArguments(String description,
                                     java.util.function.Consumer<org.jooq.Configuration> call) {
         assertDomainViolation(() -> call.accept(dsl.configuration()));
-    }
-
-    /**
-     * The invalid run inputs, each named by the argument it violates.
-     *
-     * @return the rejected calls
-     */
-    private static java.util.stream.Stream<Arguments> invalidRunArguments() {
-        return java.util.stream.Stream.of(
-                Arguments.of("null sql text",
-                        (java.util.function.Consumer<org.jooq.Configuration>) config ->
-                                Routines.runMigrationChunks(config, null,
-                                        schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 1, "t",
-                                        ChunkingStrategy.primary_key, 1, 0, null, false, 3, 1000)),
-                Arguments.of("blank label",
-                        (java.util.function.Consumer<org.jooq.Configuration>) config ->
-                                Routines.runMigrationChunks(config, TEMPLATE,
-                                        schema(TEST_BIGINT), name(TEST_BIGINT), "   ", 2, 1, "t",
-                                        ChunkingStrategy.primary_key, 1, 0, null, false, 3, 1000)),
-                Arguments.of("non-positive chunk size",
-                        (java.util.function.Consumer<org.jooq.Configuration>) config ->
-                                Routines.runMigrationChunks(config, TEMPLATE,
-                                        schema(TEST_BIGINT), name(TEST_BIGINT), "l", 0, 1, "t",
-                                        ChunkingStrategy.primary_key, 1, 0, null, false, 3, 1000)),
-                Arguments.of("null alias",
-                        (java.util.function.Consumer<org.jooq.Configuration>) config ->
-                                Routines.runMigrationChunks(config, TEMPLATE,
-                                        schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 1, null,
-                                        ChunkingStrategy.primary_key, 1, 0, null, false, 3, 1000)),
-                Arguments.of("non-positive threads",
-                        (java.util.function.Consumer<org.jooq.Configuration>) config ->
-                                Routines.runMigrationChunks(config, TEMPLATE,
-                                        schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 0, "t",
-                                        ChunkingStrategy.primary_key, 1, 0, null, false, 3, 1000)),
-                Arguments.of("non-positive poll timeout",
-                        (java.util.function.Consumer<org.jooq.Configuration>) config ->
-                                Routines.runMigrationChunks(config, TEMPLATE,
-                                        schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 1, "t",
-                                        ChunkingStrategy.primary_key, 0, 0, null, false, 3, 1000)),
-                Arguments.of("null initial sleep",
-                        (java.util.function.Consumer<org.jooq.Configuration>) config ->
-                                Routines.runMigrationChunks(config, TEMPLATE,
-                                        schema(TEST_BIGINT), name(TEST_BIGINT), "l", 2, 1, "t",
-                                        ChunkingStrategy.primary_key, 1, null, null, false, 3, 1000)));
     }
 
     /**
@@ -1207,7 +1202,6 @@ class RunMigrationChunksTest extends PostgresTestBase {
         assertSqlState("P0002", () -> Routines.setMigrationRunSqlText(
                 dsl.configuration(), label, TEMPLATE));
     }
-
 
 
     /**

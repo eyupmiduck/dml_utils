@@ -3,9 +3,9 @@ package io.github.eyupmiduck.dmlutils;
 import org.jooq.exception.DataAccessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.junit.jupiter.api.function.Executable;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -83,9 +83,6 @@ class MigrationRunLeafGuardTest extends PostgresTestBase {
 
         assertRejected("22023", "require a partition-wise run", () -> insertLeaf(runId, 1, null));
     }
-
-
-
 
 
     /**

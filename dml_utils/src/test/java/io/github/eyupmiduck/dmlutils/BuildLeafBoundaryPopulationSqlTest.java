@@ -137,6 +137,4 @@ class BuildLeafBoundaryPopulationSqlTest extends PartitionTestBase {
     }
 
 
-
-
 }

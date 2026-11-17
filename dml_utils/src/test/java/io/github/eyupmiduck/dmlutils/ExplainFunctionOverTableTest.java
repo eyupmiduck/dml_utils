@@ -29,6 +29,23 @@ class ExplainFunctionOverTableTest extends PostgresTestBase {
     private static final String FN_SCHEMA = "public";
 
     /**
+     * The functions whose per-row call cannot be planned.
+     *
+     * @return the rejected function definitions
+     */
+    private static java.util.stream.Stream<Arguments> invalidFunctions() {
+        return java.util.stream.Stream.of(
+                Arguments.of("mismatched argument order",
+                        "CREATE OR REPLACE FUNCTION public.wrong_order(text, bigint)"
+                                + " RETURNS void LANGUAGE sql AS $$ SELECT NULL::void $$",
+                        "wrong_order"),
+                Arguments.of("non-void return",
+                        "CREATE OR REPLACE FUNCTION public.bad_return(bigint, text)"
+                                + " RETURNS integer LANGUAGE sql AS $$ SELECT 1 $$",
+                        "bad_return"));
+    }
+
+    /**
      * Clears the fixture table and the migration metadata so each test starts
      * clean.
      */
@@ -139,8 +156,6 @@ class ExplainFunctionOverTableTest extends PostgresTestBase {
                 "the function must not run");
     }
 
-
-
     /**
      * A function whose argument types are in the wrong order and a function that
      * does not return void are rejected with {@code 22023} before any plan.
@@ -158,23 +173,6 @@ class ExplainFunctionOverTableTest extends PostgresTestBase {
         assertSqlState("22023", () -> Routines.explainFunctionOverTable(dsl.configuration(),
                 schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED), FN_SCHEMA,
                 functionName, 10, null, ChunkingStrategy.primary_key, null, false, null));
-    }
-
-    /**
-     * The functions whose per-row call cannot be planned.
-     *
-     * @return the rejected function definitions
-     */
-    private static java.util.stream.Stream<Arguments> invalidFunctions() {
-        return java.util.stream.Stream.of(
-                Arguments.of("mismatched argument order",
-                        "CREATE OR REPLACE FUNCTION public.wrong_order(text, bigint)"
-                                + " RETURNS void LANGUAGE sql AS $$ SELECT NULL::void $$",
-                        "wrong_order"),
-                Arguments.of("non-void return",
-                        "CREATE OR REPLACE FUNCTION public.bad_return(bigint, text)"
-                                + " RETURNS integer LANGUAGE sql AS $$ SELECT 1 $$",
-                        "bad_return"));
     }
 
     /**

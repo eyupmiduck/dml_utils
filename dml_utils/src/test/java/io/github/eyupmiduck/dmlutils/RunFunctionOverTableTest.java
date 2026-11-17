@@ -50,6 +50,32 @@ class RunFunctionOverTableTest extends PostgresTestBase {
     }
 
     /**
+     * The invalid set-function inputs.
+     *
+     * @return the alias/filter pairs and their SQLSTATEs
+     */
+    private static java.util.stream.Stream<Arguments> invalidSetFunctionInputs() {
+        return java.util.stream.Stream.of(
+                Arguments.of("non-default alias", "setalias", "x", null, "0A000"),
+                Arguments.of("blank filter", "setblank", "t", "   ", "22023"));
+    }
+
+    /**
+     * The targets that cannot be called as one void value per row.
+     *
+     * @return the rejected target definitions
+     */
+    private static java.util.stream.Stream<Arguments> uncallableTargets() {
+        return java.util.stream.Stream.of(
+                Arguments.of("mismatched argument order",
+                        "CREATE FUNCTION public.wrong_order(text, bigint) RETURNS void"
+                                + " LANGUAGE sql AS $$ SELECT NULL::void $$", "wrong_order"),
+                Arguments.of("procedure with a matching signature",
+                        "CREATE PROCEDURE public.mark_mixed_proc(p_a bigint, p_b text)"
+                                + " LANGUAGE sql AS $$ SELECT 1 $$", "mark_mixed_proc"));
+    }
+
+    /**
      * Clears the fixture tables each test drives and the migration metadata, so a
      * run left by an earlier method cannot resume or create a run with a derived
      * label.
@@ -338,8 +364,6 @@ class RunFunctionOverTableTest extends PostgresTestBase {
                 dsl.configuration(), "no-such-label", FN_SCHEMA, "mark_mixed", null));
     }
 
-
-
     /**
      * Setting the function rejects a non-default alias ({@code 0A000}) and a
      * blank filter ({@code 22023}) before either can be persisted.
@@ -366,17 +390,6 @@ class RunFunctionOverTableTest extends PostgresTestBase {
 
         assertSqlState(expectedState, () -> Routines.setMigrationRunFunction(
                 dsl.configuration(), label, FN_SCHEMA, "mark_mixed", filter));
-    }
-
-    /**
-     * The invalid set-function inputs.
-     *
-     * @return the alias/filter pairs and their SQLSTATEs
-     */
-    private static java.util.stream.Stream<Arguments> invalidSetFunctionInputs() {
-        return java.util.stream.Stream.of(
-                Arguments.of("non-default alias", "setalias", "x", null, "0A000"),
-                Arguments.of("blank filter", "setblank", "t", "   ", "22023"));
     }
 
     /**
@@ -453,7 +466,6 @@ class RunFunctionOverTableTest extends PostgresTestBase {
         assertTrue(runCompleted(label), "the run should be complete");
     }
 
-
     /**
      * A function whose argument types are in the wrong order, and a procedure
      * with a matching signature, are rejected with {@code 22023} and create no
@@ -476,21 +488,6 @@ class RunFunctionOverTableTest extends PostgresTestBase {
                 false, 3, 1000));
         assertEquals(runsBefore, dsl.fetchCount(MIGRATION_RUN),
                 "a rejected target must not create a run");
-    }
-
-    /**
-     * The targets that cannot be called as one void value per row.
-     *
-     * @return the rejected target definitions
-     */
-    private static java.util.stream.Stream<Arguments> uncallableTargets() {
-        return java.util.stream.Stream.of(
-                Arguments.of("mismatched argument order",
-                        "CREATE FUNCTION public.wrong_order(text, bigint) RETURNS void"
-                                + " LANGUAGE sql AS $$ SELECT NULL::void $$", "wrong_order"),
-                Arguments.of("procedure with a matching signature",
-                        "CREATE PROCEDURE public.mark_mixed_proc(p_a bigint, p_b text)"
-                                + " LANGUAGE sql AS $$ SELECT 1 $$", "mark_mixed_proc"));
     }
 
     /**
