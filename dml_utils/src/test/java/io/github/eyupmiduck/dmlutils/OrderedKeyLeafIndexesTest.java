@@ -5,8 +5,8 @@ import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.tables.records.OrderedKe
 import org.junit.jupiter.api.Test;
 
 import java.util.HashSet;
-import java.util.Map;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
