@@ -7,6 +7,9 @@ import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.enums.ChunkingStrategy;
 import org.jooq.Table;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.List;
 
@@ -420,36 +423,37 @@ class ExplainMigrationChunksTest extends PostgresTestBase {
         assertFalse(sql.contains(" OR "), "only the last column differs, so one box");
     }
 
+
+
+
     /**
-     * A reversed explicit range is rejected with {@code 22023} rather than
-     * explaining a predicate that matches no rows.
+     * A reversed, equal or arity-mismatched explicit range is rejected with
+     * {@code 22023}.
+     *
+     * @param description the rejected range shape
+     * @param startValues the lower-bound values
+     * @param endValues   the upper-bound values
      */
-    @Test
-    void rejectsAReversedExplicitRange() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("invalidExplicitRanges")
+    void rejectsInvalidExplicitRanges(String description, String[] startValues,
+                                      String[] endValues) {
         assertSqlState("22023", () -> Routines.explainMigrationChunk(
-                dsl.configuration(), TEMPLATE, schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
-                new String[]{"9", "b"}, new String[]{"7", "a"}, false, "t", ChunkingStrategy.primary_key, null, false, null));
+                dsl.configuration(), TEMPLATE, schema(TEST_COMPOSITE_MIXED),
+                name(TEST_COMPOSITE_MIXED), startValues, endValues, false, "t",
+                ChunkingStrategy.primary_key, null, false, null));
     }
 
     /**
-     * An explicit non-final range whose bounds are equal is empty and rejected
-     * with {@code 22023}.
+     * The rejected explicit ranges.
+     *
+     * @return the range shapes
      */
-    @Test
-    void rejectsAnEmptyExplicitRange() {
-        assertSqlState("22023", () -> Routines.explainMigrationChunk(
-                dsl.configuration(), TEMPLATE, schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
-                new String[]{"7", "a"}, new String[]{"7", "a"}, false, "t", ChunkingStrategy.primary_key, null, false, null));
-    }
-
-    /**
-     * A boundary with the wrong number of values is rejected with {@code 22023}.
-     */
-    @Test
-    void rejectsAWrongNumberOfBoundaryValues() {
-        assertSqlState("22023", () -> Routines.explainMigrationChunk(
-                dsl.configuration(), TEMPLATE, schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
-                new String[]{"7"}, new String[]{"7", "b"}, false, "t", ChunkingStrategy.primary_key, null, false, null));
+    private static java.util.stream.Stream<Arguments> invalidExplicitRanges() {
+        return java.util.stream.Stream.of(
+                Arguments.of("reversed", new String[]{"9", "b"}, new String[]{"7", "a"}),
+                Arguments.of("empty", new String[]{"7", "a"}, new String[]{"7", "a"}),
+                Arguments.of("arity mismatch", new String[]{"7"}, new String[]{"7", "b"}));
     }
 
     /**

@@ -4,10 +4,12 @@ import io.github.eyupmiduck.dmlutils.jooq.dml_utils.Routines;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.ExplainFunctionOverTableChunkRecord;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.records.ExplainFunctionOverTableRecord;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.enums.ChunkingStrategy;
-import org.jooq.impl.DSL;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.List;
 
@@ -56,7 +58,7 @@ class ExplainFunctionOverTableTest extends PostgresTestBase {
      */
     @Test
     void returnsTheThreePlansForAMatchingFunction() {
-        createFunction("mark_mixed", "done");
+        createCompositeMarkFunction("mark_mixed", "done");
 
         List<ExplainFunctionOverTableRecord> plans = Routines.explainFunctionOverTable(
                 dsl.configuration(), schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
@@ -78,7 +80,7 @@ class ExplainFunctionOverTableTest extends PostgresTestBase {
      */
     @Test
     void plansTheBlockStrategy() {
-        createFunction("mark_mixed", "done");
+        createCompositeMarkFunction("mark_mixed", "done");
 
         List<ExplainFunctionOverTableRecord> plans = Routines.explainFunctionOverTable(
                 dsl.configuration(), schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
@@ -98,7 +100,7 @@ class ExplainFunctionOverTableTest extends PostgresTestBase {
      */
     @Test
     void includesTheFilterInTheChunkPlans() {
-        createFunction("mark_mixed", "done");
+        createCompositeMarkFunction("mark_mixed", "done");
 
         List<ExplainFunctionOverTableRecord> plans = Routines.explainFunctionOverTable(
                 dsl.configuration(), schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
@@ -123,7 +125,7 @@ class ExplainFunctionOverTableTest extends PostgresTestBase {
                 .values(1L, "y")
                 .values(2L, "x")
                 .execute();
-        createFunction("mark_mixed", "done");
+        createCompositeMarkFunction("mark_mixed", "done");
 
         Routines.explainFunctionOverTable(dsl.configuration(),
                 schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed", 10, null, ChunkingStrategy.primary_key, null, false, null);
@@ -137,31 +139,42 @@ class ExplainFunctionOverTableTest extends PostgresTestBase {
                 "the function must not run");
     }
 
+
+
     /**
-     * A function whose argument types do not match the primary key, in key
-     * order, is rejected with {@code 22023}.
+     * A function whose argument types are in the wrong order and a function that
+     * does not return void are rejected with {@code 22023} before any plan.
+     *
+     * @param description  the rejected target
+     * @param definition   the CREATE statement for the target
+     * @param functionName the target name
      */
-    @Test
-    void rejectsAMismatchedFunction() {
-        dsl.execute("CREATE OR REPLACE FUNCTION public.wrong_order(text, bigint) RETURNS void"
-                + " LANGUAGE sql AS $$ SELECT NULL::void $$");
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("invalidFunctions")
+    void rejectsAFunctionThatCannotBePlanned(String description, String definition,
+                                             String functionName) {
+        dsl.execute(definition);
 
         assertSqlState("22023", () -> Routines.explainFunctionOverTable(dsl.configuration(),
                 schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED), FN_SCHEMA,
-                "wrong_order", 10, null, ChunkingStrategy.primary_key, null, false, null));
+                functionName, 10, null, ChunkingStrategy.primary_key, null, false, null));
     }
 
     /**
-     * A function that does not return void is rejected with {@code 22023}.
+     * The functions whose per-row call cannot be planned.
+     *
+     * @return the rejected function definitions
      */
-    @Test
-    void rejectsANonVoidFunction() {
-        dsl.execute("CREATE OR REPLACE FUNCTION public.bad_return(bigint, text) RETURNS integer"
-                + " LANGUAGE sql AS $$ SELECT 1 $$");
-
-        assertSqlState("22023", () -> Routines.explainFunctionOverTable(dsl.configuration(),
-                schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED), FN_SCHEMA,
-                "bad_return", 10, null, ChunkingStrategy.primary_key, null, false, null));
+    private static java.util.stream.Stream<Arguments> invalidFunctions() {
+        return java.util.stream.Stream.of(
+                Arguments.of("mismatched argument order",
+                        "CREATE OR REPLACE FUNCTION public.wrong_order(text, bigint)"
+                                + " RETURNS void LANGUAGE sql AS $$ SELECT NULL::void $$",
+                        "wrong_order"),
+                Arguments.of("non-void return",
+                        "CREATE OR REPLACE FUNCTION public.bad_return(bigint, text)"
+                                + " RETURNS integer LANGUAGE sql AS $$ SELECT 1 $$",
+                        "bad_return"));
     }
 
     /**
@@ -181,7 +194,7 @@ class ExplainFunctionOverTableTest extends PostgresTestBase {
      */
     @Test
     void explainsOneExplicitChunk() {
-        createFunction("mark_mixed", "done");
+        createCompositeMarkFunction("mark_mixed", "done");
 
         List<ExplainFunctionOverTableChunkRecord> plans = Routines.explainFunctionOverTableChunk(
                 dsl.configuration(), schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
@@ -201,7 +214,7 @@ class ExplainFunctionOverTableTest extends PostgresTestBase {
      */
     @Test
     void appliesTheFilterToAnExplicitChunk() {
-        createFunction("mark_mixed", "done");
+        createCompositeMarkFunction("mark_mixed", "done");
 
         List<ExplainFunctionOverTableChunkRecord> plans = Routines.explainFunctionOverTableChunk(
                 dsl.configuration(), schema(TEST_COMPOSITE_MIXED), name(TEST_COMPOSITE_MIXED),
@@ -273,20 +286,6 @@ class ExplainFunctionOverTableTest extends PostgresTestBase {
         assertTrue(plans.get(0).getOSqlText().contains(leafName));
     }
 
-    /**
-     * Creates the per-row void function that appends the given value to the
-     * payload of the row matching the primary key.
-     *
-     * @param functionName the function to create
-     * @param value        the value appended to {@code payload}
-     */
-    private void createFunction(String functionName, String value) {
-        dsl.execute("CREATE OR REPLACE FUNCTION public." + functionName
-                + "(p_a bigint, p_b text) RETURNS void LANGUAGE sql AS $$"
-                + " UPDATE " + schema(TEST_COMPOSITE_MIXED) + "." + name(TEST_COMPOSITE_MIXED)
-                + " SET payload = coalesce(payload, '') || " + DSL.inline(value)
-                + " WHERE a = p_a AND b = p_b $$");
-    }
 
     private void createPartitionFunction(String functionName) {
         dsl.execute("CREATE OR REPLACE FUNCTION public." + functionName
