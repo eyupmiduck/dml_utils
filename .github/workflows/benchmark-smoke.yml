@@ -55,8 +55,8 @@ jobs:
     # The job executes PR-head code (benchmark/smoke.sh, ./mvnw) with a
     # GITHUB_TOKEN that can read GitHub Packages. A fork PR must not receive
     # that token; run the smoke only for same-repository PRs (whose authors can
-    # already push code) and for manual dispatches after review. Keep the Maven
-    # Build workflow's fork coverage separate.
+    # already push code), pushes to main and manual dispatches after review.
+    # Keep the Maven Build workflow's fork coverage separate.
     if: >-
       github.event_name == 'workflow_dispatch'
       || github.event_name == 'push'
