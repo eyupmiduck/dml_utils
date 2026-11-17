@@ -68,7 +68,13 @@ class DdlUtilsInstallationTest extends PostgresTestBase {
                     }
                 }
             } finally {
-                statement.execute("DROP DATABASE IF EXISTS " + scratch + " WITH (FORCE)");
+                try {
+                    statement.execute("DROP DATABASE IF EXISTS " + scratch + " WITH (FORCE)");
+                } catch (SQLException cleanup) {
+                    // Do not let a cleanup failure replace the install error
+                    // being unwound; surface it on stderr for diagnosis.
+                    cleanup.printStackTrace(System.err);
+                }
             }
         }
     }

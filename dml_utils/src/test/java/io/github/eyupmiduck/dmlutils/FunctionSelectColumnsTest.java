@@ -19,7 +19,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class FunctionSelectColumnsTest {
 
     private static final Pattern SELECT_STAR = Pattern.compile(
-            "(?i)\\bselect\\s+(?:(?:distinct|all)\\s+(?:on\\s*\\([^)]*\\)\\s+)?)?"
+            "(?i)\\bselect\\s+(?:(?:distinct|all)\\s+"
+                    + "(?:on\\s*\\((?:[^()]|\\([^()]*\\))*\\)\\s*)?)?"
                     + "(?:(?:[a-z_][a-z0-9_]*\\.)+)?\\*");
 
     /**
@@ -34,6 +35,11 @@ class FunctionSelectColumnsTest {
                 "a DISTINCT ON star select must be detected");
         assertTrue(SELECT_STAR.matcher("SELECT DISTINCT t.* FROM dml_utils_data.migration_run t")
                 .find(), "a DISTINCT qualified star select must be detected");
+        assertTrue(SELECT_STAR.matcher(
+                        "SELECT DISTINCT ON (lower(id)) * FROM dml_utils_data.migration_run")
+                .find(), "a DISTINCT ON expression with parentheses must be detected");
+        assertTrue(SELECT_STAR.matcher("SELECT DISTINCT ON (id)* FROM dml_utils_data.migration_run")
+                .find(), "DISTINCT ON without whitespace before the star must be detected");
     }
 
     /**
