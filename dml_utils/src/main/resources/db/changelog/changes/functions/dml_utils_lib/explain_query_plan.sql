@@ -5,6 +5,7 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.explain_query_plan(
     LANGUAGE plpgsql
     VOLATILE
     SECURITY INVOKER
+    SET standard_conforming_strings = on
 AS
 $$
 DECLARE
@@ -26,6 +27,10 @@ BEGIN
     -- The function is VOLATILE, not STABLE: PostgreSQL rejects EXPLAIN inside a
     -- non-volatile function ("EXPLAIN is not allowed in a non-volatile
     -- function"). It still only plans, so it changes nothing.
+    --
+    -- standard_conforming_strings is pinned to on: assert_single_statement
+    -- scans the text with that mode, and the EXECUTE below must parse it the
+    -- same way, whatever the caller's session setting is.
     --
     -- The statement is caller-supplied, but the routine is SECURITY INVOKER and
     -- only plans (it cannot execute), so it is no more privileged than running

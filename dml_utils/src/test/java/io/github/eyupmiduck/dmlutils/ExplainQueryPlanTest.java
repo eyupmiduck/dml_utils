@@ -99,6 +99,24 @@ class ExplainQueryPlanTest extends PostgresTestBase {
     }
 
     /**
+     * The guard and the EXPLAIN agree even when the caller's session sets
+     * standard_conforming_strings off: the routine pins it on, so a normal
+     * statement is still planned and a multi-statement string is still rejected.
+     */
+    @Test
+    void pinsStandardConformingStringsForTheGuardAndTheExplain() {
+        dsl.transaction(config -> {
+            org.jooq.DSLContext tx = org.jooq.impl.DSL.using(config);
+            tx.execute("SET LOCAL standard_conforming_strings = off");
+
+            assertEquals("Result", planNodeType(Routines.explainQueryPlan(
+                    tx.configuration(), "SELECT 1")));
+            assertSqlState("22023", () -> Routines.explainQueryPlan(
+                    tx.configuration(), "SELECT 1; SELECT 2"));
+        });
+    }
+
+    /**
      * A statement that does not parse propagates PostgreSQL's syntax error
      * ({@code 42601}) rather than a misleading success.
      */

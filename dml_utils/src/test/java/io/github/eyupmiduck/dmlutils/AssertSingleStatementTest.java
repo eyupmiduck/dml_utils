@@ -59,6 +59,18 @@ class AssertSingleStatementTest extends PostgresTestBase {
     }
 
     /**
+     * A line comment ends at CR as well as LF, so a bare-CR comment cannot hide
+     * a following statement; CRLF works the same way.
+     */
+    @Test
+    void endsALineCommentAtCarriageReturn() {
+        accepts("SELECT 1; -- done\r");
+        rejects("SELECT 1; -- c\rSELECT 2");
+        rejects("SELECT 1; -- c\r\nSELECT 2");
+    }
+
+
+    /**
      * A terminator inside a quoted identifier, a line comment, a nested block
      * comment or a dollar-quoted body is not a separator.
      */
