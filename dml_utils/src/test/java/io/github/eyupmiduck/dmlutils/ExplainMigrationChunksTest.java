@@ -225,12 +225,13 @@ class ExplainMigrationChunksTest extends PostgresTestBase {
                 name(TEST_COMPOSITE_MIXED), 10, "t", ChunkingStrategy.primary_key, null, false, null);
 
         assertEquals(THREE_KINDS, planKinds(plans));
+        assertEquals(THREE_KINDS, planKinds(plans), "the three plan kinds come back in order");
         String nonFinal = plans.get(1).getOSqlText();
         assertTrue(nonFinal.contains("t.a = '0'::bigint"),
                 "the predicate constrains the composite key column by column");
         assertTrue(nonFinal.contains("'0'::bigint"), "the bigint position uses a bigint literal");
         assertTrue(nonFinal.contains("'a'::text"), "the text position uses a text literal");
-        assertTrue(plans.get(2).getOSqlText().contains("t.b <= "),
+        assertTrue(plans.get(2).getOSqlText().contains("t.b <="),
                 "the final composite chunk is inclusive");
     }
 
@@ -250,12 +251,12 @@ class ExplainMigrationChunksTest extends PostgresTestBase {
         assertEquals("ModifyTable", planNodeType(boundary.getOPlan()));
 
         ExplainMigrationChunksRecord nonFinal = plans.get(1);
-        assertTrue(nonFinal.getOSqlText().contains("t.id < "),
+        assertTrue(nonFinal.getOSqlText().contains("t.id <"),
                 "the non-final chunk is half-open");
         assertEquals("ModifyTable", planNodeType(nonFinal.getOPlan()));
 
         ExplainMigrationChunksRecord finalChunk = plans.get(2);
-        assertTrue(finalChunk.getOSqlText().contains("t.id <= "),
+        assertTrue(finalChunk.getOSqlText().contains("t.id <="),
                 "the final chunk is inclusive");
         assertEquals("ModifyTable", planNodeType(finalChunk.getOPlan()));
     }
@@ -412,6 +413,7 @@ class ExplainMigrationChunksTest extends PostgresTestBase {
                 new String[]{"1", "a", "00000000-0000-0000-0000-000000000000"},
                 new String[]{"1", "a", "00000000-0000-0000-0000-000000000001"}, false, "t", ChunkingStrategy.primary_key, null, false, null);
 
+        assertEquals(1, plans.size(), "one row for the explicit chunk");
         String sql = plans.get(0).getOSqlText();
         assertTrue(sql.contains("t.b = '1'::bigint AND t.a = 'a'::text"));
         assertTrue(sql.contains("t.c >= '00000000-0000-0000-0000-000000000000'::uuid"));

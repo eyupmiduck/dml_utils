@@ -8,6 +8,8 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRunLeaf.MIGRATION_RUN_LEAF;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestPartitionedRange.TEST_PARTITIONED_RANGE;
 
@@ -49,11 +51,13 @@ abstract class PartitionTestBase extends PostgresTestBase {
      * @return the leaf ordinal
      */
     protected int leafOrdinal(long runId, String leafName) {
-        return dsl.select(MIGRATION_RUN_LEAF.LEAF_ORDINAL)
+        Integer ordinal = dsl.select(MIGRATION_RUN_LEAF.LEAF_ORDINAL)
                 .from(MIGRATION_RUN_LEAF)
                 .where(MIGRATION_RUN_LEAF.RUN_ID.eq(runId))
                 .and(MIGRATION_RUN_LEAF.LEAF_NAME.eq(leafName))
                 .fetchOne(MIGRATION_RUN_LEAF.LEAF_ORDINAL);
+        assertNotNull(ordinal, () -> "no manifest leaf " + leafName + " in run " + runId);
+        return ordinal;
     }
 
     /**
@@ -64,10 +68,12 @@ abstract class PartitionTestBase extends PostgresTestBase {
      * @return the leaf row
      */
     protected MigrationRunLeafRecord leaf(long runId, int ordinal) {
-        return dsl.selectFrom(MIGRATION_RUN_LEAF)
+        MigrationRunLeafRecord row = dsl.selectFrom(MIGRATION_RUN_LEAF)
                 .where(MIGRATION_RUN_LEAF.RUN_ID.eq(runId))
                 .and(MIGRATION_RUN_LEAF.LEAF_ORDINAL.eq(ordinal))
                 .fetchOne();
+        assertNotNull(row, () -> "no manifest leaf " + ordinal + " in run " + runId);
+        return row;
     }
 
     /**

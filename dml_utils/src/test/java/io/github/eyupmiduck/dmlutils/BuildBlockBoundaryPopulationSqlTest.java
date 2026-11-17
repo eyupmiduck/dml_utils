@@ -12,6 +12,7 @@ import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.Migration
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -86,6 +87,8 @@ class BuildBlockBoundaryPopulationSqlTest extends PostgresTestBase {
         long chunkSize = 10L;
         long nStarts = (blockCount + chunkSize - 1) / chunkSize;
         assertTrue(blockCount > chunkSize, "the seeded table should span several chunks");
+        assertNotEquals(0, blockCount % chunkSize,
+                "the block count must not be a multiple of the chunk size, so the final chunk is short");
 
         long runId = insertBlockRun();
         dsl.execute(Routines.buildBlockBoundaryPopulationSql(dsl.configuration(),
