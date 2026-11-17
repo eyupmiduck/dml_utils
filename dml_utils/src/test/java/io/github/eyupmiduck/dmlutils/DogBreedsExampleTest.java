@@ -25,59 +25,6 @@ class DogBreedsExampleTest extends PostgresTestBase {
     private static final int SEEDED_BREEDS = 52;
 
     /**
-     * The table-driven example backfills all rows and reruns cleanly. The second
-     * run is what exercises the archived-run filters the example now uses.
-     */
-    @Test
-    void dogBreedsExampleBackfillsAndRerunsCleanly() throws Exception {
-        runExample("dog_breeds");
-        assertExampleOutcome("dog_breeds", "dogs-status-backfill");
-        runExample("dog_breeds");
-        assertExampleOutcome("dog_breeds", "dogs-status-backfill");
-    }
-
-    /**
-     * The function-over-table example backfills all rows and reruns cleanly, and
-     * its summary and boundary queries report only the current run.
-     */
-    @Test
-    void dogBreedsFunctionExampleBackfillsAndRerunsCleanly() throws Exception {
-        runExample("dog_breeds_function");
-        assertExampleOutcome("public", "dogs-review-function");
-        runExample("dog_breeds_function");
-        assertExampleOutcome("public", "dogs-review-function");
-    }
-
-    /**
-     * Executes one example script as the superuser (the README's instructions),
-     * after dropping the psql meta-commands ({@code \set}, {@code \echo}) that
-     * JDBC cannot run. The cloned test database does not let the owner create
-     * schemas, and the example creates one.
-     *
-     * <p>Each statement runs on its own (autocommit, like psql): the migration
-     * worker is a separate session, so it must see the committed schema, table and
-     * seed rows. Running the whole script as one multi-statement query would put
-     * them in one implicit transaction the worker cannot see.
-     *
-     * @param directory the example directory, which also names the script
-     * @throws Exception if the script cannot be read or executed
-     */
-    private void runExample(String directory) throws Exception {
-        Path script = EXAMPLES.resolve(directory).resolve(directory + ".sql");
-        String sql = Files.readString(script).lines()
-                .filter(line -> !line.stripLeading().startsWith("\\"))
-                .collect(Collectors.joining("\n"));
-
-        String database = dsl.fetchOne("SELECT current_database()").get(0, String.class);
-        try (Connection admin = openAdminConnection(database);
-             Statement statement = admin.createStatement()) {
-            for (String single : splitStatements(sql)) {
-                statement.execute(single);
-            }
-        }
-    }
-
-    /**
      * Splits a SQL script into statements on top-level semicolons, respecting
      * single-quoted literals, dollar-quoted bodies and {@code --} line comments.
      *
@@ -150,6 +97,59 @@ class DogBreedsExampleTest extends PostgresTestBase {
         }
         String tag = script.substring(start + 1, tagEnd);
         return tag.isEmpty() || tag.matches("[A-Za-z_][A-Za-z0-9_]*");
+    }
+
+    /**
+     * The table-driven example backfills all rows and reruns cleanly. The second
+     * run is what exercises the archived-run filters the example now uses.
+     */
+    @Test
+    void dogBreedsExampleBackfillsAndRerunsCleanly() throws Exception {
+        runExample("dog_breeds");
+        assertExampleOutcome("dog_breeds", "dogs-status-backfill");
+        runExample("dog_breeds");
+        assertExampleOutcome("dog_breeds", "dogs-status-backfill");
+    }
+
+    /**
+     * The function-over-table example backfills all rows and reruns cleanly, and
+     * its summary and boundary queries report only the current run.
+     */
+    @Test
+    void dogBreedsFunctionExampleBackfillsAndRerunsCleanly() throws Exception {
+        runExample("dog_breeds_function");
+        assertExampleOutcome("public", "dogs-review-function");
+        runExample("dog_breeds_function");
+        assertExampleOutcome("public", "dogs-review-function");
+    }
+
+    /**
+     * Executes one example script as the superuser (the README's instructions),
+     * after dropping the psql meta-commands ({@code \set}, {@code \echo}) that
+     * JDBC cannot run. The cloned test database does not let the owner create
+     * schemas, and the example creates one.
+     *
+     * <p>Each statement runs on its own (autocommit, like psql): the migration
+     * worker is a separate session, so it must see the committed schema, table and
+     * seed rows. Running the whole script as one multi-statement query would put
+     * them in one implicit transaction the worker cannot see.
+     *
+     * @param directory the example directory, which also names the script
+     * @throws Exception if the script cannot be read or executed
+     */
+    private void runExample(String directory) throws Exception {
+        Path script = EXAMPLES.resolve(directory).resolve(directory + ".sql");
+        String sql = Files.readString(script).lines()
+                .filter(line -> !line.stripLeading().startsWith("\\"))
+                .collect(Collectors.joining("\n"));
+
+        String database = dsl.fetchOne("SELECT current_database()").get(0, String.class);
+        try (Connection admin = openAdminConnection(database);
+             Statement statement = admin.createStatement()) {
+            for (String single : splitStatements(sql)) {
+                statement.execute(single);
+            }
+        }
     }
 
     /**
