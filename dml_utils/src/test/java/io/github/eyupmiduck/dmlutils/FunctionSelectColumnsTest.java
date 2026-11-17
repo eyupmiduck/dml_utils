@@ -19,7 +19,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class FunctionSelectColumnsTest {
 
     private static final Pattern SELECT_STAR = Pattern.compile(
-            "(?i)\\bselect\\s+(?:(?:distinct|all)\\s+)?(?:(?:[a-z_][a-z0-9_]*\\.)+)?\\*");
+            "(?i)\\bselect\\s+(?:(?:distinct|all)\\s+(?:on\\s*\\([^)]*\\)\\s+)?)?"
+                    + "(?:(?:[a-z_][a-z0-9_]*\\.)+)?\\*");
+
+    /**
+     * The pattern detects a star select even behind a {@code DISTINCT ON (...)}
+     * modifier.
+     */
+    @Test
+    void detectsDistinctOnStarSelects() {
+        assertTrue(SELECT_STAR.matcher(
+                        "SELECT DISTINCT ON (id) * FROM dml_utils_data.migration_run")
+                .find(),
+                "a DISTINCT ON star select must be detected");
+        assertTrue(SELECT_STAR.matcher("SELECT DISTINCT t.* FROM dml_utils_data.migration_run t")
+                .find(), "a DISTINCT qualified star select must be detected");
+    }
 
     /**
      * No routine under the changelog functions directory contains a star select.
