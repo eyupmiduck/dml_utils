@@ -59,6 +59,7 @@ jobs:
     # Build workflow's fork coverage separate.
     if: >-
       github.event_name == 'workflow_dispatch'
+      || github.event_name == 'push'
       || github.event.pull_request.head.repo.full_name == github.repository
 
     steps:
