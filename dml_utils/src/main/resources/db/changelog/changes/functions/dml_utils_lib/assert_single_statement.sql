@@ -17,6 +17,7 @@ DECLARE
     l_block_depth         integer := 0;
     l_dollar_tag          text;
     l_tag_position        integer;
+    l_tag_character       text;
     l_tag_end             integer;
     l_tag_valid           boolean;
     l_code                integer;
@@ -123,12 +124,12 @@ BEGIN
                             l_tag_valid := true;
                             WHILE l_tag_position <= l_length
                                 LOOP
-                                    l_character := l_characters[l_tag_position];
-                                    IF l_character = '$' THEN
+                                    l_tag_character := l_characters[l_tag_position];
+                                    IF l_tag_character = '$' THEN
                                         l_tag_end := l_tag_position;
                                         EXIT;
                                     END IF;
-                                    l_code := pg_catalog.ascii(l_character);
+                                    l_code := pg_catalog.ascii(l_tag_character);
                                     IF l_tag_position = l_position + 1 THEN
                                         l_tag_valid :=
                                                 (l_code BETWEEN 65 AND 90)

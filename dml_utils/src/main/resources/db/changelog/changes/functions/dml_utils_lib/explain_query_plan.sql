@@ -48,6 +48,8 @@ COMMENT ON FUNCTION dml_utils_lib.explain_query_plan IS
     'Returns EXPLAIN (FORMAT JSON) of i_sql_text as a json value without '
         'executing it (no ANALYZE), so an INSERT/UPDATE only plans. Rejects a '
         'NULL or empty statement, and rejects a multi-statement string (22023) '
-        'so its trailing statements cannot run. The statement is caller-supplied '
+        'so its trailing statements cannot run. Parses with '
+        'standard_conforming_strings pinned to on so the guard and the EXPLAIN '
+        'agree, whatever the caller session sets. The statement is caller-supplied '
         'but the routine is SECURITY INVOKER and only plans, so it is no more '
         'privileged than running EXPLAIN on the same SQL directly.';

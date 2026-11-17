@@ -100,8 +100,10 @@ class ExplainQueryPlanTest extends PostgresTestBase {
 
     /**
      * The guard and the EXPLAIN agree even when the caller's session sets
-     * standard_conforming_strings off: the routine pins it on, so a normal
-     * statement is still planned and a multi-statement string is still rejected.
+     * standard_conforming_strings off: the routine pins it on, so a plain
+     * literal containing a backslash still parses as closed. Without the pin,
+     * the session's scs=off would leave the literal open and the EXPLAIN would
+     * fail with 42601.
      */
     @Test
     void pinsStandardConformingStringsForTheGuardAndTheExplain() {
@@ -110,9 +112,7 @@ class ExplainQueryPlanTest extends PostgresTestBase {
             tx.execute("SET LOCAL standard_conforming_strings = off");
 
             assertEquals("Result", planNodeType(Routines.explainQueryPlan(
-                    tx.configuration(), "SELECT 1")));
-            assertSqlState("22023", () -> Routines.explainQueryPlan(
-                    tx.configuration(), "SELECT 1; SELECT 2"));
+                    tx.configuration(), "SELECT 'a\\'")));
         });
     }
 
