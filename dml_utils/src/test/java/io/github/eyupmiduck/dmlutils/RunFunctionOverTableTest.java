@@ -638,8 +638,8 @@ class RunFunctionOverTableTest extends PostgresTestBase {
 
         assertTrue(storedSqlText(label).contains("mark_mixed_2"),
                 "the stored sql_text references the new function");
-        assertTrue(storedSqlText(label).contains("AND (t.b = 'x'"),
-                "the stored sql_text carries the filter");
+        assertTrue(storedSqlText(label).contains("AND (t.b = 'x'\n)"),
+                "the stored sql_text carries the filter, closing paren included");
 
         Routines.runFunctionOverTable(dsl.configuration(), schema(TEST_COMPOSITE_MIXED),
                 name(TEST_COMPOSITE_MIXED), FN_SCHEMA, "mark_mixed_2", 2, 1, label, null, ChunkingStrategy.primary_key, 1, 0, null, false, 3, 1000);
@@ -664,8 +664,8 @@ class RunFunctionOverTableTest extends PostgresTestBase {
                 label, TEMPLATE("mark_mixed"), 2, 1, ChunkingStrategy.primary_key, "t", 0, null, false, 3, 1000);
         Routines.setMigrationRunFunction(dsl.configuration(), label, FN_SCHEMA, "mark_mixed_2",
                 "t.b = 'x'");
-        assertTrue(storedSqlText(label).contains("AND (t.b = 'x'"),
-                "the filter is stored");
+        assertTrue(storedSqlText(label).contains("AND (t.b = 'x'\n)"),
+                "the filter is stored, closing paren included");
 
         Routines.setMigrationRunFunction(dsl.configuration(), label, FN_SCHEMA, "mark_mixed_2",
                 null);

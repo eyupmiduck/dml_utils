@@ -119,6 +119,10 @@ class PrepareChunkSqlRenderTest extends PostgresTestBase {
                 dsl.configuration(), TEMPLATE, "public", "src",
                 "t" + DRIVING_TABLE_SENTINEL,
                 new String[]{"a"}, new String[]{"bigint"}));
+        assertSqlState("22023", () -> Routines.prepareChunkSqlRender(
+                dsl.configuration(), TEMPLATE, "public", "src",
+                "t" + CLAUSE_SENTINEL,
+                new String[]{"a"}, new String[]{"bigint"}));
     }
 
     /**

@@ -1635,7 +1635,12 @@ run's boundaries as the contiguous sequence `0..N`: one start boundary every
 `i_chunk_size` heap blocks plus a one-past-end terminal boundary, each a bigint
 block number in `migration_key`. The block count comes from `pg_relation_size`
 and the server block size at execution time, so no table scan is needed; a table
-with no blocks yields no boundaries. See the block-strategy limitations above.
+with no blocks yields no boundaries. Block numbers are rendered as
+`(<n>,0)::tid`, and a tid's block number is a 32-bit unsigned value: the highest
+addressable block is `4294967295`, so a driving table whose one-past-end block is
+`2^32` (only reachable at the 32 TB / 8 kB limit) cannot be chunked by `blocks`;
+`render_block_chunk_sql` rejects such an end with `22023` instead of failing
+inside EXPLAIN/EXECUTE. See the block-strategy limitations above.
 
 ### `dml_utils_lib.boundary_key_descriptor_sql(i_key_columns, i_key_kinds)`
 
@@ -1956,8 +1961,9 @@ statement from the key descriptor fragments: it streams the boundary key in
 index order, materialises only the chunk starts and takes the terminal boundary
 from a backward index scan. The five text fragments are interpolated raw, so they
 must be trusted SQL produced by `boundary_key_descriptor_sql`, never
-caller-supplied text. A NULL run id, a non-positive chunk size or a blank
-`i_order_by`/`i_order_by_desc` is rejected with `22023` before rendering. The
+caller-supplied text. A NULL run id, a non-positive chunk size, any NULL
+fragment or identifier, or a blank `i_order_by`/`i_order_by_desc` is rejected with
+`22023` before rendering. The
 boundary key must be unique and `i_order_by_desc` its exact inverse; otherwise
 the row chosen by the backward scan can differ from the last row in the ascending
 window order. Shared by `build_boundary_population_sql`

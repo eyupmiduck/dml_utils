@@ -8,8 +8,8 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.assert_chunking_template(
 AS
 $$
 DECLARE
-    l_driving_table_token    constant text := '<driving_table>';
-    l_chunking_clause_token  constant text := '<chunking_clause>';
+    l_driving_table_token   constant text := '<driving_table>';
+    l_chunking_clause_token constant text := '<chunking_clause>';
     l_driving_table_count   integer;
     l_chunking_clause_count integer;
     l_probe                 text;

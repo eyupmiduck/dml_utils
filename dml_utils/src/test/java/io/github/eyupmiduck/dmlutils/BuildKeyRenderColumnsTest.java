@@ -96,7 +96,7 @@ class BuildKeyRenderColumnsTest extends PostgresTestBase {
         assertSqlState("22023", () -> columns("t", "test_bigint",
                 new String[]{"id\u0001"}, new String[]{"bigint"}));
         assertSqlState("22023", () -> columns("t", "test_bigint",
-                new String[]{" \t"}, new String[]{"bigint"}));
+                new String[]{"id\u0002"}, new String[]{"bigint"}));
         assertSqlState("22023", () -> columns("t", "test_bigint",
                 new String[]{""}, new String[]{"bigint"}));
         // A whitespace-only name is blank, not just empty: it would render a

@@ -27,7 +27,11 @@ BEGIN
 
     -- A reversed or empty range would render a predicate that matches no rows
     -- while the chunk is still marked complete. The end must also fit tid's block
-    -- space (2^32 - 1 blocks): a larger literal fails only inside EXPLAIN/EXECUTE.
+    -- space: a tid's block number is a 32-bit unsigned value, so the highest
+    -- addressable block is 4294967295 and (4294967296,0) is not a valid literal.
+    -- A relation whose terminal one-past-end block is 2^32 (only reachable at the
+    -- 32 TB / 8 kB block limit) therefore cannot be chunked by blocks; the error
+    -- names the limit rather than failing later inside EXPLAIN/EXECUTE.
     IF i_start_block < 0 OR i_end_block <= i_start_block THEN
         RAISE EXCEPTION 'block range must satisfy 0 <= start < end'
             USING ERRCODE = '22023';
@@ -83,4 +87,6 @@ COMMENT ON FUNCTION dml_utils_lib.render_block_chunk_sql IS
         '[i_start_block, i_end_block), for example ((t.ctid) >= (''(0,0)''::tid) '
         'AND (t.ctid) < (''(1000,0)''::tid)). Every chunk, including the terminal '
         'one, uses a half-open range; the terminal end is the one-past-end block '
-        'count.';
+        'count. Raises 22023 for a reversed or empty range, or an end block above '
+        '4294967295 (the largest tid block number), so a relation whose '
+        'one-past-end block is 2^32 cannot be chunked by blocks.';

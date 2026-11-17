@@ -46,6 +46,9 @@ class FormatBoundaryPopulationSqlTest extends PostgresTestBase {
                 dsl.configuration(), "id AS id1", "id", schema(TEST_BIGINT),
                 name(TEST_BIGINT), "id1", PACK, "id1 DESC", 42L, 0L));
         assertSqlState("22023", () -> Routines.formatBoundaryPopulationSql(
+                dsl.configuration(), "id AS id1", " \t", schema(TEST_BIGINT),
+                name(TEST_BIGINT), "id1", PACK, "id1 DESC", 42L, 2L));
+        assertSqlState("22023", () -> Routines.formatBoundaryPopulationSql(
                 dsl.configuration(), "id AS id1", "id", schema(TEST_BIGINT),
                 name(TEST_BIGINT), "id1", PACK, " \t", 42L, 2L));
     }
