@@ -65,12 +65,10 @@ BEGIN
     -- ordinals. A leaf with no rows still gets a row: emptiness is a calculation
     -- result, not a reason to drop it from the snapshot.
     RETURN QUERY
-        WITH validated AS MATERIALIZED (
-            SELECT dml_utils_lib.assert_partitioned_leaf_relations(
-                           i_parent => l_parent) AS relations,
-                   dml_utils_lib.assert_partitioned_leaf_privileges(
-                           i_parent => l_parent) AS privileges
-        )
+        WITH validated AS MATERIALIZED (SELECT dml_utils_lib.assert_partitioned_leaf_relations(
+                                                       i_parent => l_parent) AS relations,
+                                               dml_utils_lib.assert_partitioned_leaf_privileges(
+                                                       i_parent => l_parent) AS privileges)
         SELECT (pg_catalog.row_number() OVER (
             ORDER BY pg_catalog.pg_get_expr(c.relpartbound, c.oid) COLLATE pg_catalog."C",
                 n.nspname::text COLLATE pg_catalog."C",
