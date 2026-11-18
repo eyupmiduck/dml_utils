@@ -234,6 +234,50 @@ class LeafPartitionsTest extends PostgresTestBase {
         }
     }
 
+    /**
+     * A NULL strategy is rejected instead of silently degrading to the key path
+     * (the filepath CASE would be NULL for every leaf).
+     */
+    @Test
+    void rejectsANullStrategy() {
+        assertSqlState("22023", () -> Routines.leafPartitions(dsl.configuration(), SCHEMA,
+                "test_partitioned_range", null));
+    }
+
+    /**
+     * Date bounds are deparsed and sorted in the manifest order, so the January
+     * leaf comes before the February one even though the fixtures were created
+     * late-first.
+     */
+    @Test
+    void ordersDateBoundsByBound() {
+        assertEquals(List.of("test_partitioned_date_early", "test_partitioned_date_late"),
+                leaves("test_partitioned_date", ChunkingStrategy.primary_key)
+                        .stream().map(LeafPartitionsRecord::getLeafName).toList(),
+                "the date bounds decide the manifest order");
+    }
+
+    /**
+     * The manifest order sorts the deparsed bounds, whose text depends on
+     * DateStyle/IntervalStyle. The routine pins both, so the order cannot change
+     * with the caller's session; a JDBC connection rejects a non-ISO DateStyle,
+     * so the pin is pinned through the catalog configuration.
+     */
+    @Test
+    void pinsTheStylesThatDecideTheManifestOrder() {
+        String config = dsl.fetchOne("""
+                        SELECT pg_catalog.array_to_string(p.proconfig, ',')
+                        FROM pg_catalog.pg_proc AS p
+                        WHERE p.pronamespace = 'dml_utils_lib'::pg_catalog.regnamespace
+                          AND p.proname = 'leaf_partitions'
+                        """)
+                .get(0, String.class);
+        assertTrue(config.contains("DateStyle=ISO, MDY"),
+                () -> "leaf_partitions must pin datestyle: " + config);
+        assertTrue(config.contains("IntervalStyle=postgres"),
+                () -> "leaf_partitions must pin intervalstyle: " + config);
+    }
+
     private List<LeafPartitionsRecord> leaves(String table, ChunkingStrategy chunkBy) {
         return Routines.leafPartitions(dsl.configuration(), SCHEMA, table, chunkBy);
     }

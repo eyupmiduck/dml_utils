@@ -751,3 +751,34 @@ CREATE TABLE dml_utils_fixtures.test_inheritance_child
 
 COMMENT ON TABLE dml_utils_fixtures.test_inheritance_child IS
     'Fixture: the ordinary child of the INHERITS fixture.';
+
+-- A date-partitioned parent: the manifest order sorts the deparsed bounds, and
+-- a date bound's text depends on DateStyle unless leaf_partitions pins it. The
+-- leaves are created late-before-early and their names sort the same way, so
+-- only the bound decides the order.
+CREATE TABLE dml_utils_fixtures.test_partitioned_date
+(
+    created_at date NOT NULL,
+    payload    text
+) PARTITION BY RANGE (created_at);
+
+COMMENT ON TABLE dml_utils_fixtures.test_partitioned_date IS
+    'Fixture: a date-range-partitioned parent for the DateStyle ordering case.';
+COMMENT ON COLUMN dml_utils_fixtures.test_partitioned_date.created_at IS
+    'Fixture range key (date).';
+COMMENT ON COLUMN dml_utils_fixtures.test_partitioned_date.payload IS
+    'Fixture payload column.';
+
+CREATE TABLE dml_utils_fixtures.test_partitioned_date_late
+    PARTITION OF dml_utils_fixtures.test_partitioned_date
+        FOR VALUES FROM ('2020-02-01') TO ('2020-02-02');
+
+COMMENT ON TABLE dml_utils_fixtures.test_partitioned_date_late IS
+    'Fixture: the February date leaf.';
+
+CREATE TABLE dml_utils_fixtures.test_partitioned_date_early
+    PARTITION OF dml_utils_fixtures.test_partitioned_date
+        FOR VALUES FROM ('2020-01-02') TO ('2020-01-03');
+
+COMMENT ON TABLE dml_utils_fixtures.test_partitioned_date_early IS
+    'Fixture: the January date leaf.';
