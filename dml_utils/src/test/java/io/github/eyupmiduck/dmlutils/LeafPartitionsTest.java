@@ -251,31 +251,60 @@ class LeafPartitionsTest extends PostgresTestBase {
      */
     @Test
     void ordersDateBoundsByBound() {
-        assertEquals(List.of("test_partitioned_date_early", "test_partitioned_date_late"),
+        assertEquals(List.of("test_partitioned_date_january", "test_partitioned_date_february"),
                 leaves("test_partitioned_date", ChunkingStrategy.primary_key)
                         .stream().map(LeafPartitionsRecord::getLeafName).toList(),
-                "the date bounds decide the manifest order");
+                "the date bounds decide the manifest order, not the names or OIDs");
     }
 
     /**
      * The manifest order sorts the deparsed bounds, whose text depends on
-     * DateStyle/IntervalStyle. The routine pins both, so the order cannot change
-     * with the caller's session; a JDBC connection rejects a non-ISO DateStyle,
-     * so the pin is pinned through the catalog configuration.
+     * TimeZone/DateStyle/IntervalStyle/extra_float_digits. Both the enumerator
+     * and the live-bound assertion pin them, so the manifest text and the
+     * byte-wise comparison are session-independent.
      */
     @Test
     void pinsTheStylesThatDecideTheManifestOrder() {
-        String config = dsl.fetchOne("""
-                        SELECT pg_catalog.array_to_string(p.proconfig, ',')
-                        FROM pg_catalog.pg_proc AS p
-                        WHERE p.pronamespace = 'dml_utils_lib'::pg_catalog.regnamespace
-                          AND p.proname = 'leaf_partitions'
-                        """)
-                .get(0, String.class);
-        assertTrue(config.contains("DateStyle=ISO, MDY"),
-                () -> "leaf_partitions must pin datestyle: " + config);
-        assertTrue(config.contains("IntervalStyle=postgres"),
-                () -> "leaf_partitions must pin intervalstyle: " + config);
+        for (String function : List.of("leaf_partitions",
+                "assert_live_leaf_matches_manifest")) {
+            String config = dsl.fetchOne("""
+                            SELECT coalesce(pg_catalog.array_to_string(p.proconfig, ','), '')
+                            FROM pg_catalog.pg_proc AS p
+                            WHERE p.pronamespace = 'dml_utils_lib'::pg_catalog.regnamespace
+                              AND p.proname = ?
+                            """, function)
+                    .get(0, String.class)
+                    .toLowerCase(java.util.Locale.ROOT);
+            assertTrue(config.contains("timezone=utc"),
+                    () -> function + " must pin TimeZone: " + config);
+            assertTrue(config.contains("datestyle=iso, mdy"),
+                    () -> function + " must pin DateStyle: " + config);
+            assertTrue(config.contains("intervalstyle=postgres"),
+                    () -> function + " must pin IntervalStyle: " + config);
+            assertTrue(config.contains("extra_float_digits=0"),
+                    () -> function + " must pin extra_float_digits: " + config);
+        }
+    }
+
+    /**
+     * A timestamptz bound is deparsed in the pinned UTC zone: the same tree
+     * yields the same text in a session set to another time zone.
+     */
+    @Test
+    void ordersTimestamptzBoundsIndependentlyOfTimeZone() {
+        List<String> utc = leaves("test_partitioned_time", ChunkingStrategy.primary_key)
+                .stream().map(LeafPartitionsRecord::getLeafBound).toList();
+        assertEquals(1, utc.size());
+        assertTrue(utc.getFirst().contains("+00"), utc.toString());
+
+        dsl.transaction(config -> {
+            org.jooq.DSLContext tx = org.jooq.impl.DSL.using(config);
+            tx.execute("SET LOCAL timezone = 'America/New_York'");
+            List<String> newYork = Routines.leafPartitions(tx.configuration(), SCHEMA,
+                            "test_partitioned_time", ChunkingStrategy.primary_key)
+                    .stream().map(LeafPartitionsRecord::getLeafBound).toList();
+            assertEquals(utc, newYork, "TimeZone must not change the deparsed bound");
+        });
     }
 
     private List<LeafPartitionsRecord> leaves(String table, ChunkingStrategy chunkBy) {

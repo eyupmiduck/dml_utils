@@ -15,11 +15,14 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.leaf_partitions(
     LANGUAGE plpgsql
     SECURITY INVOKER
     -- The manifest order sorts the deparsed partition bounds byte-wise. Those
-    -- expressions depend on DateStyle/IntervalStyle for date, timestamp and
-    -- interval bounds, so pin them: the same tree must yield the same ordinals
-    -- regardless of the caller's settings.
+    -- expressions depend on TimeZone for timestamptz bounds, DateStyle for
+    -- date/timestamp bounds, IntervalStyle for interval bounds and
+    -- extra_float_digits for float bounds, so pin them: the same tree must yield
+    -- the same ordinals and the same stored text regardless of the caller.
+    SET timezone = 'UTC'
     SET datestyle = 'ISO, MDY'
     SET intervalstyle = 'postgres'
+    SET extra_float_digits = 0
 AS
 $$
 DECLARE
@@ -99,7 +102,10 @@ COMMENT ON FUNCTION dml_utils_lib.leaf_partitions(
     'Lists the storage leaves of a partitioned table in the deterministic '
         'manifest order (partition bound, schema, name, OID, byte-wise), with '
         'their OIDs, partition-bound expressions and, for chunk_by = blocks, '
-        'physical relation filepaths. assert_partitioned_leaf_relations rejects a '
+        'physical relation filepaths. The deparsed bounds are rendered with '
+        'pinned TimeZone/DateStyle/IntervalStyle/extra_float_digits so the '
+        'manifest text is independent of the caller''s session. A NULL strategy '
+        'is rejected (22023). assert_partitioned_leaf_relations rejects a '
         'non-table leaf (42809) and assert_partitioned_leaf_privileges rejects a '
         'leaf the caller cannot read (42501). Every leaf is returned, including '
         'one with no rows.';
