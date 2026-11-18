@@ -9,7 +9,7 @@ CREATE OR REPLACE FUNCTION dml_utils_lib.assert_plain_heap(
 AS
 $$
 DECLARE
-    l_relkind     text;
+    l_relkind      text;
     l_has_children boolean;
 BEGIN
     -- Resolve the relation with the schema qualified explicitly, so the result
