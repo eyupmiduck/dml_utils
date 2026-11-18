@@ -48,7 +48,7 @@ BEGIN
         WITH numbered AS (
             SELECT
                 %1$s,
-                row_number() OVER (ORDER BY %2$s) AS rn
+                pg_catalog.row_number() OVER (ORDER BY %2$s) AS rn
             FROM %3$I.%4$I
         ),
         starts AS MATERIALIZED (
