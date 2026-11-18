@@ -104,11 +104,14 @@ BEGIN
             -- The element is interpolated verbatim into the predicate, so it must
             -- be exactly the alias-qualified identifier build_key_render_columns
             -- produced: the prefix followed by one (quoted or simple) identifier.
-            -- A prefix match alone would accept "t.a OR true --".
+            -- A prefix match alone would accept "t.a OR true --". The C collation
+            -- makes [a-z] a byte range: under a linguistic collation it would
+            -- also accept uppercase, which the producer always quotes.
             IF i_column_names[l_position] IS NULL
                 OR NOT pg_catalog.starts_with(i_column_names[l_position], l_alias_prefix)
                 OR pg_catalog.substr(i_column_names[l_position],
                                      pg_catalog.length(l_alias_prefix) + 1)
+                    COLLATE pg_catalog."C"
                     !~ '^"([^"]|"")+"$|^[a-z_][a-z0-9_$]*$'
             THEN
                 RAISE EXCEPTION 'column name % is not a single identifier qualified with alias %',

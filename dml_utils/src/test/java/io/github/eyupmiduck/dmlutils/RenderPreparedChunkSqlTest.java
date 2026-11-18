@@ -156,6 +156,12 @@ class RenderPreparedChunkSqlTest extends PostgresTestBase {
                 dsl.configuration(), prepared.getOTemplate(), "public", "src", "t",
                 new String[]{"t.a OR true --"}, new String[]{"bigint"}, new String[]{null},
                 new String[]{"1"}, new String[]{"2"}, false));
+        // Under a linguistic collation [a-z] would also match A-Z; the producer
+        // always quotes an uppercase name, so the unquoted form is rejected.
+        assertSqlState("22023", () -> Routines.renderPreparedChunkSql(
+                dsl.configuration(), prepared.getOTemplate(), "public", "src", "t",
+                new String[]{"t.Abc"}, new String[]{"bigint"}, new String[]{null},
+                new String[]{"1"}, new String[]{"2"}, false));
     }
 
     /**
@@ -173,6 +179,24 @@ class RenderPreparedChunkSqlTest extends PostgresTestBase {
 
         assertTrue(rendered.contains("t.\"a b\""), rendered);
         assertTrue(rendered.contains("t.\"a\"\"c\""), rendered);
+    }
+
+    /**
+     * An alias that needs quoting is accepted: the validator rebuilds the prefix
+     * with quote_ident, a path the simple "t" alias never reaches.
+     */
+    @Test
+    void acceptsAQuotedAlias() {
+        PrepareChunkSqlRender prepared = Routines.prepareChunkSqlRender(
+                dsl.configuration(), TEMPLATE, "public", "src", "T odd",
+                new String[]{"a"}, new String[]{"bigint"});
+
+        String rendered = Routines.renderPreparedChunkSql(
+                dsl.configuration(), prepared.getOTemplate(), "public", "src", "T odd",
+                prepared.getOColumnNames(), new String[]{"bigint"},
+                prepared.getOKeyCollations(), new String[]{"1"}, new String[]{"2"}, false);
+
+        assertTrue(rendered.contains("\"T odd\".a"), rendered);
     }
 
     /**
