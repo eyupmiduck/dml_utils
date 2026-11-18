@@ -56,6 +56,11 @@ CREATE TABLE dml_utils_data.migration_run
             OR (pg_catalog.cardinality(ordered_key_columns) BETWEEN 1 AND 3
             AND pg_catalog.cardinality(ordered_key_kinds)
                     = pg_catalog.cardinality(ordered_key_columns)
+            -- A NULL member would pass cardinality and the <@ whitelist
+            -- (whose NULL result makes the CHECK pass as unknown), so reject it
+            -- explicitly: the descriptor is a key, every position is a column.
+            AND pg_catalog.array_position(ordered_key_columns, NULL::name) IS NULL
+            AND pg_catalog.array_position(ordered_key_kinds, NULL::text) IS NULL
             AND ordered_key_kinds <@ ARRAY ['bigint', 'text', 'uuid', 'timestamptz']::text[])
         ),
     -- The run's milestones are ordered: the boundary calculation cannot finish
