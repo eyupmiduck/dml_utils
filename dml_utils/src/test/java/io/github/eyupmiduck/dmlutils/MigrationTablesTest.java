@@ -1243,6 +1243,18 @@ class MigrationTablesTest extends PostgresTestBase {
                         'migration_tables_source', 'migration_tables_source_key',
                         ARRAY['id']::name[], ARRAY[NULL]::text[])
                 """, uniqueLabel("ordered-key-null-kind")));
+        // A multidimensional array is rejected by the shape check too, instead of
+        // array_position raising its own 2202E for the malformed descriptor.
+        assertDomainViolation(() -> dsl.execute("""
+                INSERT INTO dml_utils_data.migration_run
+                    (label, sql_text, chunk_size, chunk_by, threads,
+                     driving_table_schema_name, driving_table_name,
+                     ordered_key_index, ordered_key_columns, ordered_key_kinds)
+                VALUES (?, 'SELECT 1', 1, 'ordered_key', 1, 'public',
+                        'migration_tables_source', 'migration_tables_source_key',
+                        '{{id,id2,id3}}'::name[],
+                        ARRAY['bigint', 'bigint', 'bigint']::text[])
+                """, uniqueLabel("ordered-key-multidimensional")));
 
         assertDomainViolation(() -> dsl.insertInto(MIGRATION_RUN)
                 .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT, MIGRATION_RUN.CHUNK_SIZE,
