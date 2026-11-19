@@ -104,6 +104,29 @@ class TerminalBoundaryHelpersTest extends PartitionTestBase {
     }
 
     /**
+     * The terminal boundary is partition-wise only: a single-relation run is
+     * rejected with {@code 22023} instead of the misleading "not the terminal
+     * leaf" its empty manifest would produce.
+     */
+    @Test
+    void rejectsASingleRelationRun() {
+        long runId = dsl.insertInto(MIGRATION_RUN)
+                .columns(MIGRATION_RUN.LABEL, MIGRATION_RUN.SQL_TEXT,
+                        MIGRATION_RUN.CHUNK_SIZE, MIGRATION_RUN.CHUNK_BY,
+                        MIGRATION_RUN.PARTITION_WISE, MIGRATION_RUN.THREADS,
+                        MIGRATION_RUN.DRIVING_TABLE_SCHEMA_NAME,
+                        MIGRATION_RUN.DRIVING_TABLE_NAME, MIGRATION_RUN.STARTED_AT)
+                .values(uniqueLabel("terminal-single"), TEMPLATE, 2,
+                        ChunkingStrategy.primary_key, false, 1, PARTITION_SCHEMA, TABLE,
+                        java.time.OffsetDateTime.now())
+                .returningResult(MIGRATION_RUN.RUN_ID)
+                .fetchOne(MIGRATION_RUN.RUN_ID);
+
+        assertSqlState("22023", () -> Routines.appendTerminalBoundary(
+                dsl.configuration(), runId, 1));
+    }
+
+    /**
      * A run with uncalculated leaves cannot be finalized by a direct call: the
      * milestone would freeze a short total_chunks and the remaining leaves would
      * never be calculated.
