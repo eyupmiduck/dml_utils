@@ -804,7 +804,7 @@ REVOKE EXECUTE ON FUNCTION dml_utils.explain_function_over_table_chunk(
     dml_utils_data.non_null_text,
     text[],
     text[],
-    boolean,
+    dml_utils_data.non_null_boolean,
     text,
     dml_utils_data.chunking_strategy,
     name,
@@ -818,7 +818,7 @@ GRANT EXECUTE ON FUNCTION dml_utils.explain_function_over_table_chunk(
     dml_utils_data.non_null_text,
     text[],
     text[],
-    boolean,
+    dml_utils_data.non_null_boolean,
     text,
     dml_utils_data.chunking_strategy,
     name,
@@ -1321,11 +1321,11 @@ GRANT EXECUTE ON FUNCTION dml_utils_lib.record_migration_worker_failure(
     ) TO public;
 REVOKE EXECUTE ON FUNCTION dml_utils_lib.sleep_between_migration_chunks(
     bigint,
-    integer
+    dml_utils_data.non_negative_integer
     ) FROM dml_utils_caller;
 GRANT EXECUTE ON FUNCTION dml_utils_lib.sleep_between_migration_chunks(
     bigint,
-    integer
+    dml_utils_data.non_negative_integer
     ) TO public;
 
 -- Worker stop/drain helper.

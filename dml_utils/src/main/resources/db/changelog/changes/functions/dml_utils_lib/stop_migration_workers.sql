@@ -27,6 +27,17 @@ BEGIN
             USING ERRCODE = '22023';
     END IF;
 
+    -- The loops below index both arrays from 1, so a zero-based or
+    -- multidimensional array would silently address the wrong element (or none).
+    IF pg_catalog.array_ndims(i_pids) IS DISTINCT FROM 1
+        OR pg_catalog.array_lower(i_pids, 1) IS DISTINCT FROM 1
+        OR pg_catalog.array_ndims(i_cookies) IS DISTINCT FROM 1
+        OR pg_catalog.array_lower(i_cookies, 1) IS DISTINCT FROM 1
+    THEN
+        RAISE EXCEPTION 'i_pids and i_cookies must be one-dimensional arrays with a lower bound of 1'
+            USING ERRCODE = '22023';
+    END IF;
+
     -- 0 means wait forever to pg_background_wait, which this helper uses only
     -- for a NULL i_wait_ms; reject it so the two spellings cannot be confused.
     IF i_wait_ms IS NOT NULL AND i_wait_ms < 1 THEN
@@ -100,8 +111,9 @@ COMMENT ON FUNCTION dml_utils_lib.stop_migration_workers(
     integer
     ) IS
     'Cancels (when requested) and waits for/detaches a set of pg_background '
-        'worker handles, given as parallel non-null pid/cookie arrays of equal '
-        'length. A NULL wait timeout waits indefinitely unless cancellation failed, '
+        'worker handles, given as parallel non-null, one-dimensional pid/cookie '
+        'arrays of equal length with a lower bound of 1 (the loops index from 1). '
+        'A NULL wait timeout waits indefinitely unless cancellation failed, '
         'in which case a bounded wait is used. A positive timeout is required when '
         'not NULL. Per-worker errors are reported as warnings so the coordinator '
         'can finish its own error path without leaking a handle.';

@@ -520,7 +520,7 @@ i_function_schema_name      dml_utils_data.non_null_text
 i_function_name             dml_utils_data.non_null_text
 i_start_values              text[]
 i_end_values                text[]
-i_is_final                  boolean
+i_is_final                  dml_utils_data.non_null_boolean
 i_filter                    text DEFAULT NULL
 i_chunk_by                  dml_utils_data.chunking_strategy DEFAULT 'primary_key'
 i_boundary_key_index        name DEFAULT NULL
@@ -537,8 +537,10 @@ table's primary key, builds the per-row template and explains exactly one chunk
 whose start and end boundaries the caller supplies as one text value per
 primary-key column, in key order. Only the `primary_key` strategy is explained:
 a `blocks`-strategy chunk is a half-open ctid range and cannot be expressed
-here. It returns one `chunk_non_final` or `chunk_final` row. A non-NULL
-`i_filter` is ANDed onto the chunk predicate. Use
+here. It returns one `chunk_non_final` or `chunk_final` row. `i_is_final` is a
+non-null domain, so an explicit NULL fails at the wrapper instead of deeper in
+`explain_migration_chunk`. A non-NULL `i_filter` is ANDed onto the chunk
+predicate. Use
 it to explain a real chunk of the per-row call, including the prefix-equality
 shapes the synthetic ranges never produce. It resolves no run, reads no
 boundaries and writes nothing.
@@ -2486,22 +2488,24 @@ RETURNS void
 
 `VOLATILE`, `SECURITY INVOKER`. Records a failed chunk in
 `dml_utils_data.migration_error` through an autonomous `pg_background`
-transaction. A NULL sqlstate/message is replaced with a generic value so the
-record is never lost, and a recording failure (launch or worker) is reported as a
-`WARNING` rather than raised, so the caller can still re-raise the worker error.
+transaction. A NULL or blank (any ASCII whitespace) sqlstate/message is replaced
+with a generic value so the record is never lost, and a recording failure (launch
+or worker) is reported as a `WARNING` rather than raised, so the caller can still
+re-raise the worker error.
 
 ### `dml_utils_lib.sleep_between_migration_chunks(i_run_id, i_sleep_ms)`
 
 ```sql
 i_run_id  bigint
-i_sleep_ms integer
+i_sleep_ms dml_utils_data.non_negative_integer
 RETURNS timestamptz
 ```
 
 `VOLATILE`, `SECURITY INVOKER`. Sleeps the run's per-chunk delay in 100ms slices
 and returns the run's `cancelled_at` if cancellation was noticed, so the
 coordinator can stop launching promptly. A run row deleted during the sleep ends
-it, so the loop does not keep re-reading the values of a vanished run.
+it, so the loop does not keep re-reading the values of a vanished run. A NULL or
+negative delay is rejected by the non-negative domain.
 
 ### `dml_utils_lib.stop_migration_workers(i_pids, i_cookies, i_cancel, i_wait_ms)`
 
@@ -2514,7 +2518,9 @@ RETURNS void
 ```
 
 `VOLATILE`, `SECURITY INVOKER`. Cancels (when requested) and waits for/detaches a
-set of `pg_background` worker handles given as parallel pid/cookie arrays. A NULL
+set of `pg_background` worker handles given as parallel non-null,
+one-dimensional pid/cookie arrays of equal length with a lower bound of 1 (the
+loops index from 1, so a zero-based or multidimensional array is `22023`). A NULL
 wait timeout waits indefinitely; per-worker errors are swallowed so the
 coordinator can finish its own error path.
 
