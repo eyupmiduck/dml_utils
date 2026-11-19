@@ -7,6 +7,8 @@ import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.routines.TerminalLeafFor
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.OffsetDateTime;
+
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationBoundary.MIGRATION_BOUNDARY;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -118,7 +120,7 @@ class TerminalBoundaryHelpersTest extends PartitionTestBase {
                         MIGRATION_RUN.DRIVING_TABLE_NAME, MIGRATION_RUN.STARTED_AT)
                 .values(uniqueLabel("terminal-single"), TEMPLATE, 2,
                         ChunkingStrategy.primary_key, false, 1, PARTITION_SCHEMA, TABLE,
-                        java.time.OffsetDateTime.now())
+                        OffsetDateTime.now())
                 .returningResult(MIGRATION_RUN.RUN_ID)
                 .fetchOne(MIGRATION_RUN.RUN_ID);
 
