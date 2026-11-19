@@ -27,10 +27,10 @@ BEGIN
                 'SELECT dml_utils_lib.record_migration_error(%L, %L, %L, %L)',
                 i_run_id,
                 i_boundary_no,
-                -- A NULL *or blank* value would be rejected by
-                -- record_migration_error's non-null domain in the worker, losing
-                -- the record; blank means the same ASCII whitespace set the domain
-                -- trims.
+            -- A NULL *or blank* value would be rejected by
+            -- record_migration_error's non-null domain in the worker, losing
+            -- the record; blank means the same ASCII whitespace set the domain
+            -- trims.
                 COALESCE(NULLIF(pg_catalog.btrim(i_sqlstate, E' \t\n\r\f\013'), ''), '55000'),
                 COALESCE(
                         NULLIF(pg_catalog.btrim(i_error_message, E' \t\n\r\f\013'), ''),
