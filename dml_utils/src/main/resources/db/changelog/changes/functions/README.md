@@ -903,8 +903,8 @@ RETURNS void
 ```
 
 `STABLE`, `SECURITY INVOKER`. Asserts that the number of primary-key columns a
-caller read from `primary_key_attributes` equals the key's declared arity
-(`indnkeyatts`). Both reads share the caller's snapshot, so a mismatch is a
+caller read from `primary_key_attributes` equals the key's declared arity (`indnkeyatts`). Both reads share the caller's
+snapshot, so a mismatch is a
 catalog inconsistency, not a concurrent change: it raises
 `object_not_in_prerequisite_state` (`55000`) instead of letting callers zip
 misaligned column and kind arrays. A table without a primary key is
