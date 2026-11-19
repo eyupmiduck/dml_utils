@@ -2414,8 +2414,8 @@ RETURNS bigint
 
 `SECURITY INVOKER`. Creates a new run by calling `populate_migration_boundaries`
 in a `pg_background` worker, so the run and its boundaries commit autonomously,
-and returns the run id. Re-raises the worker's SQLSTATE. If the wait is aborted
-(`statement_timeout`, query cancel), the worker is cancelled and the handle
+and returns the run id. Re-raises the worker's SQLSTATE. If the wait is aborted (`statement_timeout`, query cancel), the
+worker is cancelled and the handle
 detached best-effort before the original error is re-raised, so a worker that
 has not committed cannot leave an orphan run holding the label.
 
