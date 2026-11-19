@@ -1,9 +1,9 @@
 package io.github.eyupmiduck.dmlutils;
 
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.enums.ChunkingStrategy;
+import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.records.MigrationRunLeafRecord;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.tables.records.ClaimNextMigrationLeafRecord;
-import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.records.MigrationRunLeafRecord;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
@@ -17,9 +17,7 @@ import java.util.List;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRunLeaf.MIGRATION_RUN_LEAF;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Verifies {@code dml_utils_lib.claim_next_migration_leaf}: leaves are claimed in
@@ -31,6 +29,19 @@ class ClaimNextMigrationLeafTest extends PartitionTestBase {
 
     private static final String TEMPLATE =
             "UPDATE <driving_table> SET payload = 'x' WHERE <chunking_clause>";
+
+    /**
+     * Sets a session's statement timeout.
+     *
+     * @param connection the connection
+     * @param timeout    the timeout, as a psql interval literal
+     * @throws Exception if the SET fails
+     */
+    private static void setTimeout(Connection connection, String timeout) throws Exception {
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("SET statement_timeout = '" + timeout + "'");
+        }
+    }
 
     /**
      * Empties the fixture and migration metadata between tests.
@@ -172,7 +183,6 @@ class ClaimNextMigrationLeafTest extends PartitionTestBase {
         }
     }
 
-
     private List<ClaimNextMigrationLeafRecord> claim(Long runId) {
         return Routines.claimNextMigrationLeaf(dsl.configuration(), runId);
     }
@@ -182,23 +192,10 @@ class ClaimNextMigrationLeafTest extends PartitionTestBase {
     }
 
     /**
-     * Sets a session's statement timeout.
-     *
-     * @param connection the connection
-     * @param timeout    the timeout, as a psql interval literal
-     * @throws Exception if the SET fails
-     */
-    private static void setTimeout(Connection connection, String timeout) throws Exception {
-        try (Statement statement = connection.createStatement()) {
-            statement.execute("SET statement_timeout = '" + timeout + "'");
-        }
-    }
-
-    /**
      * Forces a leaf into the given state with stale count and error fields.
      *
-     * @param runId         the run id
-     * @param ordinal       the leaf ordinal
+     * @param runId    the run id
+     * @param ordinal  the leaf ordinal
      * @param state    the state to store
      * @param sqlstate the error SQLSTATE (only a failed leaf carries one)
      * @param message  the error message (only a failed leaf carries one)
