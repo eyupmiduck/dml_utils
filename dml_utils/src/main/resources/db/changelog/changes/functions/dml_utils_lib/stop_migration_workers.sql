@@ -1,7 +1,7 @@
 CREATE OR REPLACE FUNCTION dml_utils_lib.stop_migration_workers(
     i_pids integer[],
     i_cookies bigint[],
-    i_cancel boolean,
+    i_cancel dml_utils_data.non_null_boolean,
     i_wait_ms integer
 )
     RETURNS void
@@ -48,7 +48,7 @@ BEGIN
     -- Cancel every worker first, so a long-running chunk does not delay the
     -- cancellation of the ones behind it. A worker that already finished is a
     -- no-op for cancel; the wait/detach below reaps it.
-    IF i_cancel THEN
+    IF i_cancel::boolean THEN
         FOR l_index IN 1..pg_catalog.cardinality(i_pids)
             LOOP
                 BEGIN
@@ -107,7 +107,7 @@ $$;
 COMMENT ON FUNCTION dml_utils_lib.stop_migration_workers(
     integer[],
     bigint[],
-    boolean,
+    dml_utils_data.non_null_boolean,
     integer
     ) IS
     'Cancels (when requested) and waits for/detaches a set of pg_background '

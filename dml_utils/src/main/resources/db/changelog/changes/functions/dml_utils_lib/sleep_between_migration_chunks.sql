@@ -1,5 +1,5 @@
 CREATE OR REPLACE FUNCTION dml_utils_lib.sleep_between_migration_chunks(
-    i_run_id bigint,
+    i_run_id dml_utils_data.non_null_bigint,
     i_sleep_ms dml_utils_data.non_negative_integer
 )
     RETURNS timestamptz
@@ -43,7 +43,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION dml_utils_lib.sleep_between_migration_chunks(
-    bigint,
+    dml_utils_data.non_null_bigint,
     dml_utils_data.non_negative_integer
     ) IS
     'Sleeps the run''s per-chunk delay in 100ms slices and returns the run''s '

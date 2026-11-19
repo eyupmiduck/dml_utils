@@ -1019,7 +1019,7 @@ read and validation.
 ### `dml_utils_lib.ordered_key_leaf_indexes(i_parent_index_oid)`
 
 ```sql
-i_parent_index_oid oid
+i_parent_index_oid dml_utils_data.non_null_oid
 RETURNS TABLE
     (leaf_oid oid, child_index_oid oid, child_index_name text)
 ```
@@ -1033,10 +1033,10 @@ this helper.
 ### `dml_utils_lib.ordered_key_attributes_for_index(i_index_oid, i_schema_name, i_table_name, i_index_name)`
 
 ```sql
-i_index_oid   oid
-i_schema_name text
-i_table_name  text
-i_index_name  text
+i_index_oid   dml_utils_data.non_null_oid
+i_schema_name dml_utils_data.non_null_text
+i_table_name  dml_utils_data.non_null_text
+i_index_name  dml_utils_data.non_null_text
 RETURNS TABLE
 (ordinality integer, column_name name, column_oid oid,
     column_type regtype, key_kind text)
@@ -1300,15 +1300,15 @@ would otherwise run the statements that follow the first one.
 `dml_utils_lib.render_chunk_sql(i_sql_text, i_schema_name, i_table_name, i_table_alias, i_key_columns, i_key_kinds, i_start_values, i_end_values, i_is_final)`
 
 ```sql
-i_sql_text          dml_utils_data.non_null_text
-i_schema_name       dml_utils_data.non_null_text
-i_table_name        dml_utils_data.non_null_text
-i_table_alias       dml_utils_data.non_null_text
-i_key_columns       name[]
-i_key_kinds         text[]
-i_start_values      text[]
-i_end_values        text[]
-i_is_final          boolean
+i_sql_text     dml_utils_data.non_null_text
+i_schema_name  dml_utils_data.non_null_text
+i_table_name   dml_utils_data.non_null_text
+i_table_alias  dml_utils_data.non_null_text
+i_key_columns  name[]
+i_key_kinds    text[]
+i_start_values text[]
+i_end_values   text[]
+i_is_final     dml_utils_data.non_null_boolean
 RETURNS text
 ```
 
@@ -1513,7 +1513,7 @@ by the enumeration, so a lost privilege also fails closed (`42501`).
 ### `dml_utils_lib.migration_run_calculation_lock_key(i_run_id)`
 
 ```sql
-i_run_id bigint
+i_run_id dml_utils_data.non_null_bigint
 RETURNS bigint
 ```
 
@@ -1523,8 +1523,9 @@ the run id with a `dml_utils.migration_run.calculation.` prefix. It is
 `IMMUTABLE` because the prefix is concatenated with `i_run_id::text` (bigint's
 text output is immutable) and `pg_catalog.hashtextextended` is immutable;
 `format()` is deliberately not used because it is only `STABLE`. It is `STRICT`
-so a NULL run id yields NULL rather than one shared key for every NULL caller,
-and `PARALLEL SAFE` because it reads no state.
+(a NULL argument would yield NULL rather than one shared key for every NULL
+caller), though the non-null run-id domain rejects NULL at the call, and
+`PARALLEL SAFE` because it reads no state.
 
 ### `dml_utils_lib.calculate_migration_run_boundaries(i_run_id)`
 
@@ -1547,9 +1548,9 @@ pending leaves. A single-relation run is rejected (`22023`).
 ### `dml_utils_lib.record_migration_leaf_error(i_run_id, i_leaf_ordinal, i_sqlstate, i_error_message)`
 
 ```sql
-i_run_id       bigint
-i_leaf_ordinal integer
-i_sqlstate     dml_utils_data.non_null_text
+i_run_id        dml_utils_data.non_null_bigint
+i_leaf_ordinal  dml_utils_data.positive_integer
+i_sqlstate      dml_utils_data.non_null_text
 i_error_message dml_utils_data.non_null_text
 RETURNS void
 ```
@@ -1599,7 +1600,8 @@ per key kind and in key order: the non-final (`o_is_final` false) and final (`o_
 `0..chunk_size`, `text` uses `a..b`, `uuid` the first two all-zero forms and
 `timestamptz` two consecutive days. The values are synthetic, so the explain
 path can render a plausible chunk predicate without reading real boundaries.
-Rejects malformed kinds or a non-positive chunk size (`22023`).
+Rejects malformed kinds (`22023`); the positive domain rejects a NULL or
+non-positive chunk size at the call.
 
 ### `dml_utils_lib.explain_query_plan(i_sql_text)`
 
@@ -1620,14 +1622,14 @@ PL/pgSQL's `EXECUTE` cannot run the statements after the first.
 `dml_utils_lib.explain_chunk_plans(i_sql_text, i_schema_name, i_table_name, i_table_alias, i_key_columns, i_key_kinds, i_chunk_size [, i_chunk_by])`
 
 ```sql
-i_sql_text            dml_utils_data.non_null_text
-i_schema_name         dml_utils_data.non_null_text
-i_table_name          dml_utils_data.non_null_text
-i_table_alias         dml_utils_data.non_null_text
-i_key_columns         name[]
-i_key_kinds           text[]
-i_chunk_size          bigint
-i_chunk_by            dml_utils_data.chunking_strategy DEFAULT 'primary_key'
+i_sql_text    dml_utils_data.non_null_text
+i_schema_name dml_utils_data.non_null_text
+i_table_name  dml_utils_data.non_null_text
+i_table_alias dml_utils_data.non_null_text
+i_key_columns name[]
+i_key_kinds   text[]
+i_chunk_size  dml_utils_data.positive_bigint
+i_chunk_by    dml_utils_data.chunking_strategy DEFAULT 'primary_key'
 RETURNS TABLE
     (o_plan_kind text, o_sql_text text, o_plan json)
 ```
@@ -1646,15 +1648,15 @@ half-open ctid ranges. Shared by `explain_migration_chunks` and
 `dml_utils_lib.explain_chunk_plan(i_sql_text, i_schema_name, i_table_name, i_table_alias, i_key_columns, i_key_kinds, i_start_values, i_end_values, i_is_final)`
 
 ```sql
-i_sql_text            dml_utils_data.non_null_text
-i_schema_name         dml_utils_data.non_null_text
-i_table_name          dml_utils_data.non_null_text
-i_table_alias         dml_utils_data.non_null_text
-i_key_columns         name[]
-i_key_kinds           text[]
-i_start_values        text[]
-i_end_values          text[]
-i_is_final            boolean
+i_sql_text     dml_utils_data.non_null_text
+i_schema_name  dml_utils_data.non_null_text
+i_table_name   dml_utils_data.non_null_text
+i_table_alias  dml_utils_data.non_null_text
+i_key_columns  name[]
+i_key_kinds    text[]
+i_start_values text[]
+i_end_values   text[]
+i_is_final     dml_utils_data.non_null_boolean
 RETURNS TABLE
     (o_plan_kind text, o_sql_text text, o_plan json)
 ```
@@ -1753,7 +1755,7 @@ yields no starts.
 ### `dml_utils_lib.migration_run_boundary_key(i_run_id)`
 
 ```sql
-i_run_id bigint
+i_run_id dml_utils_data.non_null_bigint
 RETURNS TABLE
     (o_key_columns name [], o_key_kinds text [])
 ```
@@ -1768,8 +1770,8 @@ the run's lifetime.
 ### `dml_utils_lib.assert_migration_leaf_unchanged(i_run_id, i_leaf_ordinal)`
 
 ```sql
-i_run_id       bigint
-i_leaf_ordinal integer
+i_run_id       dml_utils_data.non_null_bigint
+i_leaf_ordinal dml_utils_data.positive_integer
 RETURNS void
 ```
 
@@ -1785,8 +1787,8 @@ a changed partition tree never mixes stale ranges with new ones.
 ### `dml_utils_lib.leaf_terminal_boundary_id(i_run_id, i_leaf_ordinal)`
 
 ```sql
-i_run_id       bigint
-i_leaf_ordinal integer
+i_run_id       dml_utils_data.non_null_bigint
+i_leaf_ordinal dml_utils_data.positive_integer
 RETURNS dml_utils_data.migration_key
 ```
 
@@ -1877,8 +1879,8 @@ NULL expectation (a primary-key run) is a no-op.
 ### `dml_utils_lib.process_migration_chunk(i_run_id, i_boundary_no, i_sql_text)`
 
 ```sql
-i_run_id      bigint
-i_boundary_no bigint
+i_run_id      dml_utils_data.non_null_bigint
+i_boundary_no dml_utils_data.non_negative_bigint
 i_sql_text    dml_utils_data.non_null_text
 RETURNS void
 ```
@@ -1902,8 +1904,8 @@ chunk that actually completed; this is intended. Intended to run inside a
 ### `dml_utils_lib.record_migration_error(i_run_id, i_boundary_no, i_sqlstate, i_message)`
 
 ```sql
-i_run_id      bigint
-i_boundary_no bigint
+i_run_id      dml_utils_data.non_null_bigint
+i_boundary_no dml_utils_data.non_negative_bigint
 i_sqlstate    dml_utils_data.non_null_text
 i_message     dml_utils_data.non_null_text
 RETURNS void
@@ -1991,15 +1993,15 @@ position-aligned array. Unsupported or NULL kinds and a malformed array raise
 `dml_utils_lib.format_boundary_population_sql(i_select_list, i_order_by, i_schema_name, i_table_name, i_id_list, i_pack_expression, i_order_by_desc, i_run_id, i_chunk_size)`
 
 ```sql
-i_select_list     text
-i_order_by        text
-i_schema_name     text
-i_table_name      text
-i_id_list         text
-i_pack_expression text
-i_order_by_desc   text
-i_run_id          bigint
-i_chunk_size      bigint
+i_select_list     dml_utils_data.non_null_text
+i_order_by        dml_utils_data.non_null_text
+i_schema_name     dml_utils_data.non_null_text
+i_table_name      dml_utils_data.non_null_text
+i_id_list         dml_utils_data.non_null_text
+i_pack_expression dml_utils_data.non_null_text
+i_order_by_desc   dml_utils_data.non_null_text
+i_run_id          dml_utils_data.non_null_bigint
+i_chunk_size      dml_utils_data.positive_bigint
 RETURNS text
 ```
 
@@ -2008,9 +2010,9 @@ statement from the key descriptor fragments: it streams the boundary key in
 index order, materialises only the chunk starts and takes the terminal boundary
 from a backward index scan. The five text fragments are interpolated raw, so they
 must be trusted SQL produced by `boundary_key_descriptor_sql`, never
-caller-supplied text. A NULL run id, a non-positive chunk size, any NULL
-fragment or identifier, or a blank `i_order_by`/`i_order_by_desc` is rejected with
-`22023` before rendering. The
+caller-supplied text. The domains reject a NULL run id, a non-positive chunk
+size and any NULL or blank fragment or identifier at the call; the fragments are
+otherwise trusted SQL. The
 boundary key must be unique and `i_order_by_desc` its exact inverse; otherwise
 the row chosen by the backward scan can differ from the last row in the ascending
 window order. Shared by `build_boundary_population_sql`
@@ -2019,10 +2021,10 @@ so the runner and the explain path use the identical SQL.
 ### `dml_utils_lib.assert_ordered_key_index_usable(i_index_oid, i_schema_name, i_table_name, i_index_name)`
 
 ```sql
-i_index_oid  oid
-i_schema_name text
-i_table_name  text
-i_index_name  text
+i_index_oid   dml_utils_data.non_null_oid
+i_schema_name dml_utils_data.non_null_text
+i_table_name  dml_utils_data.non_null_text
+i_index_name  dml_utils_data.non_null_text
 RETURNS void
 ```
 
@@ -2035,10 +2037,10 @@ shape is `0A000`/`22023`, and an unusable index is `55000`.
 ### `dml_utils_lib.ordered_key_column_attributes(i_index_oid, i_schema_name, i_table_name, i_index_name)`
 
 ```sql
-i_index_oid  oid
-i_schema_name text
-i_table_name  text
-i_index_name  text
+i_index_oid   dml_utils_data.non_null_oid
+i_schema_name dml_utils_data.non_null_text
+i_table_name  dml_utils_data.non_null_text
+i_index_name  dml_utils_data.non_null_text
 RETURNS TABLE
 (ordinality integer, column_name name, column_oid oid,
     column_type regtype, key_kind text)
@@ -2068,7 +2070,7 @@ validator (non-btree, non-unique, unsupported key type, invalid or ON ONLY).
 ### `dml_utils_lib.assert_partitioned_ordered_key_child_indexes(i_index_oid, i_schema_name, i_table_name, i_index_name)`
 
 ```sql
-i_index_oid  oid
+i_index_oid   dml_utils_data.non_null_oid
 i_schema_name dml_utils_data.non_null_text
 i_table_name  dml_utils_data.non_null_text
 i_index_name  dml_utils_data.non_null_text
@@ -2083,7 +2085,7 @@ unusable child is `0A000`/`55000`.
 ### `dml_utils_lib.assert_partitioned_leaf_relations(i_parent)`
 
 ```sql
-i_parent oid
+i_parent dml_utils_data.non_null_oid
 RETURNS void
 ```
 
@@ -2094,7 +2096,7 @@ rejected before a run or manifest row exists.
 ### `dml_utils_lib.assert_partitioned_leaf_privileges(i_parent)`
 
 ```sql
-i_parent oid
+i_parent dml_utils_data.non_null_oid
 RETURNS void
 ```
 
@@ -2105,8 +2107,8 @@ creating a manifest row.
 ### `dml_utils_lib.manifest_leaf_identity(i_run_id, i_leaf_ordinal)`
 
 ```sql
-i_run_id      bigint
-i_leaf_ordinal integer
+i_run_id       dml_utils_data.non_null_bigint
+i_leaf_ordinal dml_utils_data.positive_integer
 RETURNS record
     (o_chunk_by dml_utils_data.chunking_strategy, o_leaf_schema_name text,
      o_leaf_name text, o_leaf_oid oid, o_leaf_bound text,
@@ -2164,11 +2166,11 @@ text.
 ### `dml_utils_lib.explain_block_chunk_plans(i_sql_text, i_schema_name, i_table_name, i_table_alias, i_chunk_size)`
 
 ```sql
-i_sql_text   dml_utils_data.non_null_text
+i_sql_text    dml_utils_data.non_null_text
 i_schema_name dml_utils_data.non_null_text
-i_table_name dml_utils_data.non_null_text
+i_table_name  dml_utils_data.non_null_text
 i_table_alias dml_utils_data.non_null_text
-i_chunk_size bigint
+i_chunk_size  dml_utils_data.positive_bigint
 RETURNS TABLE
     (o_plan_kind text, o_sql_text text, o_plan json)
 ```
@@ -2185,13 +2187,13 @@ block space. No run or boundary is read or written. Shared by
 `dml_utils_lib.explain_key_chunk_plans(i_sql_text, i_schema_name, i_table_name, i_table_alias, i_key_columns, i_key_kinds, i_chunk_size)`
 
 ```sql
-i_sql_text   dml_utils_data.non_null_text
+i_sql_text    dml_utils_data.non_null_text
 i_schema_name dml_utils_data.non_null_text
-i_table_name dml_utils_data.non_null_text
+i_table_name  dml_utils_data.non_null_text
 i_table_alias dml_utils_data.non_null_text
 i_key_columns name[]
 i_key_kinds   text[]
-i_chunk_size  bigint
+i_chunk_size  dml_utils_data.positive_bigint
 RETURNS TABLE
     (o_plan_kind text, o_sql_text text, o_plan json)
 ```
@@ -2460,12 +2462,12 @@ manifest. Returns true when the run is ready.
 `dml_utils_lib.next_migration_chunk(i_run_id, i_partition_wise, i_key_kinds, i_in_flight_boundaries, i_default_schema_name, i_default_table_name)`
 
 ```sql
-i_run_id                  bigint
-i_partition_wise          boolean
-i_key_kinds               text[]
-i_in_flight_boundaries    bigint[]
-i_default_schema_name     text
-i_default_table_name      text
+i_run_id               dml_utils_data.non_null_bigint
+i_partition_wise       dml_utils_data.non_null_boolean
+i_key_kinds            text[]
+i_in_flight_boundaries bigint[]
+i_default_schema_name  dml_utils_data.non_null_text
+i_default_table_name   dml_utils_data.non_null_text
 RETURNS record
     (o_boundary_no bigint, o_chunk_schema_name text, o_chunk_table_name text,
      o_start_values text[], o_end_values text[], o_is_final boolean)
@@ -2496,7 +2498,7 @@ re-raise the worker error.
 ### `dml_utils_lib.sleep_between_migration_chunks(i_run_id, i_sleep_ms)`
 
 ```sql
-i_run_id  bigint
+i_run_id   dml_utils_data.non_null_bigint
 i_sleep_ms dml_utils_data.non_negative_integer
 RETURNS timestamptz
 ```
@@ -2512,7 +2514,7 @@ negative delay is rejected by the non-negative domain.
 ```sql
 i_pids    integer[]
 i_cookies bigint[]
-i_cancel  boolean
+i_cancel  dml_utils_data.non_null_boolean
 i_wait_ms integer
 RETURNS void
 ```
