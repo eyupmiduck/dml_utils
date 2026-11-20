@@ -51,18 +51,17 @@ class AssertLiveLeafMatchesManifestTest extends PartitionTestBase {
 
     /**
      * The stored bound is compared under the same deparse pins
-     * {@code leaf_partitions} used, so a session with different settings does not
-     * report a spurious change.
+     * {@code leaf_partitions} used, so a session with a different bytea rendering
+     * does not report a spurious change.
      */
     @Test
     void comparesBoundsUnderThePinnedDeparseSettings() {
         LeafPartitionsRecord leaf = Routines.leafPartitions(dsl.configuration(),
-                PARTITION_SCHEMA, "test_partitioned_text_escape",
+                PARTITION_SCHEMA, "test_partitioned_bytea",
                 ChunkingStrategy.primary_key).getFirst();
 
         dsl.transaction(config -> {
             DSLContext tx = DSL.using(config);
-            tx.execute("SET LOCAL standard_conforming_strings = off");
             tx.execute("SET LOCAL bytea_output = 'escape'");
             assertDoesNotThrow(() -> Routines.assertLiveLeafMatchesManifest(
                     tx.configuration(), ChunkingStrategy.primary_key,

@@ -10,6 +10,7 @@ import java.util.List;
 
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestPartitionedRange.TEST_PARTITIONED_RANGE;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * Verifies {@code dml_utils_lib.leaf_partitions}: the deterministic leaf order,
@@ -320,6 +321,12 @@ class LeafPartitionsTest extends PostgresTestBase {
         assertEquals(1, pinned.size());
         assertTrue(pinned.getFirst().contains("\\"), pinned.toString());
 
+        // PostgreSQL 19 removed non-standard string literals, so the setting can
+        // no longer be turned off there; the pin is then a no-op rather than a
+        // behaviour change.
+        assumeTrue(supportsNonStandardStringLiterals(),
+                "standard_conforming_strings = off is no longer supported");
+
         dsl.transaction(config -> {
             org.jooq.DSLContext tx = org.jooq.impl.DSL.using(config);
             tx.execute("SET LOCAL standard_conforming_strings = off");
@@ -351,6 +358,24 @@ class LeafPartitionsTest extends PostgresTestBase {
                     .stream().map(LeafPartitionsRecord::getLeafBound).toList();
             assertEquals(pinned, escaped, "bytea_output must not change the bound");
         });
+    }
+
+    /**
+     * Whether this server still allows non-standard string literals
+     * ({@code standard_conforming_strings = off}); PostgreSQL 19 rejects them.
+     *
+     * @return true when the off setting can be applied
+     */
+    private boolean supportsNonStandardStringLiterals() {
+        return Boolean.TRUE.equals(dsl.transactionResult(config -> {
+            try {
+                org.jooq.impl.DSL.using(config)
+                        .execute("SET LOCAL standard_conforming_strings = off");
+                return true;
+            } catch (org.jooq.exception.DataAccessException e) {
+                return false;
+            }
+        }));
     }
 
     private List<LeafPartitionsRecord> leaves(String table, ChunkingStrategy chunkBy) {
