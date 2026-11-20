@@ -452,7 +452,8 @@ arguments are the driving table's primary-key columns, in key order, and which
 returns `void`. The wrapper builds the per-row template
 (`SELECT <fn>(t.<pk1>, ...) FROM <driving_table> WHERE <chunking_clause>`) and
 delegates to `run_migration_chunks`, so it resumes by label exactly like a base
-run and requires `READ COMMITTED` for the same reason. The function's argument types must equal the primary-key column types in key
+run and requires `READ COMMITTED` for the same reason. The function's argument types must equal the primary-key column
+types in key
 order and it must return `void`; a missing function, a non-`void` return, or
 mismatched argument types raise `invalid_parameter_value` (`22023`) before any
 run is created. When `i_label` is NULL a deterministic label is derived from the
