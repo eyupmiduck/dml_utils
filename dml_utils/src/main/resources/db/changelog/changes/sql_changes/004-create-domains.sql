@@ -111,8 +111,8 @@ CREATE DOMAIN dml_utils_data.non_null_element_text_array AS text[]
     CONSTRAINT non_null_element_text_array_check CHECK (
         value IS NULL
             OR (pg_catalog.array_ndims(value) = 1
-                AND pg_catalog.array_lower(value, 1) = 1
-                AND pg_catalog.array_position(value, NULL) IS NULL)
+            AND pg_catalog.array_lower(value, 1) = 1
+            AND pg_catalog.array_position(value, NULL) IS NULL)
         );
 
 COMMENT ON DOMAIN dml_utils_data.non_null_element_text_array IS
@@ -123,8 +123,8 @@ CREATE DOMAIN dml_utils_data.non_null_element_name_array AS name[]
     CONSTRAINT non_null_element_name_array_check CHECK (
         value IS NULL
             OR (pg_catalog.array_ndims(value) = 1
-                AND pg_catalog.array_lower(value, 1) = 1
-                AND pg_catalog.array_position(value, NULL::name) IS NULL)
+            AND pg_catalog.array_lower(value, 1) = 1
+            AND pg_catalog.array_position(value, NULL::name) IS NULL)
         );
 
 COMMENT ON DOMAIN dml_utils_data.non_null_element_name_array IS

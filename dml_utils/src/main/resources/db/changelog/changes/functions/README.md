@@ -857,8 +857,8 @@ RETURNS void
 
 `STABLE`, `SECURITY INVOKER`, with a pinned `search_path`. Raises
 `undefined_table` (`42P01`) when the relation does not exist, or
-`wrong_object_type` (`42809`) when it is not a declarative partitioned table
-(`relkind = 'p'`), so a non-partitioned driving table is rejected before any leaf
+`wrong_object_type` (`42809`) when it is not a declarative partitioned table (`relkind = 'p'`), so a non-partitioned
+driving table is rejected before any leaf
 is enumerated.
 
 ### `dml_utils_lib.assert_read_committed()`
@@ -1836,8 +1836,8 @@ RETURNS dml_utils_data.migration_key
 `VOLATILE`, `SECURITY INVOKER`. Returns the high-water key of a leaf: the last row
 in the run's key order, or the one-past-end block number for `blocks`.
 `calculate_migration_leaf` stores it as
-`migration_run_leaf.terminal_boundary_id`; finalization reads that stored value
-(`terminal_leaf_for_run`/`append_terminal_boundary`), so a later delete cannot
+`migration_run_leaf.terminal_boundary_id`; finalization reads that stored value (`terminal_leaf_for_run`/
+`append_terminal_boundary`), so a later delete cannot
 regress the leaf's last chunk.
 
 ### `dml_utils_lib.calculate_migration_leaf(i_run_id)`

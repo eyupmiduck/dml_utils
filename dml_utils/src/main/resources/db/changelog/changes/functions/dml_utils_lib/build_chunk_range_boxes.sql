@@ -30,10 +30,8 @@ BEGIN
         OR pg_catalog.array_lower(i_end_literals, 1) IS DISTINCT FROM 1
         OR pg_catalog.array_length(i_column_names, 1) IS NULL
         OR pg_catalog.array_length(i_column_names, 1) < 1
-        OR pg_catalog.array_length(i_start_literals, 1)
-            IS DISTINCT FROM pg_catalog.array_length(i_column_names, 1)
-        OR pg_catalog.array_length(i_end_literals, 1)
-            IS DISTINCT FROM pg_catalog.array_length(i_column_names, 1)
+        OR pg_catalog.array_length(i_start_literals, 1) IS DISTINCT FROM pg_catalog.array_length(i_column_names, 1)
+        OR pg_catalog.array_length(i_end_literals, 1) IS DISTINCT FROM pg_catalog.array_length(i_column_names, 1)
         OR pg_catalog.array_position(i_column_names, NULL::text) IS NOT NULL
         OR pg_catalog.array_position(i_start_literals, NULL::text) IS NOT NULL
         OR pg_catalog.array_position(i_end_literals, NULL::text) IS NOT NULL
