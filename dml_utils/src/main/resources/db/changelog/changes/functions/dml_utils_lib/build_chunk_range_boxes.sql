@@ -1,5 +1,5 @@
 CREATE OR REPLACE FUNCTION dml_utils_lib.build_chunk_range_boxes(
-    i_column_names text[],
+    i_column_names dml_utils_data.non_null_element_text_array,
     i_start_literals text[],
     i_end_literals text[],
     i_first_difference_position dml_utils_data.non_negative_integer,
