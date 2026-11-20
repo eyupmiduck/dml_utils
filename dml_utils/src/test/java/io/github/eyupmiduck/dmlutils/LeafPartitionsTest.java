@@ -307,6 +307,52 @@ class LeafPartitionsTest extends PostgresTestBase {
         });
     }
 
+    /**
+     * A text bound containing a backslash is deparsed under the pinned
+     * standard_conforming_strings, so a session with the setting off sees the
+     * same bound text and order.
+     */
+    @Test
+    void textBoundsIgnoreStandardConformingStrings() {
+        List<String> pinned = leaves("test_partitioned_text_escape",
+                ChunkingStrategy.primary_key).stream()
+                .map(LeafPartitionsRecord::getLeafBound).toList();
+        assertEquals(1, pinned.size());
+        assertTrue(pinned.getFirst().contains("\\"), pinned.toString());
+
+        dsl.transaction(config -> {
+            org.jooq.DSLContext tx = org.jooq.impl.DSL.using(config);
+            tx.execute("SET LOCAL standard_conforming_strings = off");
+            List<String> unpinned = Routines.leafPartitions(tx.configuration(), SCHEMA,
+                            "test_partitioned_text_escape", ChunkingStrategy.primary_key)
+                    .stream().map(LeafPartitionsRecord::getLeafBound).toList();
+            assertEquals(pinned, unpinned,
+                    "standard_conforming_strings must not change the bound");
+        });
+    }
+
+    /**
+     * A bytea bound is deparsed under the pinned bytea_output, so a session set to
+     * escape output sees the same bound text as the default hex output.
+     */
+    @Test
+    void byteaBoundsIgnoreByteaOutput() {
+        List<String> pinned = leaves("test_partitioned_bytea",
+                ChunkingStrategy.primary_key).stream()
+                .map(LeafPartitionsRecord::getLeafBound).toList();
+        assertEquals(1, pinned.size());
+        assertTrue(pinned.getFirst().contains("\\x01"), pinned.toString());
+
+        dsl.transaction(config -> {
+            org.jooq.DSLContext tx = org.jooq.impl.DSL.using(config);
+            tx.execute("SET LOCAL bytea_output = 'escape'");
+            List<String> escaped = Routines.leafPartitions(tx.configuration(), SCHEMA,
+                            "test_partitioned_bytea", ChunkingStrategy.primary_key)
+                    .stream().map(LeafPartitionsRecord::getLeafBound).toList();
+            assertEquals(pinned, escaped, "bytea_output must not change the bound");
+        });
+    }
+
     private List<LeafPartitionsRecord> leaves(String table, ChunkingStrategy chunkBy) {
         return Routines.leafPartitions(dsl.configuration(), SCHEMA, table, chunkBy);
     }
