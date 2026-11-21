@@ -52,6 +52,16 @@ class MigrationRunLeafGuardTest extends PostgresTestBase {
     }
 
     /**
+     * The terminal timestamps a run can be closed with.
+     *
+     * @return the terminal timestamp columns
+     */
+    private static Stream<TableField<MigrationRunRecord, OffsetDateTime>> terminalColumns() {
+        return Stream.of(MIGRATION_RUN.BOUNDARIES_CALCULATED_AT, MIGRATION_RUN.CANCELLED_AT,
+                MIGRATION_RUN.COMPLETED_AT, MIGRATION_RUN.ARCHIVED_AT);
+    }
+
+    /**
      * Removes the runs (and, by cascade, their leaves) left by earlier tests.
      */
     @BeforeEach
@@ -90,7 +100,6 @@ class MigrationRunLeafGuardTest extends PostgresTestBase {
         assertRejected("22023", "require a partition-wise run", () -> insertLeaf(runId, 1, null));
     }
 
-
     /**
      * A run that is finalized (boundaries calculated), cancelled, completed or
      * archived accepts no further leaf.
@@ -105,16 +114,6 @@ class MigrationRunLeafGuardTest extends PostgresTestBase {
         closeRun(runId, terminalColumn);
 
         assertRejected("55000", "cannot add a leaf", () -> insertLeaf(runId, 1, null));
-    }
-
-    /**
-     * The terminal timestamps a run can be closed with.
-     *
-     * @return the terminal timestamp columns
-     */
-    private static Stream<TableField<MigrationRunRecord, OffsetDateTime>> terminalColumns() {
-        return Stream.of(MIGRATION_RUN.BOUNDARIES_CALCULATED_AT, MIGRATION_RUN.CANCELLED_AT,
-                MIGRATION_RUN.COMPLETED_AT, MIGRATION_RUN.ARCHIVED_AT);
     }
 
     /**

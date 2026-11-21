@@ -269,17 +269,6 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
     }
 
     /**
-     * Returns the name of the database the test's jOOQ context is connected to.
-     * The admin-connection helpers need it, and jOOQ renders
-     * {@link DSL#currentCatalog()} as {@code current_database()} on PostgreSQL.
-     *
-     * @return the current database name
-     */
-    protected String currentDatabase() {
-        return dsl.fetchValue(DSL.currentCatalog());
-    }
-
-    /**
      * Returns the default bigint fixture's schema name.
      *
      * @return the schema name
@@ -350,6 +339,17 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
      */
     private static String quoteIdentifier(String identifier) {
         return '"' + identifier.replace("\"", "\"\"") + '"';
+    }
+
+    /**
+     * Returns the name of the database the test's jOOQ context is connected to.
+     * The admin-connection helpers need it, and jOOQ renders
+     * {@link DSL#currentCatalog()} as {@code current_database()} on PostgreSQL.
+     *
+     * @return the current database name
+     */
+    protected String currentDatabase() {
+        return dsl.fetchValue(DSL.currentCatalog());
     }
 
     /**

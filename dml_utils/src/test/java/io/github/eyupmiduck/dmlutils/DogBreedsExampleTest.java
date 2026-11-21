@@ -14,9 +14,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils.tables.MigrationRunSummary.MIGRATION_RUN_SUMMARY;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Runs the runnable examples in {@code examples/} against the test database.

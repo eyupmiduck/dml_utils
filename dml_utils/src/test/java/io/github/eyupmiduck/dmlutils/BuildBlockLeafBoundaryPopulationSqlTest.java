@@ -8,8 +8,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
-import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestPartitioned_22odd_22.TEST_PARTITIONED__22ODD_22;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestPartitionedQuoted.TEST_PARTITIONED_QUOTED;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestPartitioned_22odd_22.TEST_PARTITIONED__22ODD_22;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**

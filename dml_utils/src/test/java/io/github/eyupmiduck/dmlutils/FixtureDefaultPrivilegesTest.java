@@ -1,10 +1,7 @@
 package io.github.eyupmiduck.dmlutils;
 
-import org.jooq.DSLContext;
-import org.jooq.Field;
+import org.jooq.*;
 import org.jooq.Record;
-import org.jooq.SQLDialect;
-import org.jooq.Table;
 import org.jooq.impl.DSL;
 import org.junit.jupiter.api.Test;
 
