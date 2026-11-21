@@ -1371,7 +1371,7 @@ class RunMigrationChunksTest extends PostgresTestBase {
 
     private void createSource(Table<?> table, long... ids) {
         for (long id : ids) {
-            dsl.insertInto(table, field("id", Long.class)).values(id).execute();
+            dsl.insertInto(table, table.field("id", Long.class)).values(id).execute();
         }
     }
 

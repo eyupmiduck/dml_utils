@@ -10,7 +10,6 @@ import liquibase.database.Database;
 import liquibase.database.DatabaseFactory;
 import liquibase.database.jvm.JdbcConnection;
 import liquibase.resource.ClassLoaderResourceAccessor;
-import org.jooq.Field;
 import org.jooq.JSON;
 import org.jooq.Record;
 import org.jooq.Table;
@@ -101,19 +100,6 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
             POSTGRES_IMAGE, ChangelogTestSupport.MASTER_RESOURCE,
             DATABASE_CHANGELOG_TABLE, DATABASE_CHANGELOG_LOCK_TABLE, FIXTURES_RESOURCE,
             PostgresTestBase::installProjectExtensionsAndDdlUtils);
-
-    /**
-     * Returns a jOOQ field reference by name, for fixture columns when no
-     * generated field is available.
-     *
-     * @param name the column name
-     * @param type the column's Java type
-     * @param <T>  the column type
-     * @return the field reference
-     */
-    protected static <T> Field<T> field(String name, Class<T> type) {
-        return DSL.field(name, type);
-    }
 
     /**
      * Installs the extensions the changelog's routines need into a database,
@@ -733,7 +719,7 @@ abstract class PostgresTestBase extends io.github.eyupmiduck.changelogvalidator.
      * @return the matching row count
      */
     protected int payloadCount(Table<?> table, String value) {
-        return dsl.fetchCount(table, field("payload", String.class).eq(value));
+        return dsl.fetchCount(table, table.field("payload", String.class).eq(value));
     }
 
     /**

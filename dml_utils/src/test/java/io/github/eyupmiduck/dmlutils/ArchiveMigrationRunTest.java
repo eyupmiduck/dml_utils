@@ -16,6 +16,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 
+import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -113,9 +114,11 @@ class ArchiveMigrationRunTest extends PostgresTestBase {
             try {
                 // Hold the original run's row lock so the concurrent archive
                 // blocks before it can cancel or update anything.
-                holderDsl.fetchOne(
-                        "SELECT 1 FROM dml_utils_data.migration_run WHERE run_id = ? FOR UPDATE",
-                        original);
+                holderDsl.selectOne()
+                        .from(MIGRATION_RUN)
+                        .where(MIGRATION_RUN.RUN_ID.eq(original))
+                        .forUpdate()
+                        .fetchOne();
 
                 CompletableFuture<Long> blocked = CompletableFuture.supplyAsync(() -> {
                     try (Connection archive = openOwnerConnection()) {
