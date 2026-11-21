@@ -156,7 +156,7 @@ class ArchiveMigrationRunTest extends PostgresTestBase {
      * @throws InterruptedException if the wait is interrupted
      */
     private void awaitArchiveLockWait() throws Exception {
-        String database = dsl.fetchOne("SELECT current_database()").get(0, String.class);
+        String database = currentDatabase();
         try (Connection admin = openAdminConnection(database)) {
             DSLContext adminDsl = DSL.using(admin, SQLDialect.POSTGRES);
             for (int attempt = 0; attempt < 400; attempt++) {

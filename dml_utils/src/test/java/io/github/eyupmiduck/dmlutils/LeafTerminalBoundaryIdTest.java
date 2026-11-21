@@ -139,10 +139,8 @@ class LeafTerminalBoundaryIdTest extends PartitionTestBase {
     }
 
     private boolean terminalIsNull(long runId, String leafName) {
-        return Boolean.TRUE.equals(dsl.fetchOne(
-                        "SELECT dml_utils_lib.leaf_terminal_boundary_id(?, ?) IS NULL",
-                        runId, leafOrdinal(runId, leafName))
-                .get(0, Boolean.class));
+        return Boolean.TRUE.equals(dsl.fetchValue(Routines.leafTerminalBoundaryId(
+                runId, leafOrdinal(runId, leafName)).isNull()));
     }
 
 

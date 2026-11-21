@@ -69,7 +69,7 @@ class TransientRetryTest extends PostgresTestBase {
                             + " AND pid <> pg_catalog.pg_backend_pid()")) {
                 Integer pid = row.get(0, Integer.class);
                 try {
-                    dsl.execute("SELECT pg_catalog.pg_cancel_backend(?)", pid);
+                    cancelBackend(pid);
                 } catch (RuntimeException ignored) {
                     // The backend may already be gone.
                 }
