@@ -4,6 +4,110 @@
         xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
 
+    <!-- The ordered-key and primary-key shape checks on migration_run in each
+         form they have had: as the baseline created them (up to three columns,
+         four kinds), widened for bytea, and widened to four columns. Changesets
+         009 to 014 and their rollbacks expand these into their SQL files, so each
+         expression is written once and cannot drift between them. Each keeps its
+         name and value once a changeset has used it. Quotes are doubled because
+         the expression is passed to the ddl_utils helpers as a string literal. -->
+    <property name="ordered_key_shape_check_expression_before_bytea"
+              value="ordered_key_columns IS NULL
+        OR (pg_catalog.cardinality(ordered_key_columns) BETWEEN 1 AND 3
+        AND pg_catalog.cardinality(ordered_key_kinds)
+                = pg_catalog.cardinality(ordered_key_columns)
+        AND CASE
+                WHEN pg_catalog.array_ndims(ordered_key_columns) = 1
+                    THEN pg_catalog.array_position(ordered_key_columns, NULL::name) IS NULL
+                ELSE FALSE
+                END
+        AND CASE
+                WHEN pg_catalog.array_ndims(ordered_key_kinds) = 1
+                    THEN pg_catalog.array_position(ordered_key_kinds, NULL::text) IS NULL
+                ELSE FALSE
+                END
+        AND ordered_key_kinds &lt;@ ARRAY [''bigint'', ''text'', ''uuid'', ''timestamptz'']::text[])"/>
+    <property name="ordered_key_shape_check_expression"
+              value="ordered_key_columns IS NULL
+        OR (pg_catalog.cardinality(ordered_key_columns) BETWEEN 1 AND 3
+        AND pg_catalog.cardinality(ordered_key_kinds)
+                = pg_catalog.cardinality(ordered_key_columns)
+        AND CASE
+                WHEN pg_catalog.array_ndims(ordered_key_columns) = 1
+                    THEN pg_catalog.array_position(ordered_key_columns, NULL::name) IS NULL
+                ELSE FALSE
+                END
+        AND CASE
+                WHEN pg_catalog.array_ndims(ordered_key_kinds) = 1
+                    THEN pg_catalog.array_position(ordered_key_kinds, NULL::text) IS NULL
+                ELSE FALSE
+                END
+        AND ordered_key_kinds &lt;@ ARRAY [''bigint'', ''text'', ''uuid'', ''timestamptz'', ''bytea'']::text[])"/>
+    <property name="ordered_key_shape_check_expression_four_columns"
+              value="ordered_key_columns IS NULL
+        OR (pg_catalog.cardinality(ordered_key_columns) BETWEEN 1 AND 4
+        AND pg_catalog.cardinality(ordered_key_kinds)
+                = pg_catalog.cardinality(ordered_key_columns)
+        AND CASE
+                WHEN pg_catalog.array_ndims(ordered_key_columns) = 1
+                    THEN pg_catalog.array_position(ordered_key_columns, NULL::name) IS NULL
+                ELSE FALSE
+                END
+        AND CASE
+                WHEN pg_catalog.array_ndims(ordered_key_kinds) = 1
+                    THEN pg_catalog.array_position(ordered_key_kinds, NULL::text) IS NULL
+                ELSE FALSE
+                END
+        AND ordered_key_kinds &lt;@ ARRAY [''bigint'', ''text'', ''uuid'', ''timestamptz'', ''bytea'']::text[])"/>
+    <property name="primary_key_shape_check_expression_before_bytea"
+              value="primary_key_columns IS NULL
+        OR (pg_catalog.cardinality(primary_key_columns) BETWEEN 1 AND 3
+        AND pg_catalog.cardinality(primary_key_kinds)
+                = pg_catalog.cardinality(primary_key_columns)
+        AND CASE
+                WHEN pg_catalog.array_ndims(primary_key_columns) = 1
+                    THEN pg_catalog.array_position(primary_key_columns, NULL::name) IS NULL
+                ELSE FALSE
+                END
+        AND CASE
+                WHEN pg_catalog.array_ndims(primary_key_kinds) = 1
+                    THEN pg_catalog.array_position(primary_key_kinds, NULL::text) IS NULL
+                ELSE FALSE
+                END
+        AND primary_key_kinds &lt;@ ARRAY [''bigint'', ''text'', ''uuid'', ''timestamptz'']::text[])"/>
+    <property name="primary_key_shape_check_expression"
+              value="primary_key_columns IS NULL
+        OR (pg_catalog.cardinality(primary_key_columns) BETWEEN 1 AND 3
+        AND pg_catalog.cardinality(primary_key_kinds)
+                = pg_catalog.cardinality(primary_key_columns)
+        AND CASE
+                WHEN pg_catalog.array_ndims(primary_key_columns) = 1
+                    THEN pg_catalog.array_position(primary_key_columns, NULL::name) IS NULL
+                ELSE FALSE
+                END
+        AND CASE
+                WHEN pg_catalog.array_ndims(primary_key_kinds) = 1
+                    THEN pg_catalog.array_position(primary_key_kinds, NULL::text) IS NULL
+                ELSE FALSE
+                END
+        AND primary_key_kinds &lt;@ ARRAY [''bigint'', ''text'', ''uuid'', ''timestamptz'', ''bytea'']::text[])"/>
+    <property name="primary_key_shape_check_expression_four_columns"
+              value="primary_key_columns IS NULL
+        OR (pg_catalog.cardinality(primary_key_columns) BETWEEN 1 AND 4
+        AND pg_catalog.cardinality(primary_key_kinds)
+                = pg_catalog.cardinality(primary_key_columns)
+        AND CASE
+                WHEN pg_catalog.array_ndims(primary_key_columns) = 1
+                    THEN pg_catalog.array_position(primary_key_columns, NULL::name) IS NULL
+                ELSE FALSE
+                END
+        AND CASE
+                WHEN pg_catalog.array_ndims(primary_key_kinds) = 1
+                    THEN pg_catalog.array_position(primary_key_kinds, NULL::text) IS NULL
+                ELSE FALSE
+                END
+        AND primary_key_kinds &lt;@ ARRAY [''bigint'', ''text'', ''uuid'', ''timestamptz'', ''bytea'']::text[])"/>
+
     <!-- The trigger changesets use CREATE OR REPLACE TRIGGER (PostgreSQL 14+).
          Check the server version once, before any changeset in this changelog
          runs: a changeSet-level precondition would only run after the schemas,
@@ -65,6 +169,52 @@
         </rollback>
     </changeSet>
 
+    <!-- Adds the bytea array to the migration_key type created above. It is
+         listed here, not at the end, because the boundary-key check helper
+         below reads the new attribute, so a database built from scratch needs it
+         before that helper is created. A database upgraded from an earlier
+         release runs it on its own first, then re-applies the helper. -->
+    <changeSet id="008-add-bytea-key-kind" author="hellblazer" dbms="postgresql">
+        <!-- 008 commits on its own, and a database that has the fifth attribute
+             but not the routines that build it breaks in every new backend, so
+             this changeset must not run unless 009 and 010 can. They call the
+             ddl_utils helpers, which in turn call ddl_utils_lib: halt here,
+             before anything changes, when either schema is missing or the
+             migrating role cannot execute what the helpers use. This
+             is the one place a changeset carries SQL in the XML; Liquibase has
+             no file form of a precondition. -->
+        <preConditions onFail="HALT" onError="HALT">
+            <sqlCheck expectedResult="1">
+                SELECT CASE
+                    WHEN pg_catalog.to_regnamespace('ddl_utils') IS NULL THEN 0
+                    WHEN pg_catalog.to_regnamespace('ddl_utils_lib') IS NULL THEN 0
+                    WHEN NOT pg_catalog.has_schema_privilege(pg_catalog.current_user(), 'ddl_utils', 'USAGE') THEN 0
+                    WHEN NOT pg_catalog.has_schema_privilege(pg_catalog.current_user(), 'ddl_utils_lib', 'USAGE') THEN 0
+                    WHEN (SELECT pg_catalog.count(DISTINCT n.nspname || '.' || p.proname)
+                          FROM pg_catalog.pg_proc AS p
+                                   JOIN pg_catalog.pg_namespace AS n ON n.oid = p.pronamespace
+                          WHERE (n.nspname, p.proname) IN (
+                                ('ddl_utils', 'drop_constraint'),
+                                ('ddl_utils', 'add_check_constraint'),
+                                ('ddl_utils', 'ensure_check_constraint'),
+                                ('ddl_utils', 'get_lock_settings'),
+                                ('ddl_utils_lib', 'alter_table'),
+                                ('ddl_utils_lib', 'add_check_constraint'),
+                                ('ddl_utils_lib', 'drop_constraint'),
+                                ('ddl_utils_lib', 'validate_constraint'),
+                                ('ddl_utils_lib', 'assert_no_top_level_comma'))
+                            AND pg_catalog.has_function_privilege(pg_catalog.current_user(), p.oid, 'EXECUTE')) = 9
+                        THEN 1
+                    ELSE 0
+                END
+            </sqlCheck>
+        </preConditions>
+        <sqlFile path="sql_changes/008-add-bytea-key-kind.sql" relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="rollback/008-add-bytea-key-kind-rollback.sql" relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
     <!-- The boundary-key check helper. It needs only the migration_key type
          (created above), so it is defined before the table whose CHECK calls
          it. -->
@@ -98,6 +248,88 @@
     <!-- The tables' triggers, one per file. They call the routines defined
          above, so they run after the functions include. -->
     <include file="triggers.xml" relativeToChangelogFile="true"/>
+
+    <!-- Lets a run record bytea as a primary-key or ordered-key kind. It
+         replaces two checks on migration_run and calls the ddl_utils helpers,
+         which can fail on a lock timeout or a missing grant, so it runs after the
+         functions and triggers includes: a failure here leaves the new routines in
+         place against the new five-attribute key type, never a mix of old routines
+         and new type. No routine, trigger or table definition above reads the
+         checks; they only matter when a caller starts a run, which cannot happen
+         during a migration. The new checks are added NOT VALID here and validated
+         by the next two changesets. -->
+    <changeSet id="009-allow-bytea-key-kinds" author="hellblazer" dbms="postgresql">
+        <sqlFile path="sql_changes/009-allow-bytea-key-kinds.sql" relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="rollback/009-allow-bytea-key-kinds-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <!-- Validates the ordered-key check the previous changeset added NOT VALID.
+         The ddl_utils procedure commits between steps, so it runs outside a
+         transaction and is this changeset's only statement. -->
+    <changeSet id="010-validate-ordered-key-shape-check" author="hellblazer" dbms="postgresql"
+               runInTransaction="false">
+        <sqlFile path="sql_changes/010-validate-ordered-key-shape-check.sql"
+                 relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="rollback/010-validate-ordered-key-shape-check-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <!-- Validates the primary-key check 009 added NOT VALID, for the same
+         reason as the previous changeset. -->
+    <changeSet id="011-validate-primary-key-shape-check" author="hellblazer" dbms="postgresql"
+               runInTransaction="false">
+        <sqlFile path="sql_changes/011-validate-primary-key-shape-check.sql"
+                 relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="rollback/011-validate-primary-key-shape-check-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <!-- Lets a run record a primary key or an ordered key of four columns, the
+         shape of the nexus chunks key (tenant, collection, hash, embedding
+         model). Like 009 it replaces two checks on migration_run through the
+         ddl_utils helpers, so it runs after the functions and triggers includes
+         and adds the new checks NOT VALID; the next two changesets validate
+         them. The routines and the boundary-key check in 006 take a four-column
+         key by then, and the key type needs no change: its arrays are as long as
+         the key. -->
+    <changeSet id="012-allow-four-column-keys" author="hellblazer" dbms="postgresql">
+        <sqlFile path="sql_changes/012-allow-four-column-keys.sql" relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="rollback/012-allow-four-column-keys-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <!-- Validates the ordered-key check the previous changeset added NOT VALID,
+         outside a transaction for the same reason as 010. -->
+    <changeSet id="013-validate-four-column-ordered-key-check" author="hellblazer"
+               dbms="postgresql" runInTransaction="false">
+        <sqlFile path="sql_changes/013-validate-four-column-ordered-key-check.sql"
+                 relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="rollback/013-validate-four-column-ordered-key-check-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
+
+    <!-- Validates the primary-key check 012 added NOT VALID, for the same
+         reason. -->
+    <changeSet id="014-validate-four-column-primary-key-check" author="hellblazer"
+               dbms="postgresql" runInTransaction="false">
+        <sqlFile path="sql_changes/014-validate-four-column-primary-key-check.sql"
+                 relativeToChangelogFile="true"/>
+        <rollback>
+            <sqlFile path="rollback/014-validate-four-column-primary-key-check-rollback.sql"
+                     relativeToChangelogFile="true"/>
+        </rollback>
+    </changeSet>
 
     <!-- A single, re-runnable changeset for all caller grants. runOnChange
          makes Liquibase re-apply it whenever this SQL changes, so new grants

@@ -3,13 +3,18 @@ package io.github.eyupmiduck.dmlutils;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.enums.ChunkingStrategy;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.udt.records.MigrationKeyRecord;
 import io.github.eyupmiduck.dmlutils.jooq.dml_utils_lib.Routines;
+import org.jooq.DSLContext;
+import org.jooq.SQLDialect;
 import org.jooq.Table;
+import org.jooq.impl.DSL;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -19,6 +24,7 @@ import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.Migration
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRun.MIGRATION_RUN;
 import static io.github.eyupmiduck.dmlutils.jooq.dml_utils_data.tables.MigrationRunLeaf.MIGRATION_RUN_LEAF;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestBigint.TEST_BIGINT;
+import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeFive.TEST_COMPOSITE_FIVE;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeFour.TEST_COMPOSITE_FOUR;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositePk.TEST_COMPOSITE_PK;
 import static io.github.eyupmiduck.dmlutils.jooqfixtures.tables.TestCompositeThree.TEST_COMPOSITE_THREE;
@@ -64,7 +70,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
         dsl.deleteFrom(MIGRATION_RUN).execute();
         for (Table<?> table : List.of(TEST_BIGINT, TEST_INTEGER, TEST_SMALLINT, TEST_TEXT,
                 TEST_UUID, TEST_NO_PK, TEST_COMPOSITE_PK, TEST_COMPOSITE_THREE,
-                TEST_COMPOSITE_FOUR, TEST_NUMERIC)) {
+                TEST_COMPOSITE_FOUR, TEST_COMPOSITE_FIVE, TEST_NUMERIC)) {
             dsl.truncate(table).execute();
         }
     }
@@ -259,12 +265,33 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     }
 
     /**
-     * A primary key of more than three columns fails with
+     * A four-column, mixed-kind primary key, the supported maximum, is accepted.
+     */
+    @Test
+    void acceptsAFourColumnMixedKindPrimaryKey() {
+        dsl.insertInto(TEST_COMPOSITE_FOUR,
+                        TEST_COMPOSITE_FOUR.B, TEST_COMPOSITE_FOUR.A, TEST_COMPOSITE_FOUR.D,
+                        TEST_COMPOSITE_FOUR.C)
+                .values(1, "x", timestamp(1), UUID.randomUUID())
+                .values(1, "x", timestamp(2), UUID.randomUUID())
+                .values(1, "y", timestamp(1), UUID.randomUUID())
+                .values(2, "x", timestamp(1), UUID.randomUUID())
+                .execute();
+
+        long runId = populateTable(TEST_COMPOSITE_FOUR, 2);
+
+        assertTrue(runId > 0, "a four-column mixed-kind primary key should be accepted");
+        assertEquals(3, boundaryCount(runId).intValue(),
+                "four rows at chunk size two give two chunk starts plus a terminal boundary");
+    }
+
+    /**
+     * A primary key of more than four columns fails with
      * invalid_parameter_value (22023).
      */
     @Test
-    void rejectsPrimaryKeyWithMoreThanThreeColumns() {
-        assertSqlState("22023", () -> populateTable(TEST_COMPOSITE_FOUR, 1));
+    void rejectsPrimaryKeyWithMoreThanFourColumns() {
+        assertSqlState("22023", () -> populateTable(TEST_COMPOSITE_FIVE, 1));
     }
 
     /**
@@ -316,6 +343,9 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
         assertArrayEquals(new String[]{"b", "a", "c"},
                 primaryKeyColumns(TEST_COMPOSITE_THREE),
                 "key order comes from the index, not the column name");
+        assertArrayEquals(new String[]{"b", "a", "d", "c"},
+                primaryKeyColumns(TEST_COMPOSITE_FOUR),
+                "a four-column key returns its columns in index order");
     }
 
     /**
@@ -375,12 +405,12 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     }
 
     /**
-     * The key-kind helper rejects a primary key of more than three columns with
+     * The key-kind helper rejects a primary key of more than four columns with
      * {@code 22023}, via its up-front primary-key-columns call.
      */
     @Test
-    void primaryKeyKindsRejectsMoreThanThreeColumns() {
-        assertSqlState("22023", () -> primaryKeyKinds(TEST_COMPOSITE_FOUR));
+    void primaryKeyKindsRejectsMoreThanFourColumns() {
+        assertSqlState("22023", () -> primaryKeyKinds(TEST_COMPOSITE_FIVE));
     }
 
     /**
@@ -392,10 +422,26 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
         String[] values = Routines.migrationKeyValues(
                 dsl.configuration(),
                 new MigrationKeyRecord(new Long[]{7L, null, null}, new String[]{null, "x", null},
-                        new UUID[]{null, null, uuid(1)}, null),
+                        new UUID[]{null, null, uuid(1)}, null, null),
                 new String[]{"bigint", "text", "uuid"});
 
         assertArrayEquals(new String[]{"7", "x", uuid(1).toString()}, values);
+    }
+
+    /**
+     * The key-values helper flattens a four-column key, the supported maximum,
+     * and rejects a key of five kinds.
+     */
+    @Test
+    void migrationKeyValuesFlattensAFourColumnKey() {
+        MigrationKeyRecord key = new MigrationKeyRecord(new Long[]{null, 7L, null, null},
+                new String[]{"x", null, null, "y"}, new UUID[]{null, null, uuid(1), null}, null, null);
+
+        assertArrayEquals(new String[]{"x", "7", uuid(1).toString(), "y"},
+                Routines.migrationKeyValues(dsl.configuration(), key,
+                        new String[]{"text", "bigint", "uuid", "text"}));
+        assertSqlState("22023", () -> Routines.migrationKeyValues(dsl.configuration(), key,
+                new String[]{"text", "bigint", "uuid", "text", "text"}));
     }
 
     /**
@@ -408,11 +454,54 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
 
         String[] values = Routines.migrationKeyValues(
                 dsl.configuration(),
-                new MigrationKeyRecord(null, null, null, new OffsetDateTime[]{timestamp}),
+                new MigrationKeyRecord(null, null, null, new OffsetDateTime[]{timestamp}, null),
                 new String[]{"timestamptz"});
 
         assertEquals(timestamp.toInstant(), dsl.fetchOne("SELECT ?::timestamptz", values[0])
                 .get(0, OffsetDateTime.class).toInstant());
+    }
+
+    /**
+     * The key-values helper flattens a bytea key to hex digits, whatever the
+     * session's {@code bytea_output}: the same result in the default session and
+     * in one set to {@code escape} output with string escapes enabled, where
+     * {@code bytea::text} itself differs.
+     */
+    @Test
+    void migrationKeyValuesFlattensAByteaKeyAsHex() throws SQLException {
+        MigrationKeyRecord key = new MigrationKeyRecord(null, new String[]{"x", null}, null, null,
+                new byte[][]{null, new byte[]{(byte) 0xde, (byte) 0xad, 0x00}});
+        String[] expected = {"x", "dead00"};
+        String asText = "SELECT pg_catalog.decode('dead00', 'hex')::text";
+
+        assertArrayEquals(expected, Routines.migrationKeyValues(
+                dsl.configuration(), key, new String[]{"text", "bytea"}));
+        assertEquals("\\xdead00", dsl.fetchOne(asText).get(0, String.class));
+
+        try (Connection connection = openTestConnection()) {
+            DSLContext escape = DSL.using(connection, SQLDialect.POSTGRES);
+            escape.execute("SET bytea_output = 'escape'");
+            tryDisableStandardConformingStrings(escape);
+
+            assertEquals("\\336\\255\\000", escape.fetchOne(asText).get(0, String.class),
+                    "the session really prints bytea in escape form");
+            assertArrayEquals(expected, Routines.migrationKeyValues(
+                    escape.configuration(), key, new String[]{"text", "bytea"}));
+        }
+    }
+
+    /**
+     * An empty bytea key flattens to an empty value, not NULL, so it is a
+     * boundary like any other.
+     */
+    @Test
+    void migrationKeyValuesFlattensAnEmptyByteaKeyToAnEmptyValue() {
+        String[] values = dsl.fetchOne("SELECT dml_utils_lib.migration_key_values("
+                        + "ROW(NULL, NULL, NULL, NULL, ARRAY[''::bytea])::dml_utils_data.migration_key,"
+                        + " ARRAY['bytea'])")
+                .get(0, String[].class);
+
+        assertArrayEquals(new String[]{""}, values);
     }
 
     /**
@@ -423,19 +512,19 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     void migrationKeyValuesFlattensSingleAndTwoColumnKeys() {
         assertArrayEquals(new String[]{"7"}, Routines.migrationKeyValues(
                         dsl.configuration(),
-                        new MigrationKeyRecord(new Long[]{7L}, null, null, null),
+                        new MigrationKeyRecord(new Long[]{7L}, null, null, null, null),
                         new String[]{"bigint"}),
                 "a single-column bigint key flattens to one value");
 
         assertArrayEquals(new String[]{"x"}, Routines.migrationKeyValues(
                         dsl.configuration(),
-                        new MigrationKeyRecord(null, new String[]{"x"}, null, null),
+                        new MigrationKeyRecord(null, new String[]{"x"}, null, null, null),
                         new String[]{"text"}),
                 "a single-column text key reads the text array");
 
         assertArrayEquals(new String[]{"1", "x"}, Routines.migrationKeyValues(
                         dsl.configuration(),
-                        new MigrationKeyRecord(new Long[]{1L, null}, new String[]{null, "x"}, null, null),
+                        new MigrationKeyRecord(new Long[]{1L, null}, new String[]{null, "x"}, null, null, null),
                         new String[]{"bigint", "text"}),
                 "a two-column mixed key keeps each value at its position");
     }
@@ -449,31 +538,31 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     void migrationKeyValuesRejectsMalformedValueArrays() {
         assertSqlState("22023", () -> dsl.fetchOne(
                 "SELECT dml_utils_lib.migration_key_values("
-                        + "ROW('[0:1]={1,2}'::bigint[], NULL, NULL, NULL)"
+                        + "ROW('[0:1]={1,2}'::bigint[], NULL, NULL, NULL, NULL)"
                         + "::dml_utils_data.migration_key, ARRAY['bigint', 'bigint'])"));
         assertSqlState("22023", () -> dsl.fetchOne(
                 "SELECT dml_utils_lib.migration_key_values("
-                        + "ROW('[1:1][1:1]={{1}}'::bigint[], NULL, NULL, NULL)"
+                        + "ROW('[1:1][1:1]={{1}}'::bigint[], NULL, NULL, NULL, NULL)"
                         + "::dml_utils_data.migration_key, ARRAY['bigint'])"));
         assertSqlState("22023", () -> dsl.fetchOne(
                 "SELECT dml_utils_lib.migration_key_values("
-                        + "ROW(ARRAY[1]::bigint[], NULL, NULL, NULL)"
+                        + "ROW(ARRAY[1]::bigint[], NULL, NULL, NULL, NULL)"
                         + "::dml_utils_data.migration_key, ARRAY['bigint', 'bigint'])"));
         assertSqlState("22023", () -> dsl.fetchOne(
                 "SELECT dml_utils_lib.migration_key_values("
-                        + "ROW(NULL, '[0:1]={a,b}'::text[], NULL, NULL)"
+                        + "ROW(NULL, '[0:1]={a,b}'::text[], NULL, NULL, NULL)"
                         + "::dml_utils_data.migration_key, ARRAY['text', 'text'])"));
         assertSqlState("22023", () -> dsl.fetchOne(
                 "SELECT dml_utils_lib.migration_key_values("
                         + "ROW(NULL, NULL, ARRAY[ARRAY['00000000-0000-0000-0000-000000000001'::uuid]],"
-                        + " NULL)::dml_utils_data.migration_key, ARRAY['uuid'])"));
+                        + " NULL, NULL)::dml_utils_data.migration_key, ARRAY['uuid'])"));
         assertSqlState("22023", () -> dsl.fetchOne(
                 "SELECT dml_utils_lib.migration_key_values("
-                        + "ROW(NULL, NULL, NULL, ARRAY['2026-01-01'::timestamptz])"
+                        + "ROW(NULL, NULL, NULL, ARRAY['2026-01-01'::timestamptz], NULL)"
                         + "::dml_utils_data.migration_key, ARRAY['timestamptz', 'timestamptz'])"));
         assertSqlState("22023", () -> dsl.fetchOne(
                 "SELECT dml_utils_lib.migration_key_values("
-                        + "ROW('{}'::bigint[], NULL, NULL, NULL)"
+                        + "ROW('{}'::bigint[], NULL, NULL, NULL, NULL)"
                         + "::dml_utils_data.migration_key, ARRAY['bigint'])"));
     }
 
@@ -486,19 +575,19 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     void migrationKeyValuesDoesNotShiftAroundAnAbsentOrNullPosition() {
         assertArrayEquals(new String[]{null}, Routines.migrationKeyValues(
                         dsl.configuration(),
-                        new MigrationKeyRecord(null, null, null, null),
+                        new MigrationKeyRecord(null, null, null, null, null),
                         new String[]{"bigint"}),
                 "an absent array yields NULL at the position");
 
         assertArrayEquals(new String[]{null}, Routines.migrationKeyValues(
                         dsl.configuration(),
-                        new MigrationKeyRecord(new Long[]{null}, null, null, null),
+                        new MigrationKeyRecord(new Long[]{null}, null, null, null, null),
                         new String[]{"bigint"}),
                 "a NULL element yields NULL at the position");
 
         assertArrayEquals(new String[]{null, "x"}, Routines.migrationKeyValues(
                         dsl.configuration(),
-                        new MigrationKeyRecord(null, new String[]{null, "x"}, null, null),
+                        new MigrationKeyRecord(null, new String[]{null, "x"}, null, null, null),
                         new String[]{"text", "text"}),
                 "a NULL element does not compact away the later value");
     }
@@ -511,7 +600,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     void migrationKeyValuesRejectsUnsupportedKind() {
         assertSqlState("22023", () -> Routines.migrationKeyValues(
                 dsl.configuration(),
-                new MigrationKeyRecord(new Long[]{1L}, null, null, null),
+                new MigrationKeyRecord(new Long[]{1L}, null, null, null, null),
                 new String[]{"numeric"}));
     }
 
@@ -523,11 +612,11 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
     void migrationKeyValuesRejectsEmptyKinds() {
         assertSqlState("22023", () -> Routines.migrationKeyValues(
                 dsl.configuration(),
-                new MigrationKeyRecord(new Long[]{1L}, null, null, null),
+                new MigrationKeyRecord(new Long[]{1L}, null, null, null, null),
                 new String[]{}));
         assertSqlState("22023", () -> Routines.migrationKeyValues(
                 dsl.configuration(),
-                new MigrationKeyRecord(new Long[]{1L}, null, null, null),
+                new MigrationKeyRecord(new Long[]{1L}, null, null, null, null),
                 null));
     }
 
@@ -549,7 +638,7 @@ class MigrationBoundaryValidationTest extends PostgresTestBase {
         assertSqlState("3F000", () -> populateByNames("no_such_schema", TEST_BIGINT.getName(), 1));
         assertSqlState("42P01", () -> populateByNames(FIXTURE_SCHEMA, NO_SUCH_TABLE, 1));
         assertSqlState("22023", () -> populateTable(TEST_NO_PK, 1));
-        assertSqlState("22023", () -> populateTable(TEST_COMPOSITE_FOUR, 1));
+        assertSqlState("22023", () -> populateTable(TEST_COMPOSITE_FIVE, 1));
         assertSqlState("22023", () -> populateTable(TEST_NUMERIC, 1));
 
         assertEquals(runsBefore, dsl.fetchCount(MIGRATION_RUN), "no run should be written");

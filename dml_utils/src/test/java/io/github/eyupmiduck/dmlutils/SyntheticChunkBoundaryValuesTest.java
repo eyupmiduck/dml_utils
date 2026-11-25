@@ -69,6 +69,17 @@ class SyntheticChunkBoundaryValuesTest extends PostgresTestBase {
     }
 
     /**
+     * A bytea key gets a pair of hex values whose start sorts before its end.
+     */
+    @Test
+    void returnsAHexPairForAByteaKey() {
+        SyntheticChunkBoundaryValuesRecord bytea = Routines.syntheticChunkBoundaryValues(
+                dsl.configuration(), new String[]{"bytea"}, 10L).get(0);
+        assertArrayEquals(new String[]{"00"}, bytea.getOStartValues());
+        assertArrayEquals(new String[]{"01"}, bytea.getOEndValues());
+    }
+
+    /**
      * A composite key aligns each position with its own kind, so a bigint and a
      * text column get the bigint and text pairs respectively.
      */
@@ -82,6 +93,19 @@ class SyntheticChunkBoundaryValuesTest extends PostgresTestBase {
     }
 
     /**
+     * A four-column key, the supported maximum, gets one pair per position in key
+     * order, with the bytea pair third as in the nexus chunks key.
+     */
+    @Test
+    void alignsAFourColumnKey() {
+        SyntheticChunkBoundaryValuesRecord row = Routines.syntheticChunkBoundaryValues(
+                dsl.configuration(), new String[]{"text", "text", "bytea", "text"}, 5L).get(0);
+
+        assertArrayEquals(new String[]{"a", "a", "00", "a"}, row.getOStartValues());
+        assertArrayEquals(new String[]{"b", "b", "01", "b"}, row.getOEndValues());
+    }
+
+    /**
      * A null, empty, over-long or unknown kinds array is rejected with
      * {@code 22023}.
      */
@@ -92,7 +116,7 @@ class SyntheticChunkBoundaryValuesTest extends PostgresTestBase {
         assertSqlState("22023", () -> Routines.syntheticChunkBoundaryValues(
                 dsl.configuration(), new String[]{}, 10L));
         assertSqlState("22023", () -> Routines.syntheticChunkBoundaryValues(
-                dsl.configuration(), new String[]{"bigint", "bigint", "bigint", "bigint"}, 10L));
+                dsl.configuration(), new String[]{"bigint", "bigint", "bigint", "bigint", "bigint"}, 10L));
         assertSqlState("22023", () -> Routines.syntheticChunkBoundaryValues(
                 dsl.configuration(), new String[]{"numeric"}, 10L));
         // Cardinality alone cannot detect these shapes: a multidimensional array
